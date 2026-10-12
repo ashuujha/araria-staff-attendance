@@ -187,4 +187,6 @@ revoke all on function public.consume_login_attempt(text),public.bind_device(uui
 grant execute on function public.consume_login_attempt(text),public.bind_device(uuid,text),public.submit_attendance(uuid,text,text,double precision,double precision,double precision,uuid,text,text,text,text,text,text),public.claim_sync_job(),public.finish_sync_job(uuid,integer,text),public.correct_attendance(uuid,uuid,jsonb,text),public.set_geofence(uuid,text,double precision,double precision,integer,text) to service_role;
 insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types) values('attendance-private','attendance-private',false,5242880,ARRAY['image/jpeg','image/png','application/pdf']);
 -- No client policies on storage.objects: all uploads and signed links are server-mediated.
+grant all on all tables in schema public to service_role;
+grant usage, select on all sequences in schema public to service_role;
 commit;

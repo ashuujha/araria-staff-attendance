@@ -10,7 +10,9 @@
     "test": "node --test tests/*.test.mjs",
     "import:staff": "python3 scripts/import_staff.py",
     "seed": "node scripts/seed.mjs",
-    "preview:offline": "node scripts/offline-preview.mjs"
+    "preview:offline": "node scripts/offline-preview.mjs",
+    "format": "prettier --write src scripts tests docs README.md *.mjs *.json",
+    "format:check": "prettier --check src scripts tests docs README.md *.mjs *.json"
   },
   "dependencies": {
     "@fontsource/noto-sans": "^5.3.0",
@@ -29,6 +31,7 @@
     "@types/react-dom": "^19.0.0",
     "esbuild": "^0.25.0",
     "playwright": "^1.58.0",
+    "prettier": "^3.9.10",
     "typescript": "^5.9.3"
   }
 }

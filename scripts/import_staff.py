@@ -1,5 +1,5 @@
 """Read the supplied XLSX with stdlib only. Never publishes staff information."""
-import argparse, json, re, zipfile, xml.etree.ElementTree as E
+import argparse, json, re, zipfile, unicodedata, xml.etree.ElementTree as E
 from pathlib import Path
 NS={'s':'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
 def read_xlsx(path):
@@ -12,7 +12,7 @@ def read_xlsx(path):
                 v=c.find('s:v',NS); value=v.text if v is not None else ''
                 if c.get('t')=='s': value=strings[int(value)]
                 if c.get('t')=='inlineStr': value=''.join(c.find('s:is',NS).itertext())
-                cells[re.sub(r'\d','',c.get('r'))]=str(value or '').strip()
+                cells[re.sub(r'\d','',c.get('r'))]=unicodedata.normalize('NFC', str(value or '')).strip()
             rows.append((int(r.get('r')),cells))
         return rows
 

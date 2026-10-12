@@ -1,11 +1,70 @@
-import { chromium } from 'playwright';
-import {mkdir} from 'node:fs/promises';
-const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||'/usr/bin/google-chrome',args:['--no-sandbox']});
-const page=await browser.newPage({viewport:{width:1440,height:1100}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
-await page.goto(process.env.TEST_URL||'http://localhost:3000');await page.getByRole('heading',{name:'आज की उपस्थिति',exact:true}).waitFor();await mkdir('test-results',{recursive:true});await page.screenshot({path:'test-results/dashboard-desktop.png',fullPage:true});
-await page.getByRole('textbox',{name:'कर्मी खोजें'}).fill('उदाहरण कर्मी 01');if(await page.locator('tbody tr').count()!==1)throw Error('Search failed');await page.getByRole('textbox',{name:'कर्मी खोजें'}).fill('');
-await page.getByRole('button',{name:'रात्रि मोड'}).click();if(await page.locator('html').getAttribute('data-theme')!=='dark')throw Error('Theme failed');await page.reload();await page.waitForFunction(()=>document.documentElement.dataset.theme==='dark');if(await page.locator('html').getAttribute('data-theme')!=='dark')throw Error('Theme persistence failed');await page.getByRole('button',{name:'दिन मोड'}).click();
-await page.getByRole('button',{name:/मेरी उपस्थिति/}).click();await page.getByRole('heading',{name:'मेरी दैनिक उपस्थिति'}).waitFor();if(await page.locator('input[type=file]').count())throw Error('Gallery input exposed before leave');await page.getByRole('checkbox',{name:/अवकाश पर हूँ/}).check();await page.locator('input[type=file]').waitFor();await page.getByRole('checkbox',{name:/अवकाश पर हूँ/}).uncheck();
-await page.getByRole('button',{name:/अवलोकन/}).click();const download=page.waitForEvent('download');await page.getByRole('button',{name:/निर्यात/}).click();await(await download).saveAs('test-results/export.csv');
-await page.setViewportSize({width:390,height:844});if(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth))throw Error('Mobile overflow');await page.screenshot({path:'test-results/dashboard-mobile.png',fullPage:true});await page.getByRole('button',{name:'मेनू खोलें'}).click();await page.getByRole('button',{name:'गूगल शीट Google Sheets',exact:true}).click();await page.getByRole('heading',{name:'गूगल शीट समन्वयन'}).waitFor();await page.getByRole('button',{name:/सेटअप निर्देश/}).click();await page.getByRole('dialog').waitFor();await page.getByRole('button',{name:'बंद करें',exact:true}).click();
-if(errors.length)throw Error(errors.join('\n'));console.log('PASS: search, theme persistence, live-camera-only form, leave upload, CSV export, mobile layout/navigation and setup dialog.');await browser.close();
+import { chromium } from "playwright";
+import { mkdir } from "node:fs/promises";
+const browser = await chromium.launch({
+  headless: true,
+  executablePath: process.env.CHROME_PATH || "/usr/bin/google-chrome",
+  args: ["--no-sandbox"],
+});
+const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
+const errors = [];
+page.on("pageerror", (e) => errors.push(e.message));
+await page.goto(process.env.TEST_URL || "http://localhost:3000");
+await page
+  .getByRole("heading", { name: "आज की उपस्थिति", exact: true })
+  .waitFor();
+await mkdir("test-results", { recursive: true });
+await page.screenshot({
+  path: "test-results/dashboard-desktop.png",
+  fullPage: true,
+});
+await page
+  .getByRole("textbox", { name: "कर्मी खोजें" })
+  .fill("उदाहरण कर्मी 01");
+if ((await page.locator("tbody tr").count()) !== 1)
+  throw Error("Search failed");
+await page.getByRole("textbox", { name: "कर्मी खोजें" }).fill("");
+await page.getByRole("button", { name: "रात्रि मोड" }).click();
+if ((await page.locator("html").getAttribute("data-theme")) !== "dark")
+  throw Error("Theme failed");
+await page.reload();
+await page.waitForFunction(
+  () => document.documentElement.dataset.theme === "dark",
+);
+if ((await page.locator("html").getAttribute("data-theme")) !== "dark")
+  throw Error("Theme persistence failed");
+await page.getByRole("button", { name: "दिन मोड" }).click();
+await page.getByRole("button", { name: /मेरी उपस्थिति/ }).click();
+await page.getByRole("heading", { name: "मेरी दैनिक उपस्थिति" }).waitFor();
+if (await page.locator("input[type=file]").count())
+  throw Error("Gallery input exposed before leave");
+await page.getByRole("checkbox", { name: /अवकाश पर हूँ/ }).check();
+await page.locator("input[type=file]").waitFor();
+await page.getByRole("checkbox", { name: /अवकाश पर हूँ/ }).uncheck();
+await page.getByRole("button", { name: /अवलोकन/ }).click();
+const download = page.waitForEvent("download");
+await page.getByRole("button", { name: /निर्यात/ }).click();
+await (await download).saveAs("test-results/export.csv");
+await page.setViewportSize({ width: 390, height: 844 });
+if (
+  await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth,
+  )
+)
+  throw Error("Mobile overflow");
+await page.screenshot({
+  path: "test-results/dashboard-mobile.png",
+  fullPage: true,
+});
+await page.getByRole("button", { name: "मेनू खोलें" }).click();
+await page
+  .getByRole("button", { name: "गूगल शीट Google Sheets", exact: true })
+  .click();
+await page.getByRole("heading", { name: "गूगल शीट समन्वयन" }).waitFor();
+await page.getByRole("button", { name: /सेटअप निर्देश/ }).click();
+await page.getByRole("dialog").waitFor();
+await page.getByRole("button", { name: "बंद करें", exact: true }).click();
+if (errors.length) throw Error(errors.join("\n"));
+console.log(
+  "PASS: search, theme persistence, live-camera-only form, leave upload, CSV export, mobile layout/navigation and setup dialog.",
+);
+await browser.close();

@@ -1,6 +1,7 @@
 # Acceptance checklist
 
 ## Automated locally
+
 - [x] IST day rollover
 - [x] GPS accuracy and coordinate validation
 - [x] Geofence distance and outside-radius rejection
@@ -19,9 +20,11 @@
 - [x] Sync failure retry/backoff leaves attendance saved
 
 ## Browser and deployed verification
+
 Use scripts/browser-check.mjs for search, day/night persistence, leave toggle, camera-only attendance UI, CSV export, mobile overflow/navigation and setup dialogs.
 
 ## Required after real service configuration
+
 - [ ] Apply schema/panchayat seed in intended Supabase project
 - [ ] Confirm publishable key cannot call mutating RPCs
 - [ ] Import reviewed staff and provision initial admin

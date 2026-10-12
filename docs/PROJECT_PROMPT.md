@@ -1,9 +1,11 @@
 # PROJECT: Araria District Staff Attendance Survey Portal
+
 **(अररिया जिला कर्मी उपस्थिति सर्वेक्षण पोर्टल)**
 
 ---
 
 ## 1. OVERVIEW
+
 Build a secure, responsive web app (mobile + laptop) where ~395 Panchayati Raj and related staff of Araria District, Bihar, record daily attendance with GPS photo, real-time location, CL/SL proof, Time In and Time Out. Admins monitor everything on a dashboard, and all data is mirrored live to a Google Sheet.
 
 **Coverage:** 30 Gram Panchayats + the Block Panchayati Raj Office, Araria.
@@ -13,6 +15,7 @@ Build a secure, responsive web app (mobile + laptop) where ~395 Panchayati Raj a
 ---
 
 ## 2. TECH STACK
+
 - Next.js (App Router) + TypeScript + Tailwind
 - PostgreSQL via Supabase (Auth, Storage, Row Level Security)
 - Background job queue for Google Sheets sync
@@ -22,6 +25,7 @@ Build a secure, responsive web app (mobile + laptop) where ~395 Panchayati Raj a
 ---
 
 ## 3. DESIGN RULES
+
 - Simple, flat, minimal. **NO gradients**, no glossy or "AI-style" visuals, no decorative animation.
 - Eye-soothing muted palette (off-white/soft grey for day, dark charcoal for night). **Day/Night toggle** in the header, choice remembered.
 - Large tap targets, readable fonts (Noto Sans / Noto Sans Devanagari), minimal fields, one-screen staff form.
@@ -31,9 +35,11 @@ Build a secure, responsive web app (mobile + laptop) where ~395 Panchayati Raj a
 ---
 
 ## 4. STAFF DATA MODEL AND LOGIN
+
 Staff list comes from my uploaded Excel/CSV (~395 rows) with columns: Panchayat, Position, Department, Name, Mobile, Email.
 
 **Rules**
+
 - Login with **phone number OR email + password**.
 - Each staff profile stores 5 fields: Panchayat (पंचायत), Position (पद), Department (विभाग), Name (नाम), Phone/Email.
 - One staff member can cover multiple panchayats (e.g., one पंचायत सचिव or तकनीकी सहायक serves 3-5 panchayats; some rows have 2 phone numbers). Create **ONE account per unique phone number**, link it to all its assigned panchayats, and show a dropdown of only those panchayats on the form. Store secondary phone numbers.
@@ -45,6 +51,7 @@ Staff list comes from my uploaded Excel/CSV (~395 rows) with columns: Panchayat,
 ---
 
 ## 5. STAFF DAILY FORM
+
 Name, position, department are auto-filled and read-only.
 
 1. **Date:** server date, not editable.
@@ -60,6 +67,7 @@ Name, position, department are auto-filled and read-only.
 ---
 
 ## 6. ANTI-BYPASS AND SECURITY (maximum practical protection)
+
 - Date and time come from the **SERVER only**, never the device clock.
 - Block submission if location permission is denied, accuracy is worse than 50 m, or coordinates look spoofed (mock-location signals, impossible travel speed between punches, identical coordinates across many users).
 - **Geofence:** store each panchayat's coordinates and radius (admin-editable, default 300 m); punches outside are flagged or blocked (admin setting).
@@ -72,6 +80,7 @@ Name, position, department are auto-filled and read-only.
 ---
 
 ## 7. ADMIN LOGIN AND DASHBOARD
+
 - Separate admin login with a unique admin password and optional 2FA/OTP.
 - **Roles:** Super Admin (full), District Viewer (read-only), Block Admin (own block only).
 - **Dashboard cards:** today's Present / Absent / On Leave / Punched In but not Out / Not yet punched, totals out of 395, with panchayat-wise breakdown.
@@ -86,6 +95,7 @@ Name, position, department are auto-filled and read-only.
 ---
 
 ## 8. GOOGLE SHEETS INTEGRATION (one-way live mirror)
+
 - The database is the source of truth. The Google Sheet is an auto-updated mirror for reporting. Staff never get access to the sheet.
 - Use a Google Cloud Service Account + Google Sheets API. Share the sheet only with the service account email. Credentials only in server `.env`.
 - **Sheet columns (matching my template):**
@@ -100,6 +110,7 @@ Name, position, department are auto-filled and read-only.
 ---
 
 ## 9. NON-FUNCTIONAL REQUIREMENTS
+
 - Handle 395 users punching within the same 15-minute window without slowdown.
 - Daily automated database backup; retain data at least 1 year.
 - Timezone fixed to Asia/Kolkata. Date format DD/MM/YYYY, 12-hour time display.
@@ -110,11 +121,13 @@ Name, position, department are auto-filled and read-only.
 ---
 
 ## 10. DELIVERABLES
+
 Complete source code, database schema with RLS policies, staff import/seed script (with duplicate-phone merging and vacancy skipping), Google Sheets sync worker, `.env.example`, setup guide for Google Service Account and Supabase, deployment steps, an admin user guide and a staff user guide (Hindi), and a test checklist covering login, double-punch prevention, geofence failure, spoof flag, sheet sync retry, and export.
 
 ---
 
 ## 11. HOW TO WORK
+
 Ask me for anything missing (panchayat coordinates, admin names, logo, final staff CSV) before assuming. Build in stages:
 
 1. Auth + staff import

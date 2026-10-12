@@ -13,15 +13,15 @@ cp .env.example .env.local
 
 Set these in `.env.local` and Vercel → Project → Settings → Environment Variables:
 
-| Variable | Value |
-|---|---|
-| `SUPABASE_URL` | `https://vkflommzumlrrzvwbdub.supabase.co` |
-| `SUPABASE_PUBLISHABLE_KEY` | Your `sb_publishable_...` key |
-| `SUPABASE_SECRET_KEY` | Your **server-only** `sb_secret_...` key |
-| `APP_URL` | Exact site origin, such as `https://araria-staff-attendance.vercel.app` |
-| `CRON_SECRET` | Random secret (`openssl rand -hex 32`) |
-| `UPLOAD_SCAN_URL` | HTTPS file scanning endpoint |
-| `UPLOAD_SCAN_TOKEN` | Its authentication secret |
+| Variable                   | Value                                                                   |
+| -------------------------- | ----------------------------------------------------------------------- |
+| `SUPABASE_URL`             | `https://vkflommzumlrrzvwbdub.supabase.co`                              |
+| `SUPABASE_PUBLISHABLE_KEY` | Your `sb_publishable_...` key                                           |
+| `SUPABASE_SECRET_KEY`      | Your **server-only** `sb_secret_...` key                                |
+| `APP_URL`                  | Exact site origin, such as `https://araria-staff-attendance.vercel.app` |
+| `CRON_SECRET`              | Random secret (`openssl rand -hex 32`)                                  |
+| `UPLOAD_SCAN_URL`          | HTTPS file scanning endpoint                                            |
+| `UPLOAD_SCAN_TOKEN`        | Its authentication secret                                               |
 
 This app uses the new API key format. API keys are sent in `apikey`; `Authorization: Bearer` is used only for user session JWTs. See [Supabase API key migration](https://supabase.com/docs/guides/getting-started/migrating-to-new-api-keys). Do not prefix the secret key with `NEXT_PUBLIC_`. No legacy anon/service-role environment variables are needed.
 
@@ -35,6 +35,7 @@ This app uses the new API key format. API keys are sent in `apikey`; `Authorizat
    ```
 
    The supplied workbook yields 242 ready accounts, 59 vacancies and 2 conflicting identity groups. Conflicts remain in `private/staff-import.json` for review and are not provisioned. Secondary numbers are stored; primary phone or email is the login identifier. Email-only entries receive a random password.
+
 4. Set `INITIAL_ADMIN_PASSWORD` to at least 14 characters in **local environment only**. Provision after reviewing the preview:
 
    ```bash
@@ -42,6 +43,7 @@ This app uses the new API key format. API keys are sent in `apikey`; `Authorizat
    ```
 
    Newly generated credentials are written once to a private, permissions-restricted CSV. Existing accounts/passwords are not reset. Deliver credentials through your authorized channel; never commit them. The requested staff password pattern is `Araria@<last4>#26`, which is predictable; use Supabase Admin to replace it with stronger passwords before operational rollout.
+
 5. Sign in as admin, open Panchayats, and set each worksite's verified latitude/longitude and radius. Unknown coordinates deliberately block punches. Defaults are 300 m; no coordinates have been guessed.
 6. Configure file scanning: the endpoint accepts binary `POST`, `Authorization: Bearer <UPLOAD_SCAN_TOKEN>`, and must return `{"clean":true}` only after scanning successfully. Missing/unavailable scanning blocks uploads. Signed upload URLs send files directly to private Supabase storage, supporting 5 MB documents without Vercel request-body limits. Server validation, scanning and photo processing run before attendance is accepted.
 7. Set the production `APP_URL`, redeploy and complete the [test checklist](docs/TEST_CHECKLIST.md).

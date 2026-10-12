@@ -1,5 +1,47 @@
-export function istDate(now=new Date()){return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);}
-export function distanceMeters(a,b,c,d){const rad=Math.PI/180;const x=Math.sin((c-a)*rad/2)**2+Math.cos(a*rad)*Math.cos(c*rad)*Math.sin((d-b)*rad/2)**2;return 6371000*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));}
-export function validateLocation(latitude,longitude,accuracy){if(![latitude,longitude,accuracy].every(Number.isFinite)||Math.abs(latitude)>90||Math.abs(longitude)>180||accuracy<=0||accuracy>50)throw Error('स्थान अमान्य या सटीकता 50 मीटर से अधिक है।');}
-export function fileKind(bytes){if(bytes[0]===255&&bytes[1]===216&&bytes[2]===255)return'image/jpeg';if(bytes[0]===137&&bytes[1]===80&&bytes[2]===78&&bytes[3]===71&&bytes[4]===13&&bytes[5]===10&&bytes[6]===26&&bytes[7]===10)return'image/png';if(new TextDecoder().decode(bytes.slice(0,5))==='%PDF-')return'application/pdf';return null;}
-export function safeSheetCell(value){const text=String(value??'');return /^[=+@-]/.test(text)?"'"+text:text;}
+export function istDate(now = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}
+export function distanceMeters(a, b, c, d) {
+  const rad = Math.PI / 180;
+  const x =
+    Math.sin(((c - a) * rad) / 2) ** 2 +
+    Math.cos(a * rad) * Math.cos(c * rad) * Math.sin(((d - b) * rad) / 2) ** 2;
+  return 6371000 * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+}
+export function validateLocation(latitude, longitude, accuracy) {
+  if (
+    ![latitude, longitude, accuracy].every(Number.isFinite) ||
+    Math.abs(latitude) > 90 ||
+    Math.abs(longitude) > 180 ||
+    accuracy <= 0 ||
+    accuracy > 50
+  )
+    throw Error("स्थान अमान्य या सटीकता 50 मीटर से अधिक है।");
+}
+export function fileKind(bytes) {
+  if (bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255)
+    return "image/jpeg";
+  if (
+    bytes[0] === 137 &&
+    bytes[1] === 80 &&
+    bytes[2] === 78 &&
+    bytes[3] === 71 &&
+    bytes[4] === 13 &&
+    bytes[5] === 10 &&
+    bytes[6] === 26 &&
+    bytes[7] === 10
+  )
+    return "image/png";
+  if (new TextDecoder().decode(bytes.slice(0, 5)) === "%PDF-")
+    return "application/pdf";
+  return null;
+}
+export function safeSheetCell(value) {
+  const text = String(value ?? "");
+  return /^[=+@-]/.test(text) ? "'" + text : text;
+}

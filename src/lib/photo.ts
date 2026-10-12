@@ -1,3 +1,36 @@
-import sharp from 'sharp';
-import {HttpError} from './server';
-export async function processPhoto(bytes:Uint8Array,latitude:number,longitude:number,accuracy:number,challenge:string){const image=sharp(bytes,{limitInputPixels:4000000,failOn:'warning'});const m=await image.metadata();if(!m.width||!m.height||m.width<320||m.height<240)throw new HttpError(400,'कैमरा फोटो बहुत छोटी है।');const {data}=await sharp(bytes).extract({left:0,top:0,width:m.width,height:Math.floor(m.height*.84)}).resize(9,8,{fit:'fill'}).greyscale().raw().toBuffer({resolveWithObject:true});let bits='';for(let y=0;y<8;y++)for(let x=0;x<8;x++)bits+=data[y*9+x]>data[y*9+x+1]?'1':'0';const watermark=`<svg width="960" height="90"><rect width="960" height="90" fill="#16251d"/><text x="20" y="32" font-size="18" fill="white" font-family="sans-serif">ARARIA | ${new Date().toISOString()} | SERVER VERIFIED</text><text x="20" y="64" font-size="17" fill="white" font-family="sans-serif">${latitude.toFixed(6)}, ${longitude.toFixed(6)} | accuracy ${Math.round(accuracy)}m | ${challenge.slice(0,8)}</text></svg>`;const processed=await sharp(bytes).resize(960,720,{fit:'cover'}).composite([{input:Buffer.from(watermark),top:630,left:0}]).jpeg({quality:75}).toBuffer();return {bytes:processed,perceptualHash:bits};}
+import sharp from "sharp";
+import { HttpError } from "./server";
+export async function processPhoto(
+  bytes: Uint8Array,
+  latitude: number,
+  longitude: number,
+  accuracy: number,
+  challenge: string,
+) {
+  const image = sharp(bytes, { limitInputPixels: 4000000, failOn: "warning" });
+  const m = await image.metadata();
+  if (!m.width || !m.height || m.width < 320 || m.height < 240)
+    throw new HttpError(400, "कैमरा फोटो बहुत छोटी है।");
+  const { data } = await sharp(bytes)
+    .extract({
+      left: 0,
+      top: 0,
+      width: m.width,
+      height: Math.floor(m.height * 0.84),
+    })
+    .resize(9, 8, { fit: "fill" })
+    .greyscale()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  let bits = "";
+  for (let y = 0; y < 8; y++)
+    for (let x = 0; x < 8; x++)
+      bits += data[y * 9 + x] > data[y * 9 + x + 1] ? "1" : "0";
+  const watermark = `<svg width="960" height="90"><rect width="960" height="90" fill="#16251d"/><text x="20" y="32" font-size="18" fill="white" font-family="sans-serif">ARARIA | ${new Date().toISOString()} | SERVER VERIFIED</text><text x="20" y="64" font-size="17" fill="white" font-family="sans-serif">${latitude.toFixed(6)}, ${longitude.toFixed(6)} | accuracy ${Math.round(accuracy)}m | ${challenge.slice(0, 8)}</text></svg>`;
+  const processed = await sharp(bytes)
+    .resize(960, 720, { fit: "cover" })
+    .composite([{ input: Buffer.from(watermark), top: 630, left: 0 }])
+    .jpeg({ quality: 75 })
+    .toBuffer();
+  return { bytes: processed, perceptualHash: bits };
+}
