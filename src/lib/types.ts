@@ -12,6 +12,7 @@ export type Profile = {
   assignments: Assignment[];
   block: string;
   active: boolean;
+  deleted_at?: string | null;
 };
 export type Attendance = {
   id: string;
@@ -19,6 +20,8 @@ export type Attendance = {
   date: string;
   panchayat: string;
   status: "present" | "leave";
+  deleted_at?: string | null;
+  working_places?: Assignment[];
   time_in: string | null;
   time_out: string | null;
   latitude: number | null;

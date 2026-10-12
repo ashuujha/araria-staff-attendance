@@ -19,12 +19,12 @@ export async function GET(req: Request) {
     const records = await sb(
       "/rest/v1/attendance?date=eq." +
         date +
-        "&select=*,profiles(id,name,phone,assignments,block)&order=time_in.desc",
+        "&deleted_at=is.null&select=*,profiles(id,name,phone,assignments,block)&order=time_in.desc",
       {},
       token,
     );
     const staff = await sb(
-      "/rest/v1/profiles?active=eq.true&role=eq.staff&select=id,name,phone,assignments",
+      "/rest/v1/profiles?active=eq.true&deleted_at=is.null&role=eq.staff&select=id,name,phone,assignments",
       {},
       token,
     );
@@ -42,6 +42,41 @@ export async function POST(req: Request) {
     const reason = String(body.reason || "").trim();
     if (reason.length < 10 || reason.length > 1000)
       throw new HttpError(400, "सुधार का स्पष्ट कारण लिखें (10–1000 अक्षर)।");
+    if (body.action === "input") {
+      if (
+        !/^[0-9a-f-]{36}$/.test(String(body.staff_id)) ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(String(body.date)) ||
+        !["present", "leave"].includes(body.status)
+      )
+        throw new HttpError(400, "तिथि, स्थिति या कार्यस्थल अमान्य है।");
+      const result = await sb("/rest/v1/rpc/admin_input_attendance", {
+        method: "POST",
+        body: JSON.stringify({
+          actor_id: profile.id,
+          user_id: body.staff_id,
+          attendance_date: body.date,
+          panchayat_name: body.panchayat,
+          status_name: body.status,
+          punch_in: body.time_in || null,
+          punch_out: body.time_out || null,
+          reason_text: reason,
+        }),
+      });
+      return json({ record: result });
+    }
+    if (body.action === "delete") {
+      if (!/^[0-9a-f-]{36}$/.test(String(body.id)))
+        throw new HttpError(400, "रिकॉर्ड नहीं मिला।");
+      await sb("/rest/v1/rpc/delete_admin_attendance", {
+        method: "POST",
+        body: JSON.stringify({
+          actor_id: profile.id,
+          record_id: body.id,
+          reason_text: reason,
+        }),
+      });
+      return json({ success: true });
+    }
     if (body.action === "correct") {
       const result = await sb("/rest/v1/rpc/correct_attendance", {
         method: "POST",

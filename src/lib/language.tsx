@@ -449,6 +449,69 @@ Object.assign(english, {
   "स्थान अमान्य या सटीकता 50 मीटर से अधिक है।":
     "Invalid location or GPS accuracy worse than 50 metres.",
 });
+Object.assign(english, {
+  "मास्टर डेटा — कर्मी": "Master data — Staff",
+  "नियुक्त कार्यस्थल, पद और संपर्क विवरण":
+    "Assigned worksites, positions and contact details",
+  "एक कर्मी, एक दैनिक रिकॉर्ड": "One staff member, one daily record",
+  "कई कार्यस्थल चुनें। किसी एक स्थल पर दर्ज उपस्थिति सभी नियुक्त पंचायतों में दिखाई जाएगी।":
+    "Assign multiple worksites. Attendance entered once appears in every assigned panchayat.",
+  "नया कर्मी जोड़ें": "Add staff member",
+  "कर्मी जोड़ें": "Add staff member",
+  हटाएँ: "Delete",
+  "कर्मी हटाएँ": "Delete staff member",
+  "उपस्थिति हटाएँ": "Delete attendance",
+  "हटाने की पुष्टि करें": "Confirm deletion",
+  "हटाने का कारण": "Reason for deletion",
+  "रिकॉर्ड सामान्य सूची से हट जाएगा। पुराना डेटा और हटाने का कारण ऑडिट में सुरक्षित रहेगा।":
+    "This record will be removed from the active list. Its history and deletion reason will remain in the audit log.",
+  "अभी कोई कर्मी दर्ज नहीं है": "No staff members yet",
+  "नया कर्मी जोड़कर उसकी नियुक्त पंचायतें चुनें।":
+    "Add a staff member and select their assigned panchayats.",
+  "ईमेल (वैकल्पिक)": "Email (optional)",
+  "नियुक्त कार्यस्थल / पंचायतें": "Assigned worksites / panchayats",
+  "एक या अधिक कार्यस्थल चुनें। एक बार की उपस्थिति सभी चुने हुए स्थलों में दिखेगी।":
+    "Select one or more worksites. One attendance entry will appear in every selected worksite.",
+  "कम से कम एक कार्यस्थल चुनें।": "Select at least one worksite.",
+  "सुरक्षित कर रहे हैं…": "Saving…",
+  "उपस्थिति दर्ज करें": "Enter attendance",
+  "एडमिन द्वारा उपस्थिति दर्ज करें": "Administrator attendance entry",
+  "एडमिन द्वारा दर्ज उपस्थिति अलग चिह्नित होगी। उसी दिन का रिकॉर्ड मौजूद हो तो उसका डेटा अपडेट होगा।":
+    "Manual attendance is clearly marked as administrator-entered. If a record already exists for that day, its data will be updated.",
+  "कर्मी चुनें": "Select staff member",
+  तिथि: "Date",
+  "दर्ज करने का कार्यस्थल": "Recording worksite",
+  "इन सभी कार्यस्थलों में यही डेटा दिखेगा":
+    "The same data will appear at all these worksites",
+  "उपस्थिति दर्ज करने का कारण": "Reason for manual attendance",
+  "उपस्थिति सुरक्षित करें": "Save attendance",
+  "सभी नियुक्त कार्यस्थल": "All assigned worksites",
+  "सभी नियुक्त स्थल:": "All assigned worksites:",
+  "एडमिन द्वारा दर्ज": "Administrator-entered",
+  "नए खाते का पासवर्ड": "New account password",
+  "कर्मी खाता बन गया": "Staff account created",
+  "यह पासवर्ड केवल अभी दिखाया जा रहा है। कर्मी तक सुरक्षित पहुँचाएँ।":
+    "This password is shown only now. Share it securely with the staff member.",
+  "यह मोबाइल पहले से दर्ज है।": "This phone number is already registered.",
+  "कार्यस्थल, पद या विभाग अमान्य है।":
+    "Invalid worksite, position or department.",
+  "एक कार्यस्थल दो बार नहीं चुन सकते।":
+    "You cannot assign the same worksite twice.",
+  "कर्मी विवरण या कारण अमान्य है।": "Invalid staff details or reason.",
+  "कर्मी हटाने की अनुमति नहीं।":
+    "You do not have permission to delete this staff member.",
+  "हटाने का कारण आवश्यक है।": "A reason for deletion is required.",
+  "कर्मी पहले से हटाया गया है।": "This staff member has already been deleted.",
+  "उपस्थिति दर्ज करने की अनुमति नहीं।":
+    "You do not have permission to enter attendance.",
+  "उपस्थिति दर्ज करने का कारण आवश्यक है।":
+    "A reason for manual attendance is required.",
+  "तिथि, स्थिति या कार्यस्थल अमान्य है।": "Invalid date, status or worksite.",
+  "पंच समय और तिथि जाँचें।": "Check the punch times and attendance date.",
+  "उपस्थिति हटाने की अनुमति नहीं।":
+    "You do not have permission to delete attendance.",
+  "रिकॉर्ड पहले से हटाया गया है।": "This record has already been deleted.",
+});
 const normalized = Object.fromEntries(
   Object.entries(english).map(([key, value]) => [key.normalize("NFC"), value]),
 );

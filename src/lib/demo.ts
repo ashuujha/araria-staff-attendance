@@ -43,6 +43,21 @@ export const demoRows = Array.from({ length: 24 }, (_, i) => ({
   id: `sample-${i}`,
   name: `उदाहरण कर्मी ${String(i + 1).padStart(2, "0")}`,
   panchayat: panchayats[i % 8],
+  working_places:
+    i === 1
+      ? [panchayats[1], panchayats[0], panchayats[2]]
+      : [panchayats[i % 8]],
+  origin: "staff",
+  raw_time_in: null as string | null,
+  raw_time_out: null as string | null,
+  assignments: (i === 1
+    ? [panchayats[1], panchayats[0], panchayats[2]]
+    : [panchayats[i % 8]]
+  ).map((p) => ({
+    panchayat: p,
+    position: positions[i % 6],
+    department: i % 4 === 0 ? "ग्रामीण विकास विभाग" : "पंचायती राज विभाग",
+  })),
   position: positions[i % 6],
   department: i % 4 === 0 ? "ग्रामीण विकास विभाग" : "पंचायती राज विभाग",
   phone: "••••••••••",

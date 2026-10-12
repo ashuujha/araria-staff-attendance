@@ -2,6 +2,9 @@
 import { useEffect, useRef, useState } from "react";
 import { demoRows, panchayats, positions } from "../lib/demo";
 import { localizeContent, translateText, type Language } from "../lib/language";
+import MasterDataForm, { type MasterInput } from "./MasterDataForm";
+import AdminAttendanceForm from "./AdminAttendanceForm";
+import { makeAdminRows, matchesWorkplace } from "../lib/reporting.mjs";
 import type { Profile, Attendance } from "../lib/types";
 type View =
   | "overview"
@@ -13,6 +16,16 @@ type View =
   | "settings"
   | "punch";
 type Row = (typeof demoRows)[number];
+const previewDirectory: Profile[] = demoRows.slice(0, 8).map((r) => ({
+  id: r.id,
+  name: r.name,
+  phone: "90000000" + r.name.slice(-2),
+  email: null,
+  role: "staff",
+  block: "Araria",
+  active: true,
+  assignments: r.assignments,
+}));
 function Icon({ name, size = 20 }: { name: string; size?: number }) {
   const paths: Record<string, string> = {
     grid: "M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z",
@@ -79,7 +92,7 @@ function today() {
     day: "2-digit",
   }).format(new Date());
 }
-function csv(rows: Row[]) {
+function csv(rows: Row[], place = "all") {
   const fields = [
     "Name",
     "Panchayat",
@@ -94,7 +107,7 @@ function csv(rows: Row[]) {
     fields,
     ...rows.map((r) => [
       r.name,
-      r.panchayat,
+      place === "all" ? r.working_places.join(" / ") : place,
       r.position,
       r.department,
       r.time_in || "",
@@ -142,6 +155,8 @@ export default function Portal() {
     [consent, setConsent] = useState(false),
     [adminTab, setAdminTab] = useState(false),
     [directory, setDirectory] = useState<Profile[]>([]),
+    [refresh, setRefresh] = useState(0),
+    [credential, setCredential] = useState<string | null>(null),
     [fences, setFences] = useState<
       Record<
         string,
@@ -207,64 +222,23 @@ export default function Portal() {
       if (profile.role === "staff") {
         fetch("/api/attendance")
           .then((r) => r.json())
-          .then((r) => setRecord(r.records?.[0] || null))
+          .then((r) => {
+            const current = r.records?.[0] || null;
+            setRecord(current);
+            if (current?.panchayat) setAssignment(current.panchayat);
+          })
           .catch(() => notify("उपस्थिति लोड नहीं हुई। दोबारा कोशिश करें।"));
       } else {
         fetch("/api/admin?date=" + date)
           .then((r) => r.json())
           .then((r) => {
             if (r.error) throw Error(r.error);
-            const mapped = (r.records || []).map((a: Attendance) => ({
-              id: a.id,
-              name: a.profiles?.name || "",
-              panchayat: a.panchayat,
-              position: a.profiles?.assignments[0]?.position || "",
-              department: a.profiles?.assignments[0]?.department || "",
-              phone: a.profiles?.phone || "",
-              time_in: a.time_in
-                ? new Date(a.time_in).toLocaleTimeString("en-IN", {
-                    timeZone: "Asia/Kolkata",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })
-                : null,
-              time_out: a.time_out
-                ? new Date(a.time_out).toLocaleTimeString("en-IN", {
-                    timeZone: "Asia/Kolkata",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })
-                : null,
-              status: a.status,
-              flag: a.flags.join(", ") || null,
-              accuracy: a.accuracy || 0,
-            }));
-            const seen = new Set(
-              (r.records || []).map((a: Attendance) => a.staff_id),
-            );
-            setRows([
-              ...mapped,
-              ...(r.staff || [])
-                .filter((p: Profile) => !seen.has(p.id))
-                .map((p: Profile) => ({
-                  id: "absent-" + p.id,
-                  name: p.name,
-                  panchayat: p.assignments[0]?.panchayat || "",
-                  position: p.assignments[0]?.position || "",
-                  department: p.assignments[0]?.department || "",
-                  phone: p.phone,
-                  time_in: null,
-                  time_out: null,
-                  status: "absent",
-                  flag: null,
-                  accuracy: 0,
-                })),
-            ]);
+            setRows(makeAdminRows(r.records || [], r.staff || []) as Row[]);
           })
           .catch((e) => notify(e.message));
       }
     }
-  }, [profile, preview, date]);
+  }, [profile, preview, date, refresh]);
   useEffect(() => {
     if (!preview && profile && profile.role !== "staff") {
       fetch("/api/staff")
@@ -282,7 +256,7 @@ export default function Portal() {
         )
         .catch(() => {});
     }
-  }, [profile, preview]);
+  }, [profile, preview, refresh]);
   useEffect(() => {
     if (camera && video.current && stream.current) {
       video.current.srcObject = stream.current;
@@ -298,17 +272,28 @@ export default function Portal() {
   useEffect(() => {
     setPage(1);
   }, [search, panchayat, status, date]);
-  const filtered = rows.filter(
-    (r) =>
-      (panchayat === "all" || r.panchayat === panchayat) &&
-      (status === "all" ||
-        (status === "flagged" ? !!r.flag : r.status === status)) &&
-      [r.name, r.phone, r.position].some((s) =>
-        [s, translateText(s, language)].some((value) =>
-          value.toLowerCase().includes(search.toLowerCase()),
+  const filtered = rows
+    .filter(
+      (r) =>
+        matchesWorkplace(r, panchayat) &&
+        (status === "all" ||
+          (status === "flagged" ? !!r.flag : r.status === status)) &&
+        [r.name, r.phone, ...r.assignments.map((a) => a.position)].some((s) =>
+          [s, translateText(s, language)].some((value) =>
+            value.toLowerCase().includes(search.toLowerCase()),
+          ),
         ),
-      ),
-  );
+    )
+    .map((r) => {
+      const assignment = r.assignments.find((a) => a.panchayat === panchayat);
+      return assignment
+        ? {
+            ...r,
+            position: assignment.position,
+            department: assignment.department,
+          }
+        : r;
+    });
   const change = (v: View) => {
     setView(v);
     setMobile(false);
@@ -554,6 +539,77 @@ export default function Portal() {
       setBusy(false);
     }
   }
+  const masterStaff = preview ? previewDirectory : directory;
+  const placeStats = (place: string) => {
+    const people = rows.filter((r) => matchesWorkplace(r, place));
+    return {
+      total: people.length,
+      present: people.filter((r) => r.status === "present").length,
+      leave: people.filter((r) => r.status === "leave").length,
+    };
+  };
+  const canManage =
+    preview ||
+    profile?.role === "super_admin" ||
+    profile?.role === "block_admin";
+  async function saveAdminData(
+    endpoint: string,
+    body: Record<string, unknown>,
+  ) {
+    if (preview) {
+      notify("वास्तविक बदलाव के लिए एडमिन लॉगिन करें।");
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const d = await r.json();
+      if (!r.ok) throw Error(d.error);
+      setModal(null);
+      setRefresh((v) => v + 1);
+      if (d.password) setCredential(d.password);
+      notify("बदलाव सुरक्षित दर्ज है।");
+    } catch (e) {
+      notify((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  function saveMaster(data: MasterInput) {
+    const id = modal?.split(":")[1];
+    saveAdminData(
+      "/api/staff",
+      modal === "staff:new"
+        ? { action: "create", ...data }
+        : {
+            action: "update",
+            id,
+            reason: data.reason,
+            changes: {
+              name: data.name,
+              phone: data.phone,
+              email: data.email,
+              active: data.active,
+              reset_device: data.reset_device,
+              assignments: data.assignments,
+            },
+          },
+    );
+  }
+  function removeData(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const kind = modal?.split(":")[0];
+    saveAdminData(kind === "delete-staff" ? "/api/staff" : "/api/admin", {
+      action: "delete",
+      id: modal?.split(":")[1],
+      reason: f.get("reason"),
+    });
+  }
   const present = preview
       ? 186
       : rows.filter((r) => r.status === "present").length,
@@ -786,20 +842,29 @@ export default function Portal() {
                   </label>
                   <button
                     className="button primary"
-                    onClick={() => csv(filtered)}
+                    onClick={() => csv(filtered, panchayat)}
                   >
                     <Icon name="download" size={17} />
                     निर्यात <span>Export</span>
                   </button>
                 </>
               )}
-              {view === "staff" && (
+              {["overview", "attendance"].includes(view) && canManage && (
+                <button
+                  className="button secondary"
+                  onClick={() => setModal("attendance:new")}
+                >
+                  <Icon name="calendar" size={17} />
+                  उपस्थिति दर्ज करें
+                </button>
+              )}
+              {view === "staff" && canManage && (
                 <button
                   className="button primary"
-                  onClick={() => setModal("import")}
+                  onClick={() => setModal("staff:new")}
                 >
-                  <Icon name="upload" size={17} />
-                  कर्मी आयात करें
+                  <Icon name="users" size={17} />
+                  नया कर्मी जोड़ें
                 </button>
               )}
             </div>
@@ -930,19 +995,28 @@ export default function Portal() {
                             style={{
                               width: preview
                                 ? `${[83, 72, 90, 64, 78][i]}%`
-                                : "0%",
+                                : `${placeStats(p).total ? (placeStats(p).present / placeStats(p).total) * 100 : 0}%`,
                             }}
                           />
                           <i
                             className="bar-leave"
-                            style={{ width: preview ? "7%" : "0%" }}
+                            style={{
+                              width: preview
+                                ? "7%"
+                                : `${placeStats(p).total ? (placeStats(p).leave / placeStats(p).total) * 100 : 0}%`,
+                            }}
                           />
                         </div>
                         <b>
-                          {preview ? [15, 13, 18, 11, 14][i] : "—"}
+                          {preview
+                            ? [15, 13, 18, 11, 14][i]
+                            : placeStats(p).present}
                           <small>
                             {" "}
-                            / {preview ? [18, 18, 20, 17, 18][i] : "—"}
+                            /{" "}
+                            {preview
+                              ? [18, 18, 20, 17, 18][i]
+                              : placeStats(p).total}
                           </small>
                         </b>
                       </button>
@@ -1127,7 +1201,20 @@ export default function Portal() {
                           </div>
                         </td>
                         <td>
-                          <strong>{r.panchayat}</strong>
+                          <strong>
+                            {panchayat === "all" ? r.panchayat : panchayat}
+                          </strong>
+                          {r.working_places.length > 1 && (
+                            <small className="shared-place-label">
+                              सभी नियुक्त स्थल:{" "}
+                              {r.working_places.map((place, i) => (
+                                <span key={place}>
+                                  {i > 0 ? " · " : ""}
+                                  {place}
+                                </span>
+                              ))}
+                            </small>
+                          )}
                           <small>{r.position}</small>
                         </td>
                         <td className="time-cell">{r.time_in || "—"}</td>
@@ -1139,8 +1226,21 @@ export default function Portal() {
                                 "location-badge " + (r.flag ? "warning" : "")
                               }
                             >
-                              <Icon name={r.flag ? "alert" : "pin"} size={13} />
-                              {r.flag ? "समीक्षा बाकी" : `± ${r.accuracy} m`}
+                              <Icon
+                                name={
+                                  r.origin === "admin"
+                                    ? "file"
+                                    : r.flag
+                                      ? "alert"
+                                      : "pin"
+                                }
+                                size={13}
+                              />
+                              {r.origin === "admin"
+                                ? "एडमिन द्वारा दर्ज"
+                                : r.flag
+                                  ? "समीक्षा बाकी"
+                                  : `± ${r.accuracy} m`}
                             </span>
                           ) : (
                             <span className="muted">—</span>
@@ -1207,84 +1307,83 @@ export default function Portal() {
             </section>
           )}
           {view === "staff" && (
-            <>
-              <div className="mini-stats">
-                <span>
-                  <strong>242</strong> आयात के लिए तैयार
-                </span>
-                <span>
-                  <strong>59</strong> रिक्त पद छोड़े गए
-                </span>
-                <span>
-                  <strong>2</strong> पहचान की समीक्षा
-                </span>
+            <section className="panel master-directory">
+              <div className="panel-heading">
+                <div>
+                  <h2>मास्टर डेटा — कर्मी</h2>
+                  <p>नियुक्त कार्यस्थल, पद और संपर्क विवरण</p>
+                </div>
+                <span className="count-pill">{masterStaff.length}</span>
               </div>
-              <section className="panel section-content">
-                <div className="panel-heading">
-                  <div>
-                    <h2>कर्मी सूची एवं आयात</h2>
-                    <p>
-                      One account per unique phone · all assignments retained
-                    </p>
-                  </div>
-                  <span className="count-pill">Workbook reviewed</span>
+              <div className="info-box">
+                <Icon name="users" />
+                <div>
+                  <strong>एक कर्मी, एक दैनिक रिकॉर्ड</strong>
+                  <p>
+                    कई कार्यस्थल चुनें। किसी एक स्थल पर दर्ज उपस्थिति सभी
+                    नियुक्त पंचायतों में दिखाई जाएगी।
+                  </p>
                 </div>
-                <div className="info-box">
-                  <Icon name="shield" />
-                  <div>
-                    <strong>व्यक्तिगत जानकारी सुरक्षित है</strong>
-                    <p>
-                      वास्तविक नाम, फोन और आयात फ़ाइल केवल अधिकृत एडमिन को
-                      उपलब्ध होंगे। पूर्वावलोकन में व्यक्तिगत डेटा नहीं दिखता।
-                    </p>
-                  </div>
-                </div>
-                {!preview && (
-                  <div className="step-list">
-                    {directory.map((p) => (
-                      <div key={p.id}>
-                        <span>
-                          <Icon name="users" size={14} />
-                        </span>
-                        <strong>{p.name}</strong>
-                        <small>
-                          {p.phone} · {p.assignments.length} पंचायतें ·{" "}
-                          {p.active ? "सक्रिय" : "निष्क्रिय"}
-                        </small>
+              </div>
+              <div className="master-list">
+                {masterStaff.map((p) => (
+                  <div className="master-row" key={p.id}>
+                    <div className="small-avatar">
+                      <Icon name="users" size={17} />
+                    </div>
+                    <div className="master-person">
+                      <strong>{p.name}</strong>
+                      <small>
+                        {p.phone} · {p.assignments[0]?.position}
+                      </small>
+                      <div className="workplace-tags">
+                        {p.assignments.map((a) => (
+                          <span key={a.panchayat}>{a.panchayat}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <span
+                      className={
+                        "status-badge " + (p.active ? "present" : "absent")
+                      }
+                    >
+                      {p.active ? "सक्रिय" : "निष्क्रिय"}
+                    </span>
+                    {canManage && (
+                      <div className="master-row-actions">
                         <button
-                          className="text-button"
+                          className="button secondary"
                           onClick={() => setModal("staff:" + p.id)}
                         >
                           सुधारें
                         </button>
+                        <button
+                          className="button danger"
+                          onClick={() => setModal("delete-staff:" + p.id)}
+                        >
+                          हटाएँ
+                        </button>
                       </div>
-                    ))}
+                    )}
                   </div>
-                )}
-                <h3>आयात समीक्षा</h3>
-                <div className="step-list">
-                  {[
-                    "Excel की 410 डेटा पंक्तियाँ पढ़ी गईं",
-                    "एक ही फोन की पंचायत नियुक्तियाँ जोड़ी गईं",
-                    "59 रिक्त पद हटाए गए",
-                    "2 अलग नाम वाली पहचान रोककर समीक्षा सूची में रखी गईं",
-                  ].map((s, i) => (
-                    <div key={s}>
-                      <span>{i + 1}</span>
-                      {s}
-                      <Icon name="check" size={16} />
-                    </div>
-                  ))}
+                ))}
+              </div>
+              {!masterStaff.length && (
+                <div className="empty">
+                  <h3>अभी कोई कर्मी दर्ज नहीं है</h3>
+                  <p>नया कर्मी जोड़कर उसकी नियुक्त पंचायतें चुनें।</p>
                 </div>
+              )}
+              <div className="directory-footer">
                 <button
-                  className="button primary"
+                  className="text-button"
                   onClick={() => setModal("import")}
                 >
-                  <Icon name="upload" size={17} />
+                  <Icon name="upload" size={16} />
                   आयात निर्देश देखें
                 </button>
-              </section>
-            </>
+              </div>
+            </section>
           )}
           {view === "panchayats" && (
             <>
@@ -1759,6 +1858,28 @@ export default function Portal() {
           </section>
         </div>
       )}
+      {credential && (
+        <div className="modal-overlay">
+          <section
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="नए खाते का पासवर्ड"
+          >
+            <h2>कर्मी खाता बन गया</h2>
+            <p>
+              यह पासवर्ड केवल अभी दिखाया जा रहा है। कर्मी तक सुरक्षित पहुँचाएँ।
+            </p>
+            <code className="credential-value">{credential}</code>
+            <button
+              className="button primary"
+              onClick={() => setCredential(null)}
+            >
+              बंद करें
+            </button>
+          </section>
+        </div>
+      )}
       {modal && (
         <div className="modal-overlay" onClick={() => setModal(null)}>
           <section
@@ -1785,6 +1906,25 @@ export default function Portal() {
                       <p>
                         {r.name} · {r.panchayat}
                       </p>
+                      <div className="shared-record-note">
+                        <strong>सभी नियुक्त कार्यस्थल</strong>
+                        <p>
+                          {r.working_places.map((place, i) => (
+                            <span key={place}>
+                              {i > 0 ? " · " : ""}
+                              {place}
+                            </span>
+                          ))}
+                        </p>
+                      </div>
+                      {canManage && !r.id.startsWith("absent-") && (
+                        <button
+                          className="button danger"
+                          onClick={() => setModal("delete-attendance:" + r.id)}
+                        >
+                          उपस्थिति हटाएँ
+                        </button>
+                      )}
                       <div className="settings-list">
                         <div>
                           <strong>पद</strong>
@@ -1942,46 +2082,61 @@ export default function Portal() {
               </>
             ) : modal.startsWith("staff:") ? (
               <>
-                <h2>कर्मी विवरण सुधारें</h2>
-                {(() => {
-                  const p = directory.find((p) => p.id === modal.split(":")[1]);
-                  return p ? (
-                    <form onSubmit={(e) => management(e, "staff")}>
-                      <label className="field-label">
-                        नाम
-                        <input name="name" defaultValue={p.name} required />
-                      </label>
-                      <label className="field-label">
-                        मोबाइल
-                        <input
-                          name="phone"
-                          defaultValue={p.phone}
-                          pattern="[6-9][0-9]{9}"
-                          required
-                        />
-                      </label>
-                      <label className="checkbox">
-                        <input
-                          type="checkbox"
-                          name="active"
-                          defaultChecked={p.active}
-                        />
-                        खाता सक्रिय
-                      </label>
-                      <label className="checkbox">
-                        <input type="checkbox" name="reset_device" />
-                        डिवाइस बाइंडिंग रीसेट करें
-                      </label>
-                      <label className="field-label">
-                        बदलाव का कारण
-                        <input name="reason" required minLength={10} />
-                      </label>
-                      <button className="button primary" disabled={busy}>
-                        बदलाव सुरक्षित करें
-                      </button>
-                    </form>
-                  ) : null;
-                })()}
+                <h2>
+                  {modal === "staff:new"
+                    ? "नया कर्मी जोड़ें"
+                    : "कर्मी विवरण सुधारें"}
+                </h2>
+                <MasterDataForm
+                  key={modal}
+                  staff={masterStaff.find((p) => p.id === modal.split(":")[1])}
+                  language={language}
+                  busy={busy}
+                  onSave={saveMaster}
+                />
+              </>
+            ) : modal === "attendance:new" ? (
+              <>
+                <h2>एडमिन द्वारा उपस्थिति दर्ज करें</h2>
+                <AdminAttendanceForm
+                  staff={masterStaff}
+                  date={date}
+                  language={language}
+                  busy={busy}
+                  onSave={(data) => saveAdminData("/api/admin", data)}
+                />
+              </>
+            ) : modal.startsWith("delete-") ? (
+              <>
+                <h2>
+                  {modal.startsWith("delete-staff")
+                    ? "कर्मी हटाएँ"
+                    : "उपस्थिति हटाएँ"}
+                </h2>
+                <p>
+                  {modal.startsWith("delete-staff")
+                    ? masterStaff.find((p) => p.id === modal.split(":")[1])
+                        ?.name
+                    : rows.find((r) => r.id === modal.split(":")[1])?.name}
+                </p>
+                <p>
+                  रिकॉर्ड सामान्य सूची से हट जाएगा। पुराना डेटा और हटाने का कारण
+                  ऑडिट में सुरक्षित रहेगा।
+                </p>
+                <form onSubmit={removeData}>
+                  <label className="field-label">
+                    हटाने का कारण
+                    <input
+                      name="reason"
+                      required
+                      minLength={10}
+                      maxLength={1000}
+                    />
+                  </label>
+                  <button className="button danger" disabled={busy}>
+                    हटाने की पुष्टि करें
+                  </button>
+                </form>
               </>
             ) : modal === "sheets" ? (
               <>

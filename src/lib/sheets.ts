@@ -1,5 +1,6 @@
 import { createSign } from "node:crypto";
 import { sb, HttpError } from "./server";
+import { planSheetRows } from "./reporting.mjs";
 import { safeSheetCell } from "./security.mjs";
 import type { Attendance, Profile } from "./types";
 const columns = [
@@ -90,7 +91,6 @@ export async function syncOne() {
         "&select=name,phone,assignments",
     );
     const p: Profile = profiles[0];
-    const assignment = p.assignments.find((s) => s.panchayat === a.panchayat);
     const date = new Date(a.date + "T00:00:00Z");
     const tab = new Intl.DateTimeFormat("en-US", {
       month: "short",
@@ -143,8 +143,7 @@ export async function syncOne() {
       });
     }
     const ids = await google("/values/" + encodeURIComponent(`'${tab}'!Q2:Q`));
-    const index = (ids.values || []).findIndex((r: string[]) => r[0] === a.id);
-    const row = index < 0 ? 2 + (ids.values?.length || 0) : index + 2;
+    const plan = planSheetRows(a, p, ids.values || []);
     const fileUrl = (kind: string) =>
       `${process.env.APP_URL}/api/files?id=${a.id}&kind=${kind}`;
     const time = (t: string | null) =>
@@ -155,34 +154,52 @@ export async function syncOne() {
             minute: "2-digit",
           })
         : "";
-    const values = [
-      row - 1,
-      a.date.split("-").reverse().join("/"),
-      a.panchayat,
-      p.name,
-      assignment?.position,
-      assignment?.department,
-      p.phone,
-      a.photo_path ? fileUrl("photo_path") : "",
-      a.latitude,
-      a.longitude,
-      a.accuracy,
-      a.latitude == null
-        ? ""
-        : `https://www.google.com/maps?q=${a.latitude},${a.longitude}`,
-      a.leave_path ? fileUrl("leave_path") : "",
-      time(a.time_in),
-      time(a.time_out),
-      a.flags.join(", "),
-      a.id,
-    ].map(safeSheetCell);
-    await google(
-      "/values/" +
-        encodeURIComponent(`'${tab}'!A${row}:Q${row}`) +
-        "?valueInputOption=RAW",
-      "PUT",
-      { values: [values] },
+    const data = plan.writes.map(
+      ({
+        row,
+        key,
+        assignment,
+      }: {
+        row: number;
+        key: string;
+        assignment: { panchayat: string; position: string; department: string };
+      }) => ({
+        range: `'${tab}'!A${row}:Q${row}`,
+        values: [
+          [
+            row - 1,
+            a.date.split("-").reverse().join("/"),
+            assignment.panchayat,
+            p.name,
+            assignment.position,
+            assignment.department,
+            p.phone,
+            a.photo_path ? fileUrl("photo_path") : "",
+            a.latitude,
+            a.longitude,
+            a.accuracy,
+            a.latitude == null
+              ? ""
+              : `https://www.google.com/maps?q=${a.latitude},${a.longitude}`,
+            a.leave_path ? fileUrl("leave_path") : "",
+            time(a.time_in),
+            time(a.time_out),
+            a.flags.join(", "),
+            key,
+          ].map(safeSheetCell),
+        ],
+      }),
     );
+    for (const row of plan.clearRows)
+      data.push({
+        range: `'${tab}'!A${row}:Q${row}`,
+        values: [Array(17).fill("")],
+      });
+    if (data.length)
+      await google("/values:batchUpdate", "POST", {
+        valueInputOption: "RAW",
+        data,
+      });
     await sb("/rest/v1/rpc/finish_sync_job", {
       method: "POST",
       body: JSON.stringify({

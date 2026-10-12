@@ -27,9 +27,15 @@ Set these in `.env.local` and Vercel → Project → Settings → Environment Va
 
 This app uses the new API key format. API keys are sent in `apikey`; `Authorization: Bearer` is used only for user session JWTs. See [Supabase API key migration](https://supabase.com/docs/guides/getting-started/migrating-to-new-api-keys). Do not prefix the secret key with `NEXT_PUBLIC_`. No legacy anon/service-role environment variables are needed.
 
-1. Apply **supabase/schema.sql**, then **supabase/panchayats.sql**, in the project's SQL Editor. The schema is a first-install migration; do not rerun it on an existing installation.
+1. Apply **supabase/schema.sql**, then **supabase/panchayats.sql**, then **supabase/migrations/20261012_master_data_shared_attendance.sql**, in the project's SQL Editor. The schema is a first-install migration; do not rerun it on an existing installation.
 2. Disable public sign-ups in Supabase Auth. Configure Supabase Auth's built-in rate limits and password policy. The server also maintains a five-attempt, 15-minute application login limit.
-3. Review the workbook import locally:
+3. To enter master data through the admin interface, set `INITIAL_ADMIN_PASSWORD` and provision only the initial admin (no workbook required):
+
+   ```bash
+   node --env-file=.env.local scripts/seed.mjs --admin-only --apply
+   ```
+
+   Sign in and use **Add staff member**. Bulk workbook import remains optional. To preview it locally:
 
    ```bash
    npm run import:staff
@@ -49,6 +55,18 @@ This app uses the new API key format. API keys are sent in `apikey`; `Authorizat
 5. Sign in as admin, open Panchayats, and set each worksite's verified latitude/longitude and radius. Unknown coordinates deliberately block punches. Defaults are 300 m; no coordinates have been guessed.
 6. Configure file scanning: the endpoint accepts binary `POST`, `Authorization: Bearer <UPLOAD_SCAN_TOKEN>`, and must return `{"clean":true}` only after scanning successfully. Missing/unavailable scanning blocks uploads. Signed upload URLs send files directly to private Supabase storage, supporting 5 MB documents without Vercel request-body limits. Server validation, scanning and photo processing run before attendance is accepted.
 7. Set the production `APP_URL`, redeploy and complete the [test checklist](docs/TEST_CHECKLIST.md).
+
+## Admin master data and shared attendance
+
+Administrators can add, edit and delete staff through **Staff directory / Master data**, with phone, optional email, and one or more worksite assignments. Each assignment has its own position and department. New-account credentials are shown once to the administrator. Editing the optional email changes the contact field; use the phone identifier for login when the contact email has changed.
+
+**Enter attendance** lets authorized admins input a staff member's attendance or leave for a chosen date. Saving again updates that staff member's existing daily record. These records are explicitly marked **Administrator-entered** and do not claim GPS verification. Record details include **Delete attendance**. All changes require a reason and record old/new data in the audit log. District Viewers cannot mutate data; Block Admins are restricted to their own block.
+
+A punch or admin entry creates **one canonical daily record** and snapshots all assigned worksites. The same record appears in every applicable panchayat filter, with the same times and photos. Overall staff counts count the person once. Later master-data assignment changes do not rewrite historical records. CSV exports list all linked workplaces; the Sheets worker mirrors a separate stable row per worksite and updates all linked rows on punch out. Attendance deletion clears every linked sheet row on the next configured sync.
+
+Deletion removes the record from active lists and disables deleted staff accounts. Historical attendance and audit details are retained. Attendance may be replaced with a new daily record after an authorized deletion, while the deleted version remains in the audit history.
+
+For an existing installation, apply **only** [the new upgrade migration](supabase/migrations/20261012_master_data_shared_attendance.sql) in Supabase SQL Editor before using these controls. Do not rerun the first-install schema. Deployment does not itself apply SQL to your Supabase project.
 
 ## Google Sheets, when available
 
@@ -93,7 +111,7 @@ Configure the server environment before enabling live attendance. Source data, s
 - RLS restricts staff to their own records and block admins to their block. Client writes and mutating RPC execution are revoked. Private storage has no client policies; signed upload tokens and server-mediated reads grant scoped access.
 - Secure httpOnly one-hour sessions, SameSite cookies, exact-origin CSRF checks, input/file validation and security headers. Re-login is required after expiry. Device binding is a browser cookie, not hardware attestation.
 - **Web GPS and camera cannot prove unmodified-device location/capture.** A modified client can forge browser coordinates or submit another image. Challenges prevent simple replay, not full client compromise. For verified anti-spoofing use a managed native app with device attestation. VPN/proxy detection, MFA enforcement and first-login password change are not implemented.
-- Implemented admin flows: read dashboard/records, CSV and browser PDF exports, staff edit/deactivate/device reset, geofence edit, private attachments, audited punch-time corrections. API supports password resets and assignment changes; add accounts with the seed script. Browser XLSX upload/import preview, Excel export, map-pin view, date ranges and comprehensive audit/sync consoles are not yet implemented.
+- Implemented admin flows: read dashboard/records, CSV and browser PDF exports, staff creation/edit/deletion, multi-worksite assignments, device reset, manual attendance input/deletion, geofence edit, private attachments, and audited punch-time corrections. Admin forms create accounts and edit assignments; the seed script remains available for bulk provisioning. The API also supports password resets. Browser XLSX upload/import preview, Excel export, map-pin view, date ranges and comprehensive audit/sync consoles are not yet implemented.
 - Configure daily backups and at least one-year retention in your Supabase plan. This repository does not claim those services are enabled. Establish cleanup for unused signed uploads, expired challenges and abandoned private files.
 
 [कर्मी मार्गदर्शिका](docs/STAFF_GUIDE_HI.md) · [एडमिन मार्गदर्शिका](docs/ADMIN_GUIDE_HI.md) · [Verification checklist](docs/TEST_CHECKLIST.md)

@@ -19,6 +19,22 @@
 - [x] Staff RLS and denied role/device-hash access
 - [x] Sync failure retry/backoff leaves attendance saved
 
+## Master data and shared-attendance coverage
+
+- [x] Admin-created master profiles and duplicate-phone rejection
+- [x] Validated multiple workplace assignments
+- [x] Shared attendance snapshot with one unique daily record
+- [x] Every assigned-panchayat filter shows the same record/time
+- [x] Master edits preserve historical worksite snapshots
+- [x] Manual attendance input/update with a required reason
+- [x] Manual records labelled administrator-entered
+- [x] Audited attendance deletion and daily replacement
+- [x] Deleted staff cannot log in; historical records retained
+- [x] Block admins and viewers cannot cross their permissions
+- [x] Stable Google mirror rows per workplace and deletion clearing
+- [x] Signed-upload scan/watermark pipeline with new Supabase key headers
+- [x] Consumed-upload retries do not delete a saved attachment
+
 ## Browser and deployed verification
 
 Use scripts/browser-check.mjs for search, day/night persistence, leave toggle, camera-only attendance UI, CSV export, mobile overflow/navigation and setup dialogs.

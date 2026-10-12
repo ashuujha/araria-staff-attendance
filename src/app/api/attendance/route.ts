@@ -18,7 +18,7 @@ export async function GET(req: Request) {
         profile.id +
         "&date=eq." +
         istDate() +
-        "&select=*",
+        "&deleted_at=is.null&select=*",
       {},
       token,
     );

@@ -15,17 +15,23 @@ await db.exec(
     "",
   ),
 );
+await db.exec(
+  await readFile(
+    "supabase/migrations/20261012_master_data_shared_attendance.sql",
+    "utf8",
+  ),
+);
 await db.query("insert into auth.users(id) values($1),($2),($3)", [
   user,
   admin,
   other,
 ]);
 await db.query(
-  `insert into profiles(id,name,phone,login_email,role,device_hash,assignments) values($1,'Staff','9000000001','staff@example.test','staff','device', '[{"panchayat":"Test","position":"Staff","department":"Office"}]'),($2,'Admin',null,'admin@example.test','super_admin',null,'[]'),($3,'Other','9000000002','other@example.test','staff','other-device','[]')`,
+  `insert into profiles(id,name,phone,login_email,role,device_hash,assignments) values($1,'Staff','9000000001','staff@example.test','staff','device', '[{"panchayat":"Test","position":"Staff","department":"Office"},{"panchayat":"Test Two","position":"Staff","department":"Office"}]'),($2,'Admin',null,'admin@example.test','super_admin',null,'[]'),($3,'Other','9000000002','other@example.test','staff','other-device','[]')`,
   [user, admin, other],
 );
 await db.exec(
-  "insert into panchayats(name,latitude,longitude) values('Test',26.15,87.46);",
+  "insert into panchayats(name,latitude,longitude) values('Test',26.15,87.46),('Test Two',27,88);",
 );
 async function challenge() {
   return (
@@ -159,4 +165,324 @@ test("queue retry preserves pending attendance and backs off", async () => {
     (await db.query("select count(*) as n from attendance")).rows[0].n,
     1,
   );
+});
+
+const created = "44444444-4444-4444-8444-444444444444";
+const workplaces = [
+  { panchayat: "Test", position: "Secretary", department: "Office" },
+  { panchayat: "Test Two", position: "Secretary", department: "Office" },
+];
+let manualId;
+const manualDate = (
+  await db.query(
+    "select ((now() at time zone 'Asia/Kolkata')::date-1)::text as day",
+  )
+).rows[0].day;
+test("one staff punch snapshots all working places without duplicate daily records", async () => {
+  const a = (
+    await db.query("select * from attendance where staff_id=$1", [user])
+  ).rows[0];
+  assert.equal(a.working_places.length, 2);
+  assert.equal(a.working_places[1].panchayat, "Test Two");
+  assert.equal(
+    (
+      await db.query("select count(*) as n from attendance where staff_id=$1", [
+        user,
+      ])
+    ).rows[0].n,
+    1,
+  );
+});
+test("admin creates master staff and rejects duplicate phones and staff-role access", async () => {
+  await db.query("insert into auth.users(id) values($1)", [created]);
+  await assert.rejects(
+    db.query("select create_master_staff($1,$2,$3,$4,$5,$6,$7,$8,$9)", [
+      other,
+      created,
+      "New Staff",
+      "9000000003",
+      "",
+      "new@example.test",
+      "Araria",
+      JSON.stringify(workplaces),
+      "Authorized master entry",
+    ]),
+    /अनुमति/,
+  );
+  const result = await db.query(
+    "select create_master_staff($1,$2,$3,$4,$5,$6,$7,$8,$9) as staff",
+    [
+      admin,
+      created,
+      "New Staff",
+      "9000000003",
+      "",
+      "new@example.test",
+      "Araria",
+      JSON.stringify(workplaces),
+      "Authorized master entry",
+    ],
+  );
+  assert.equal(result.rows[0].staff.assignments.length, 2);
+  await assert.rejects(
+    db.query("select create_master_staff($1,$2,$3,$4,$5,$6,$7,$8,$9)", [
+      admin,
+      created,
+      "Duplicate",
+      "9000000003",
+      "",
+      "new@example.test",
+      "Araria",
+      JSON.stringify(workplaces),
+      "Duplicate phone test",
+    ]),
+    /मोबाइल पहले से/,
+  );
+});
+test("invalid workplace assignment cannot be saved", async () => {
+  await assert.rejects(
+    db.query("select manage_staff($1,$2,$3,$4)", [
+      admin,
+      created,
+      JSON.stringify({
+        assignments: [
+          { panchayat: "Unknown", position: "Secretary", department: "Office" },
+        ],
+      }),
+      "Reject unrecognized place",
+    ]),
+    /कार्यस्थल/,
+  );
+  await assert.rejects(
+    db.query("select manage_staff($1,$2,$3,$4)", [
+      admin,
+      created,
+      JSON.stringify({ assignments: [workplaces[0], workplaces[0]] }),
+      "Reject duplicate worksite",
+    ]),
+    /दो बार/,
+  );
+});
+test("manual attendance updates one canonical record and snapshots all master places", async () => {
+  const args = [
+    admin,
+    created,
+    manualDate,
+    "Test",
+    "present",
+    manualDate + "T09:00:00+05:30",
+    manualDate + "T17:00:00+05:30",
+    "Attendance entered by admin",
+  ];
+  const first = (
+    await db.query(
+      "select admin_input_attendance($1,$2,$3,$4,$5,$6,$7,$8) as record",
+      args,
+    )
+  ).rows[0].record;
+  manualId = first.id;
+  assert.deepEqual(first.flags, ["admin_entered"]);
+  assert.equal(first.working_places.length, 2);
+  args[5] = manualDate + "T10:00:00+05:30";
+  const second = (
+    await db.query(
+      "select admin_input_attendance($1,$2,$3,$4,$5,$6,$7,$8) as record",
+      args,
+    )
+  ).rows[0].record;
+  assert.equal(second.id, first.id);
+  assert.equal(
+    (
+      await db.query(
+        "select count(*) as n from attendance where staff_id=$1 and date=$2 and deleted_at is null",
+        [created, manualDate],
+      )
+    ).rows[0].n,
+    1,
+  );
+  assert.equal(
+    (
+      await db.query(
+        "select details from audit_logs where action='admin_input_attendance' order by id desc limit 1",
+      )
+    ).rows[0].details.old.id,
+    first.id,
+  );
+});
+test("master edits do not rewrite historical attendance workplaces", async () => {
+  await db.query("select manage_staff($1,$2,$3,$4)", [
+    admin,
+    created,
+    JSON.stringify({ assignments: [workplaces[0]], name: "Updated Staff" }),
+    "Assignment changed by admin",
+  ]);
+  assert.equal(
+    (
+      await db.query("select working_places from attendance where id=$1", [
+        manualId,
+      ])
+    ).rows[0].working_places.length,
+    2,
+  );
+});
+test("manual attendance requires reason and rejects invalid times and staff role", async () => {
+  const args = [
+    admin,
+    created,
+    manualDate,
+    "Test",
+    "present",
+    manualDate + "T17:00:00+05:30",
+    manualDate + "T09:00:00+05:30",
+    "Correcting attendance times",
+  ];
+  await assert.rejects(
+    db.query("select admin_input_attendance($1,$2,$3,$4,$5,$6,$7,$8)", args),
+    /पंच समय/,
+  );
+  args[5] = manualDate + "T09:00:00+05:30";
+  args[7] = "short";
+  await assert.rejects(
+    db.query("select admin_input_attendance($1,$2,$3,$4,$5,$6,$7,$8)", args),
+    /कारण/,
+  );
+  args[0] = other;
+  args[7] = "Unauthorized staff attempt";
+  await assert.rejects(
+    db.query("select admin_input_attendance($1,$2,$3,$4,$5,$6,$7,$8)", args),
+    /अनुमति/,
+  );
+});
+test("attendance delete hides record, retains audit and queues removal from sheets", async () => {
+  await assert.rejects(
+    db.query("select delete_admin_attendance($1,$2,$3)", [
+      other,
+      manualId,
+      "Unauthorized delete attempt",
+    ]),
+    /अनुमति/,
+  );
+  await assert.rejects(
+    db.query("select delete_admin_attendance($1,$2,$3)", [
+      admin,
+      manualId,
+      "short",
+    ]),
+    /कारण/,
+  );
+  await db.query("select delete_admin_attendance($1,$2,$3)", [
+    admin,
+    manualId,
+    "Incorrect record removed",
+  ]);
+  assert.ok(
+    (
+      await db.query("select deleted_at from attendance where id=$1", [
+        manualId,
+      ])
+    ).rows[0].deleted_at,
+  );
+  assert.equal(
+    (
+      await db.query("select state from sync_jobs where record_id=$1", [
+        manualId,
+      ])
+    ).rows[0].state,
+    "pending",
+  );
+  await db.query(
+    "select admin_input_attendance($1,$2,$3,'Test','leave',null,null,'Replacement approved leave')",
+    [admin, created, manualDate],
+  );
+  assert.equal(
+    (
+      await db.query(
+        "select count(*) as n from attendance where staff_id=$1 and date=$2 and deleted_at is null",
+        [created, manualDate],
+      )
+    ).rows[0].n,
+    1,
+  );
+  assert.equal(
+    (
+      await db.query(
+        "select count(*) as n from attendance where staff_id=$1 and date=$2",
+        [created, manualDate],
+      )
+    ).rows[0].n,
+    2,
+  );
+});
+test("master delete disables login while retaining historical records and cannot target admins", async () => {
+  await assert.rejects(
+    db.query("select delete_master_staff($1,$2,$3)", [
+      admin,
+      admin,
+      "Cannot remove administrator",
+    ]),
+    /अनुमति/,
+  );
+  await db.query("select delete_master_staff($1,$2,$3)", [
+    admin,
+    created,
+    "Staff left the organization",
+  ]);
+  const p = (await db.query("select * from profiles where id=$1", [created]))
+    .rows[0];
+  assert.equal(p.active, false);
+  assert.ok(p.deleted_at);
+  assert.equal(
+    (
+      await db.query("select count(*) as n from attendance where staff_id=$1", [
+        created,
+      ])
+    ).rows[0].n,
+    2,
+  );
+  await assert.rejects(
+    db.query("select bind_device($1,$2)", [created, "another-device"]),
+    /खाता निष्क्रिय/,
+  );
+});
+test("block admins cannot modify another block and viewers cannot enter or delete records", async () => {
+  const blockAdmin = "55555555-5555-4555-8555-555555555555",
+    viewer = "66666666-6666-4666-8666-666666666666";
+  await db.query("insert into auth.users(id) values($1),($2)", [
+    blockAdmin,
+    viewer,
+  ]);
+  await db.query(
+    "insert into profiles(id,name,login_email,role,block) values($1,'Other Block Admin','other-block@example.test','block_admin','Other'),($2,'Viewer','viewer@example.test','district_viewer','Araria')",
+    [blockAdmin, viewer],
+  );
+  for (const actor of [blockAdmin, viewer]) {
+    await assert.rejects(
+      db.query("select delete_admin_attendance($1,$2,$3)", [
+        actor,
+        (await db.query("select id from attendance where staff_id=$1", [user]))
+          .rows[0].id,
+        "Permission boundary test",
+      ]),
+      /अनुमति/,
+    );
+    await assert.rejects(
+      db.query("select manage_staff($1,$2,$3,$4)", [
+        actor,
+        user,
+        JSON.stringify({ name: "No access" }),
+        "Permission boundary test",
+      ]),
+      /अनुमति/,
+    );
+  }
+  await db.exec("set role authenticated");
+  await assert.rejects(
+    db.query("select delete_master_staff($1,$2,$3)", [
+      admin,
+      user,
+      "Cannot call RPC directly",
+    ]),
+    /permission denied/,
+  );
+  await db.exec("reset role");
 });

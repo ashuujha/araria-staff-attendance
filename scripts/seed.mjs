@@ -1,11 +1,16 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 const apply = process.argv.includes("--apply");
-const source = JSON.parse(await readFile("private/staff-import.json", "utf8"));
+const adminOnly = process.argv.includes("--admin-only");
+const source = adminOnly
+  ? { staff: [], summary: { mode: "admin_only", staff_imported: 0 } }
+  : JSON.parse(await readFile("private/staff-import.json", "utf8"));
 if (!apply) {
   console.log("Import preview:", source.summary);
   console.log(
-    "Review private/staff-import.json, then run npm run seed -- --apply.",
+    adminOnly
+      ? "Set INITIAL_ADMIN_PASSWORD, then run node --env-file=.env.local scripts/seed.mjs --admin-only --apply."
+      : "Review private/staff-import.json, then run npm run seed -- --apply.",
   );
   process.exit(0);
 }
@@ -36,9 +41,15 @@ for (let page = 1; ; page++) {
   if (data.users.length < 1000) break;
 }
 const byEmail = new Map(users.map((u) => [u.email, u]));
+const existingPhones = new Set(
+  source.staff.length
+    ? (await api("/rest/v1/profiles?select=phone")).map((p) => p.phone)
+    : [],
+);
 const credentials = [];
 for (const item of source.staff) {
   const phone = item.phones[0] || null;
+  if (phone && existingPhones.has(phone)) continue;
   const email = item.email || (phone ? `${phone}@staff.araria.invalid` : null);
   if (!email) continue;
   let user = byEmail.get(email);
@@ -77,6 +88,7 @@ for (const item of source.staff) {
       active: true,
     });
 }
+console.log("Staff master data preserved; admin provisioning next.");
 const adminEmail = process.env.INITIAL_ADMIN_EMAIL || "sfc.aditya@gmail.com";
 let admin = byEmail.get(adminEmail);
 if (!admin) {
@@ -129,3 +141,5 @@ if (credentials.length) {
     `${credentials.length} new accounts. One-time credentials saved privately to ${path}.`,
   );
 } else console.log("No new accounts. Existing passwords were not changed.");
+
+console.log("Administrator ready:", adminEmail);
