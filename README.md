@@ -2,6 +2,8 @@
 
 Hindi-first attendance portal built with Next.js App Router, TypeScript, Tailwind, PostgreSQL/Supabase and private file storage. Initial administrator: **sfc.aditya@gmail.com**.
 
+Use the **हिन्दी / English** switch in the header to change the interface language. The selection is remembered on your browser, including navigation, forms, accessible labels and messages. Panchayat labels are translated for display; saved attendance values remain unchanged.
+
 The public site starts in an explicitly labelled **preview workspace** with fictional staff records. Real names, phone numbers, the workbook and generated credentials are not shipped to the browser or committed. Live login and attendance require the database setup below.
 
 ## Setup with Supabase's new keys

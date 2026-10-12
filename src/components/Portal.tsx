@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { demoRows, panchayats, positions } from "../lib/demo";
+import { localizeContent, translateText, type Language } from "../lib/language";
 import type { Profile, Attendance } from "../lib/types";
 type View =
   | "overview"
@@ -124,6 +125,7 @@ export default function Portal() {
     [profile, setProfile] = useState<Profile | null>(null),
     [view, setView] = useState<View>("overview"),
     [theme, setTheme] = useState("light"),
+    [language, setLanguage] = useState<Language>("hi"),
     [themeReady, setThemeReady] = useState(false),
     [mobile, setMobile] = useState(false),
     [search, setSearch] = useState(""),
@@ -165,6 +167,7 @@ export default function Portal() {
   useEffect(() => {
     const saved = localStorage.getItem("araria-theme") || "light";
     setTheme(saved);
+    setLanguage(localStorage.getItem("araria-language") === "en" ? "en" : "hi");
     setThemeReady(true);
     setOnline(navigator.onLine);
     const on = () => setOnline(navigator.onLine);
@@ -188,6 +191,12 @@ export default function Portal() {
       stream.current?.getTracks().forEach((t) => t.stop());
     };
   }, []);
+  useEffect(() => {
+    if (!themeReady) return;
+    document.documentElement.lang = language;
+    document.documentElement.dataset.language = language;
+    localStorage.setItem("araria-language", language);
+  }, [language, themeReady]);
   useEffect(() => {
     if (!themeReady) return;
     document.documentElement.dataset.theme = theme;
@@ -295,7 +304,9 @@ export default function Portal() {
       (status === "all" ||
         (status === "flagged" ? !!r.flag : r.status === status)) &&
       [r.name, r.phone, r.position].some((s) =>
-        s.toLowerCase().includes(search.toLowerCase()),
+        [s, translateText(s, language)].some((value) =>
+          value.toLowerCase().includes(search.toLowerCase()),
+        ),
       ),
   );
   const change = (v: View) => {
@@ -547,7 +558,7 @@ export default function Portal() {
       ? 186
       : rows.filter((r) => r.status === "present").length,
     onLeave = preview ? 18 : rows.filter((r) => r.status === "leave").length;
-  return (
+  return localizeContent(
     <div className="app">
       {mobile && (
         <button
@@ -668,6 +679,25 @@ export default function Portal() {
             <strong>अररिया</strong>
           </div>
           <div className="header-right">
+            <div
+              className="language-switch"
+              role="group"
+              aria-label="Language"
+              translate="no"
+            >
+              <button
+                aria-pressed={language === "hi"}
+                onClick={() => setLanguage("hi")}
+              >
+                हिन्दी
+              </button>
+              <button
+                aria-pressed={language === "en"}
+                onClick={() => setLanguage("en")}
+              >
+                English
+              </button>
+            </div>
             <span className={"network " + (!online ? "offline" : "")}>
               <i />
               {online ? "ऑनलाइन" : "ऑफ़लाइन"}
@@ -715,7 +745,7 @@ export default function Portal() {
           </div>
           <div className="page-heading">
             <div>
-              <div className="eyebrow">ARARIA ATTENDANCE WORKSPACE</div>
+              <div className="eyebrow">DISTRICT ADMINISTRATION · BIHAR</div>
               <h1>
                 {view === "overview"
                   ? "आज की उपस्थिति"
@@ -1975,7 +2005,7 @@ export default function Portal() {
                 </p>
                 <ol>
                   <li>Supabase schema लागू करें।</li>
-                  <li>सर्वर की service-role key सेट करें।</li>
+                  <li>सर्वर की Supabase secret key सेट करें।</li>
                   <li>निजी import फ़ाइल को समीक्षा करके seed script चलाएँ।</li>
                   <li>
                     बनी credentials फ़ाइल केवल अधिकृत कर्मियों तक पहुँचाएँ।
@@ -2027,6 +2057,7 @@ export default function Portal() {
           </section>
         </div>
       )}
-    </div>
+    </div>,
+    language,
   );
 }

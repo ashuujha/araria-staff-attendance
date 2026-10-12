@@ -56,15 +56,81 @@ await page.screenshot({
   fullPage: true,
 });
 await page.getByRole("button", { name: "मेनू खोलें" }).click();
-await page
-  .getByRole("button", { name: "गूगल शीट Google Sheets", exact: true })
-  .click();
+await page.getByRole("button", { name: "गूगल शीट", exact: true }).click();
 await page.getByRole("heading", { name: "गूगल शीट समन्वयन" }).waitFor();
 await page.getByRole("button", { name: /सेटअप निर्देश/ }).click();
 await page.getByRole("dialog").waitFor();
 await page.getByRole("button", { name: "बंद करें", exact: true }).click();
+await page.getByRole("button", { name: "English", exact: true }).click();
+await page
+  .getByRole("heading", { name: "Google Sheets sync", exact: true })
+  .waitFor();
+await page.getByRole("button", { name: "Open menu", exact: true }).click();
+await page.getByRole("button", { name: "Overview", exact: true }).click();
+await page
+  .getByRole("heading", { name: "Attendance overview", exact: true })
+  .waitFor();
+await page
+  .getByRole("textbox", { name: "Search staff", exact: true })
+  .fill("Sample staff 01");
+if ((await page.locator("tbody tr").count()) !== 1)
+  throw Error("English search failed");
+await page.getByRole("textbox", { name: "Search staff", exact: true }).fill("");
+const select = page.getByRole("combobox", {
+  name: "Filter by panchayat",
+  exact: true,
+});
+await select.selectOption({ label: "Pokharia" });
+if ((await select.inputValue()) !== "पोखरिया")
+  throw Error("Translation changed canonical panchayat value");
+await select.selectOption("all");
+await page.reload();
+await page
+  .getByRole("heading", { name: "Attendance overview", exact: true })
+  .waitFor();
+if ((await page.locator("html").getAttribute("lang")) !== "en")
+  throw Error("Language persistence failed");
+await page.screenshot({
+  path: "test-results/dashboard-mobile-en.png",
+  fullPage: true,
+});
+await page.setViewportSize({ width: 1440, height: 1100 });
+await page.evaluate(() => window.scrollTo(0, 0));
+await page.screenshot({
+  path: "test-results/dashboard-desktop-en.png",
+  fullPage: true,
+});
+await page.getByRole("button", { name: "My attendance", exact: true }).click();
+await page
+  .getByRole("heading", { name: "My daily attendance", exact: true })
+  .waitFor();
+await page
+  .getByRole("checkbox", { name: "I am on leave (CL / SL)", exact: true })
+  .check();
+await page.getByText("Upload CL / SL documentation", { exact: true }).waitFor();
+await page
+  .getByRole("checkbox", { name: "I am on leave (CL / SL)", exact: true })
+  .uncheck();
+await page.getByRole("button", { name: "Punch in", exact: true }).click();
+await page
+  .getByRole("status")
+  .getByText("This is a preview. Sign in to record actual attendance.", {
+    exact: true,
+  })
+  .waitFor();
+await page.getByRole("button", { name: "Settings", exact: true }).click();
+await page.getByRole("button", { name: "Staff help", exact: true }).click();
+await page
+  .getByRole("dialog")
+  .getByRole("heading", { name: "Staff help", exact: true })
+  .waitFor();
+await page.getByRole("button", { name: "Close", exact: true }).click();
+await page.getByRole("button", { name: "हिन्दी", exact: true }).click();
+await page
+  .getByRole("heading", { name: "सेटिंग्स एवं सहायता", exact: true })
+  .waitFor();
 if (errors.length) throw Error(errors.join("\n"));
 console.log(
-  "PASS: search, theme persistence, live-camera-only form, leave upload, CSV export, mobile layout/navigation and setup dialog.",
+  "PASS: search, theme persistence, live-camera-only form, leave upload, CSV export, mobile layout/navigation, English/Hindi switching and persistence, English forms/messages, and canonical dropdown values.",
 );
 await browser.close();
