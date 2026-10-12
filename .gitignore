@@ -1,0 +1,15 @@
+node_modules/
+.next/
+out/
+.preview/
+.vercel/
+.env*
+!.env.example
+private/
+*.xlsx
+*.pdf
+*.log
+test-results/
+
+*.tsbuildinfo
+.vercel
