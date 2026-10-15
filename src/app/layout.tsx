@@ -6,11 +6,13 @@ import "@fontsource/noto-sans-devanagari/400.css";
 import "@fontsource/noto-sans-devanagari/500.css";
 import "@fontsource/noto-sans-devanagari/600.css";
 import "./globals.css";
+import { BIHAR_EMBLEM } from "../lib/department-branding";
 export const metadata: Metadata = {
-  title: "अररिया | कर्मी उपस्थिति पोर्टल",
+  title: "Araria Staff Attendance | अररिया कर्मी उपस्थिति",
   description:
-    "अररिया प्रखंड पंचायत राज कार्यालय का सुरक्षित कर्मी उपस्थिति पोर्टल",
+    "Araria Staff Attendance — अररिया कर्मियों की दैनिक उपस्थिति, आने और जाने का समय।",
   robots: { index: false, follow: false },
+  icons: { icon: { url: BIHAR_EMBLEM, type: "image/svg+xml" } },
 };
 export default function RootLayout({
   children,

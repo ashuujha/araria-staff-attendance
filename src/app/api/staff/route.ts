@@ -29,10 +29,19 @@ export async function POST(req: Request) {
     admin(profile, true);
     const b = await req.json();
     if (
-      String(b.reason || "").trim().length < 10 ||
-      String(b.reason).length > 1000
+      !b ||
+      typeof b !== "object" ||
+      Array.isArray(b) ||
+      !["create", "update", "delete", "reset_password"].includes(b.action)
     )
-      throw new HttpError(400, "कर्मी एवं सुधार कारण आवश्यक।");
+      throw new HttpError(400, "कार्रवाई अमान्य।");
+    // Audit the authenticated actor and operation without asking for a reason.
+    const reason = {
+      create: "Administrator added a staff account",
+      update: "Administrator updated staff details",
+      delete: "Administrator removed a staff account",
+      reset_password: "Administrator reset the staff password",
+    }[b.action as "create" | "update" | "delete" | "reset_password"];
     if (b.action === "create") {
       const name = String(b.name || "").trim(),
         phone = String(b.phone || "").trim(),
@@ -46,7 +55,7 @@ export async function POST(req: Request) {
         (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) ||
         email.length > 254
       )
-        throw new HttpError(400, "कर्मी विवरण या कारण अमान्य है।");
+        throw new HttpError(400, "कर्मी विवरण अमान्य है।");
       const existing = await sb(
         "/rest/v1/profiles?phone=eq." + phone + "&select=id",
       );
@@ -75,7 +84,7 @@ export async function POST(req: Request) {
             auth_email: loginEmail,
             block_name: profile.block,
             workplaces: b.assignments,
-            reason_text: b.reason,
+            reason_text: reason,
           }),
         });
         return json({ profile: result, password });
@@ -86,11 +95,8 @@ export async function POST(req: Request) {
         throw e;
       }
     }
-    if (
-      !/^[0-9a-f-]{36}$/.test(b.id) ||
-      String(b.reason || "").trim().length < 10
-    )
-      throw new HttpError(400, "कर्मी एवं सुधार कारण आवश्यक।");
+    if (typeof b.id !== "string" || !/^[0-9a-f-]{36}$/.test(b.id))
+      throw new HttpError(400, "मान्य कर्मी चुनें।");
     const targets = await sb(
       "/rest/v1/profiles?id=eq." + b.id + "&select=id,role,phone",
       {},
@@ -115,7 +121,7 @@ export async function POST(req: Request) {
           user_metadata: { must_change_password: true },
         }),
       });
-      await audit(profile.id, "reset_password", target.id, b.reason, {
+      await audit(profile.id, "reset_password", target.id, reason, {
         password_changed: true,
       });
       return json({ password });
@@ -126,19 +132,40 @@ export async function POST(req: Request) {
         body: JSON.stringify({
           actor_id: profile.id,
           target_id: target.id,
-          reason_text: b.reason,
+          reason_text: reason,
         }),
       });
       return json({ success: true });
     }
     if (b.action !== "update") throw new HttpError(400, "कार्रवाई अमान्य।");
+    const changes = b.changes;
+    if (
+      !changes ||
+      typeof changes !== "object" ||
+      Array.isArray(changes) ||
+      ("name" in changes &&
+        (typeof changes.name !== "string" ||
+          changes.name.trim().length < 2 ||
+          changes.name.length > 150)) ||
+      ("phone" in changes &&
+        (typeof changes.phone !== "string" ||
+          !/^[6-9]\d{9}$/.test(changes.phone))) ||
+      ("email" in changes &&
+        changes.email !== null &&
+        (typeof changes.email !== "string" ||
+          changes.email.length > 254 ||
+          (changes.email &&
+            !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(changes.email)))) ||
+      ("active" in changes && typeof changes.active !== "boolean")
+    )
+      throw new HttpError(400, "कर्मी विवरण अमान्य है।");
     const record = await sb("/rest/v1/rpc/manage_staff", {
       method: "POST",
       body: JSON.stringify({
         actor_id: profile.id,
         target_id: target.id,
         changes: b.changes,
-        reason_text: b.reason,
+        reason_text: reason,
       }),
     });
     return json({ profile: record });

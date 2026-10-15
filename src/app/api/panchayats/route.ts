@@ -3,7 +3,11 @@ export async function GET(req: Request) {
   try {
     const { token } = await identity(req);
     return json({
-      panchayats: await sb("/rest/v1/panchayats?select=*", {}, token),
+      panchayats: await sb(
+        "/rest/v1/panchayats?select=name,block&order=name",
+        {},
+        token,
+      ),
     });
   } catch (e) {
     return failure(e);

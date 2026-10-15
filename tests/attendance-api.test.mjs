@@ -61,6 +61,7 @@ function fakeFetch(consumed, calls) {
       assert.ok(header.get("apikey"));
       assert.notEqual(header.get("authorization"), "Bearer sb_secret_fixture");
     }
+    if (url.pathname === "/rest/v1/office_holidays") return Response.json([]);
     if (url.pathname === "/auth/v1/user") return Response.json({ id: user });
     if (url.pathname === "/rest/v1/profiles")
       return Response.json([

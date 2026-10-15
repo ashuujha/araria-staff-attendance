@@ -339,7 +339,7 @@ small {
   top: 5px;
   border: 1px solid var(--panel);
 }
-main {
+:where(.app) main {
   max-width: 1570px;
   padding: 25px 37px 0;
   margin: auto;
@@ -758,12 +758,12 @@ select {
 .table-scroll {
   overflow-x: auto;
 }
-table {
+:where(.app) table {
   border-collapse: collapse;
   width: 100%;
   text-align: left;
 }
-th {
+:where(.app) th {
   background: var(--hover);
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
@@ -773,31 +773,31 @@ th {
   font-size: 10px;
   white-space: nowrap;
 }
-th:first-child,
-td:first-child {
+:where(.app) th:first-child,
+:where(.app) td:first-child {
   padding-left: 22px;
 }
-th small {
+:where(.app) th small {
   display: block;
   margin-top: 5px;
   font-size: 8px;
   font-weight: 400;
   letter-spacing: 0.5px;
 }
-td {
+:where(.app) td {
   padding: 14px 15px;
   border-bottom: 1px solid var(--border);
   font-size: 11px;
   white-space: nowrap;
 }
-tbody tr:hover {
+:where(.app) tbody tr:hover {
   background: var(--hover);
 }
-td strong {
+:where(.app) td strong {
   font-size: 11px;
   font-weight: 500;
 }
-td small {
+:where(.app) td small {
   display: block;
   font-size: 9px;
   color: var(--muted);
@@ -1441,7 +1441,7 @@ td small {
   .workspace {
     margin-left: 215px;
   }
-  main {
+  :where(.app) main {
     padding: 23px 25px 0;
   }
   .topbar {
@@ -1580,7 +1580,7 @@ td small {
   .theme-button span {
     display: none;
   }
-  main {
+  :where(.app) main {
     padding: 18px 16px 0;
   }
   .preview-banner {
@@ -1698,17 +1698,17 @@ td small {
   .search input {
     font-size: 11px;
   }
-  table,
-  thead,
-  tbody,
-  tr,
-  td {
+  :where(.app) table,
+  :where(.app) thead,
+  :where(.app) tbody,
+  :where(.app) tr,
+  :where(.app) td {
     display: block;
   }
-  thead {
+  :where(.app) thead {
     display: none;
   }
-  tbody tr {
+  :where(.app) tbody tr {
     display: grid;
     grid-template-columns: 1fr 1fr;
     padding: 15px 17px;
@@ -1716,13 +1716,13 @@ td small {
     gap: 12px;
     position: relative;
   }
-  td {
+  :where(.app) td {
     border: none;
     padding: 0;
     font-size: 11px;
     white-space: normal;
   }
-  td:first-child {
+  :where(.app) td:first-child {
     padding-left: 0;
     grid-column: 1/-1;
   }
@@ -1732,28 +1732,28 @@ td small {
   .staff-name small {
     font-size: 10px;
   }
-  td:nth-child(2) {
+  :where(.app) td:nth-child(2) {
     grid-column: 1/-1;
     padding-left: 40px;
   }
-  td:nth-child(2) small {
+  :where(.app) td:nth-child(2) small {
     display: inline;
     margin-left: 7px;
     font-size: 10px;
   }
-  td:nth-child(3):before {
+  :where(.app) td:nth-child(3):before {
     content: "पंच इन: ";
     color: var(--muted);
   }
-  td:nth-child(4):before {
+  :where(.app) td:nth-child(4):before {
     content: "पंच आउट: ";
     color: var(--muted);
   }
-  td:nth-child(3),
-  td:nth-child(5) {
+  :where(.app) td:nth-child(3),
+  :where(.app) td:nth-child(5) {
     padding-left: 40px;
   }
-  td:nth-child(7) {
+  :where(.app) td:nth-child(7) {
     position: absolute;
     right: 12px;
     top: 12px;
@@ -1900,7 +1900,7 @@ td small {
   .workspace {
     margin: 0;
   }
-  main {
+  :where(.app) main {
     padding: 0;
   }
   .panel {
@@ -1910,8 +1910,8 @@ td small {
     background: #fff;
     color: #000;
   }
-  th,
-  td {
+  :where(.app) th,
+  :where(.app) td {
     padding: 8px !important;
   }
   .page-heading p {
@@ -2096,7 +2096,7 @@ body {
   color: var(--text);
   font-weight: 600;
 }
-main {
+:where(.app) main {
   padding: 30px 40px 0;
   max-width: 1560px;
 }
@@ -2337,26 +2337,26 @@ select {
   height: 44px;
   width: 44px;
 }
-th {
+:where(.app) th {
   padding: 15px 18px;
   font-size: 12px;
   background: var(--hover);
 }
-th small {
+:where(.app) th small {
   display: none;
 }
-th:first-child,
-td:first-child {
+:where(.app) th:first-child,
+:where(.app) td:first-child {
   padding-left: 25px;
 }
-td {
+:where(.app) td {
   padding: 18px;
   font-size: 13px;
 }
-td strong {
+:where(.app) td strong {
   font-size: 13px;
 }
-td small {
+:where(.app) td small {
   font-size: 11px;
   line-height: 1.6;
 }
@@ -2484,7 +2484,7 @@ td small {
   display: none;
 }
 @media (min-width: 1600px) {
-  main {
+  :where(.app) main {
     padding: 36px 48px 0;
   }
   .topbar {
@@ -2505,7 +2505,7 @@ td small {
   .breadcrumb > span {
     display: none;
   }
-  main {
+  :where(.app) main {
     padding: 26px 24px 0;
   }
   .stat-card {
@@ -2580,7 +2580,7 @@ td small {
     min-height: 40px;
     min-width: 38px;
   }
-  main {
+  :where(.app) main {
     padding: 22px 18px 0;
   }
   .preview-banner {
@@ -2755,17 +2755,17 @@ td small {
   .table-scroll {
     overflow: visible;
   }
-  table,
-  thead,
-  tbody,
-  tr,
-  td {
+  :where(.app) table,
+  :where(.app) thead,
+  :where(.app) tbody,
+  :where(.app) tr,
+  :where(.app) td {
     display: block;
   }
-  thead {
+  :where(.app) thead {
     display: none;
   }
-  tbody tr {
+  :where(.app) tbody tr {
     display: grid;
     grid-template-columns: 1fr 1fr;
     padding: 20px;
@@ -2773,13 +2773,13 @@ td small {
     gap: 13px;
     position: relative;
   }
-  td {
+  :where(.app) td {
     border: 0;
     padding: 0;
     font-size: 13px;
     white-space: normal;
   }
-  td:first-child {
+  :where(.app) td:first-child {
     padding-left: 0;
     grid-column: 1/-1;
   }
@@ -2796,41 +2796,41 @@ td small {
     width: 35px;
     height: 35px;
   }
-  td:nth-child(2) {
+  :where(.app) td:nth-child(2) {
     grid-column: 1/-1;
     padding-left: 46px;
   }
-  td:nth-child(2) strong {
+  :where(.app) td:nth-child(2) strong {
     font-size: 13px;
   }
-  td:nth-child(2) small {
+  :where(.app) td:nth-child(2) small {
     display: inline;
     font-size: 11px;
     margin-left: 7px;
   }
-  td:nth-child(3):before {
+  :where(.app) td:nth-child(3):before {
     content: "पंच इन: ";
     color: var(--muted);
   }
-  td:nth-child(4):before {
+  :where(.app) td:nth-child(4):before {
     content: "पंच आउट: ";
     color: var(--muted);
   }
-  :root[data-language="en"] td:nth-child(3):before {
+  :root[data-language="en"] :where(.app) td:nth-child(3):before {
     content: "In: ";
   }
-  :root[data-language="en"] td:nth-child(4):before {
+  :root[data-language="en"] :where(.app) td:nth-child(4):before {
     content: "Out: ";
   }
-  td:nth-child(3),
-  td:nth-child(5) {
+  :where(.app) td:nth-child(3),
+  :where(.app) td:nth-child(5) {
     padding-left: 46px;
   }
-  td:nth-child(3),
-  td:nth-child(4) {
+  :where(.app) td:nth-child(3),
+  :where(.app) td:nth-child(4) {
     font-size: 12px;
   }
-  td:nth-child(7) {
+  :where(.app) td:nth-child(7) {
     position: absolute;
     right: 12px;
     top: 12px;

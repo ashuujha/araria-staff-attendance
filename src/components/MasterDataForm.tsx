@@ -10,7 +10,6 @@ export type MasterInput = {
   active: boolean;
   reset_device: boolean;
   assignments: Assignment[];
-  reason: string;
 };
 export default function MasterDataForm({
   staff,
@@ -45,7 +44,6 @@ export default function MasterDataForm({
         position: String(f.get("position:" + p)),
         department: String(f.get("department:" + p)),
       })),
-      reason: String(f.get("reason")),
     });
   }
   return localizeContent(
@@ -162,10 +160,7 @@ export default function MasterDataForm({
           </label>
         </div>
       )}
-      <label className="field-label">
-        बदलाव का कारण
-        <input name="reason" required minLength={10} maxLength={1000} />
-      </label>
+
       {error && (
         <p role="alert" className="form-error">
           {error}

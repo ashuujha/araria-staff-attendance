@@ -34,7 +34,6 @@ export default function AdminAttendanceForm({
       status,
       time_in: status === "present" ? stamp("time_in") : null,
       time_out: status === "present" ? stamp("time_out") : null,
-      reason: f.get("reason"),
     });
   }
   return localizeContent(
@@ -119,10 +118,7 @@ export default function AdminAttendanceForm({
           </label>
         </div>
       )}
-      <label className="field-label">
-        उपस्थिति दर्ज करने का कारण
-        <input name="reason" required minLength={10} maxLength={1000} />
-      </label>
+
       <button className="button primary" disabled={busy}>
         {busy ? "सुरक्षित कर रहे हैं…" : "उपस्थिति सुरक्षित करें"}
       </button>

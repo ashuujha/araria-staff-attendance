@@ -17,6 +17,13 @@ export async function GET(req: Request) {
     );
     const path = records?.[0]?.[kind];
     if (!path) throw new HttpError(404, "फ़ाइल नहीं मिली।");
+    // Signed storage URLs keep full-size images out of function response bodies.
+    if (
+      typeof path !== "string" ||
+      !/^[-a-zA-Z0-9/_.]+$/.test(path) ||
+      path.includes("..")
+    )
+      throw new HttpError(400, "फ़ाइल अनुरोध अमान्य।");
     const signed = await sb(
       "/storage/v1/object/sign/attendance-private/" + path,
       { method: "POST", body: JSON.stringify({ expiresIn: 60 }) },

@@ -13,3 +13,5 @@ test-results/
 
 *.tsbuildinfo
 .vercel
+
+__pycache__/

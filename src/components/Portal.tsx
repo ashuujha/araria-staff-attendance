@@ -1,90 +1,82 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
-import { demoRows, panchayats, positions } from "../lib/demo";
-import { localizeContent, translateText, type Language } from "../lib/language";
-import MasterDataForm, { type MasterInput } from "./MasterDataForm";
-import AdminAttendanceForm from "./AdminAttendanceForm";
-import { makeAdminRows, matchesWorkplace } from "../lib/reporting.mjs";
-import type { Profile, Attendance } from "../lib/types";
-type View =
-  | "overview"
-  | "attendance"
-  | "staff"
-  | "panchayats"
-  | "reports"
-  | "sheets"
-  | "settings"
-  | "punch";
-type Row = (typeof demoRows)[number];
-const previewDirectory: Profile[] = demoRows.slice(0, 8).map((r) => ({
-  id: r.id,
-  name: r.name,
-  phone: "90000000" + r.name.slice(-2),
-  email: null,
-  role: "staff",
-  block: "Araria",
-  active: true,
-  assignments: r.assignments,
-}));
-function Icon({ name, size = 20 }: { name: string; size?: number }) {
-  const paths: Record<string, string> = {
-    grid: "M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z",
-    calendar:
-      "M8 2v4 M16 2v4 M3 10h18 M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2 M7 14h2 M12 14h2 M7 18h2",
-    users:
-      "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M16 3a4 4 0 0 1 0 8 M22 21v-2a4 4 0 0 0-3-3 M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0",
-    pin: "M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0 M15 10a3 3 0 1 1-6 0 3 3 0 0 1 6 0",
-    file: "M14 2H4v20h16V8z M14 2v6h6 M8 12h8 M8 16h8",
-    sheet: "M4 3h16v18H4z M4 9h16 M4 15h16 M10 9v12",
-    settings:
-      "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8 M12 2v3 M12 19v3 M2 12h3 M19 12h3 M5 5l2 2 M17 17l2 2 M5 19l2-2 M17 7l2-2",
-    sun: "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8 M12 2v2 M12 20v2 M2 12h2 M20 12h2 M5 5l1 1 M18 18l1 1 M5 19l1-1 M18 6l1-1",
-    moon: "M21 12a9 9 0 1 1-9-9 7 7 0 0 0 9 9",
-    bell: "M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9 M10 21h4",
-    arrow: "M7 17L17 7 M7 7h10v10",
-    download: "M12 3v12 M7 10l5 5 5-5 M4 17v4h16v-4",
-    search: "M21 21l-5-5 M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0",
-    check: "M5 12l4 4L19 6",
-    clock: "M12 8v5l3 2 M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0",
-    alert: "M12 3L2 21h20z M12 9v5 M12 17v1",
-    camera: "M8 5l2-3h4l2 3h5v16H3V5z M16 13a4 4 0 1 1-8 0 4 4 0 0 1 8 0",
-    lock: "M6 10V7a6 6 0 0 1 12 0v3 M4 10h16v12H4z M12 15v3",
-    logout: "M9 3H3v18h6 M9 12h12 M17 8l4 4-4 4",
-    menu: "M3 6h18 M3 12h18 M3 18h18",
-    upload: "M12 16V3 M7 8l5-5 5 5 M4 17v4h16v-4",
-    refresh:
-      "M21 3v6h-6 M3 21v-6h6 M4 9a8 8 0 0 1 14-4l3 4 M20 15a8 8 0 0 1-14 4l-3-4",
-    eye: "M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12 M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0",
-    help: "M9 9a3 3 0 1 1 4 3l-1 1v2 M12 18v1 M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0",
-    close: "M6 6l12 12 M6 18L18 6",
-    chevron: "M9 5l7 7-7 7",
-    shield: "M12 2l9 4v6c0 6-9 10-9 10S3 18 3 12V6z M8 12l3 3 5-6",
-  };
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.65"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d={paths[name] || paths.grid} />
-    </svg>
-  );
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import type { Profile, Assignment } from "../lib/types";
+import "../app/simple.css";
+import { LanguageSwitcher, Localized } from "../lib/portal-language";
+import { EyeIcon } from "./ControlIcons";
+import DepartmentBrand from "./DepartmentBrand";
+import { useOfficeFeed, NoticeBoard, OfficeSettings } from "./OfficeBoard";
+import { officeClosure, type OfficeFeed } from "../lib/office-types";
+import { prepareWorkplacePhoto } from "../lib/photo-upload";
+
+const StaffEditor = dynamic(() => import("./StaffEditor"));
+const AdminCaptcha = dynamic(() => import("./AdminCaptcha"));
+
+type RecordRow = {
+  id: string;
+  staff_id: string;
+  staff_name?: string;
+  flags?: string[];
+  date: string;
+  department?: string;
+  position?: string;
+  panchayat: string;
+  block?: string;
+  status: string;
+  phase?: string;
+  deputation_workplace?: string | null;
+  leave_type?: string | null;
+  absence_reason?: string | null;
+  time_in: string | null;
+  time_out: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  accuracy: number | null;
+  photo_path?: string | null;
+  leave_path?: string | null;
+  profiles?: Profile;
+  working_places?: Assignment[];
+};
+type Bootstrap = {
+  profile: Profile;
+  date: string;
+  records: RecordRow[];
+  staff: Profile[];
+  office: OfficeFeed;
+};
+class RequestError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+  ) {
+    super(message);
+  }
 }
-const nav: [View, string, string, string][] = [
-  ["overview", "grid", "अवलोकन", "Overview"],
-  ["attendance", "calendar", "उपस्थिति", "Attendance"],
-  ["staff", "users", "कर्मी प्रबंधन", "Staff directory"],
-  ["panchayats", "pin", "पंचायतें", "Panchayats"],
-  ["reports", "file", "रिपोर्ट", "Reports"],
-  ["sheets", "sheet", "गूगल शीट", "Google Sheets"],
-];
-function today() {
+async function api(url: string, body?: object) {
+  const response = await fetch(url, {
+    cache: "no-store",
+    signal: AbortSignal.timeout(
+      url === "/api/attendance-workflow" && body ? 45000 : 25000,
+    ),
+    ...(body
+      ? {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }
+      : {}),
+  });
+  const data = await response.json();
+  if (!response.ok)
+    throw new RequestError(
+      data.error || "अनुरोध विफल हुआ। फिर कोशिश करें।",
+      response.status,
+    );
+  return data;
+}
+function dateToday() {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Kolkata",
     year: "numeric",
@@ -92,2127 +84,1586 @@ function today() {
     day: "2-digit",
   }).format(new Date());
 }
-function csv(rows: Row[], place = "all") {
-  const fields = [
-    "Name",
-    "Panchayat",
-    "Position",
-    "Department",
-    "Time In",
-    "Time Out",
-    "Status",
-    "Flags",
-  ];
-  const lines = [
-    fields,
-    ...rows.map((r) => [
-      r.name,
-      place === "all" ? r.working_places.join(" / ") : place,
-      r.position,
-      r.department,
-      r.time_in || "",
-      r.time_out || "",
-      r.status,
-      r.flag || "",
-    ]),
-  ];
-  const blob = new Blob(
-    [
-      "\ufeff" +
-        lines
-          .map((r) =>
-            r.map((v) => '"' + String(v).replaceAll('"', '""') + '"').join(","),
-          )
-          .join("\r\n"),
-    ],
-    { type: "text/csv;charset=utf-8;" },
-  );
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `araria-${today()}.csv`;
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
-export default function Portal() {
-  const [preview, setPreview] = useState(true),
-    [profile, setProfile] = useState<Profile | null>(null),
-    [view, setView] = useState<View>("overview"),
-    [theme, setTheme] = useState("light"),
-    [language, setLanguage] = useState<Language>("hi"),
-    [themeReady, setThemeReady] = useState(false),
-    [mobile, setMobile] = useState(false),
-    [search, setSearch] = useState(""),
-    [panchayat, setPanchayat] = useState("all"),
-    [status, setStatus] = useState("all"),
-    [date, setDate] = useState(today()),
-    [page, setPage] = useState(1),
-    [modal, setModal] = useState<string | null>(null),
-    [notice, setNotice] = useState(""),
-    [login, setLogin] = useState(false),
-    [busy, setBusy] = useState(false),
-    [rows, setRows] = useState<Row[]>(demoRows),
-    [online, setOnline] = useState(true),
-    [consent, setConsent] = useState(false),
-    [adminTab, setAdminTab] = useState(false),
-    [directory, setDirectory] = useState<Profile[]>([]),
-    [refresh, setRefresh] = useState(0),
-    [credential, setCredential] = useState<string | null>(null),
-    [fences, setFences] = useState<
-      Record<
-        string,
-        { latitude: number | null; longitude: number | null; radius: number }
-      >
-    >({});
-  const [gps, setGps] = useState<GeolocationCoordinates | null>(null),
-    [photo, setPhoto] = useState<Blob | null>(null),
-    [photoUrl, setPhotoUrl] = useState(""),
-    [camera, setCamera] = useState(false),
-    [leave, setLeave] = useState(false),
-    [leaveFile, setLeaveFile] = useState<File | null>(null),
-    [assignment, setAssignment] = useState(""),
-    [challenge, setChallenge] = useState<{
-      id: string;
-      expires_at: string;
-      server_time: string;
-    } | null>(null),
-    [record, setRecord] = useState<Attendance | null>(null);
-  const video = useRef<HTMLVideoElement>(null),
-    stream = useRef<MediaStream | null>(null);
-  const notify = (message: string) => setNotice(message);
-  useEffect(() => {
-    const saved = localStorage.getItem("araria-theme") || "light";
-    setTheme(saved);
-    setLanguage(localStorage.getItem("araria-language") === "en" ? "en" : "hi");
-    setThemeReady(true);
-    setOnline(navigator.onLine);
-    const on = () => setOnline(navigator.onLine);
-    window.addEventListener("online", on);
-    window.addEventListener("offline", on);
-    fetch("/api/session")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((s) => {
-        if (s?.profile) {
-          setProfile(s.profile);
-          setPreview(false);
-          setView(s.profile.role === "staff" ? "punch" : "overview");
-          setConsent(false);
-          setAssignment(s.profile.assignments[0]?.panchayat || "");
-        }
+function time(value: string | null) {
+  return value
+    ? new Date(value).toLocaleTimeString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        hour: "2-digit",
+        minute: "2-digit",
       })
-      .catch(() => {});
-    return () => {
-      window.removeEventListener("online", on);
-      window.removeEventListener("offline", on);
-      stream.current?.getTracks().forEach((t) => t.stop());
-    };
+    : "—";
+}
+const statusLabels: Record<string, string> = {
+  present: "उपस्थित / Present",
+  absent: "अनुपस्थित / Absent",
+  leave: "अवकाश / On leave",
+  deputation: "प्रतिनियुक्ति / Deputation",
+};
+function phase(row: RecordRow) {
+  return row.phase === "submitted"
+    ? "completed"
+    : row.phase || (row.time_in && !row.time_out ? "draft" : "completed");
+}
+function phaseLabel(row: RecordRow) {
+  return phase(row) === "draft" ? "कार्यस्थल पर • Draft" : "सहेजा गया • Saved";
+}
+function unique(values: (string | undefined)[]) {
+  return [...new Set(values.filter((v): v is string => !!v))].sort((a, b) =>
+    a.localeCompare(b),
+  );
+}
+function SelectField({
+  label,
+  value,
+  onChange,
+  options,
+  required = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: string[];
+  required?: boolean;
+}) {
+  return (
+    <Localized>
+      <label className="sp-field">
+        {label}
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          required={required}
+        >
+          <option value="">{required ? "चुनें / Choose" : "सभी / All"}</option>
+          {options.map((option) => (
+            <option key={option} value={option} translate="no">
+              {option}
+            </option>
+          ))}
+        </select>
+      </label>
+    </Localized>
+  );
+}
+function RecordDetails({ row }: { row: RecordRow }) {
+  const assignment = row.working_places?.find(
+    (a) => a.panchayat === row.panchayat,
+  );
+  const items = [
+    ["विभाग / Department", row.department || assignment?.department],
+    ["प्रखंड / Block", row.block || row.profiles?.block],
+    ["पंचायत / Panchayat", row.panchayat],
+    ["पद / Position", row.position || assignment?.position],
+    ["स्थिति / Status", statusLabels[row.status] || row.status],
+    ["प्रतिनियुक्ति स्थान / Deputation workplace", row.deputation_workplace],
+    ["अवकाश / Leave", row.leave_type],
+    ["अनुपस्थिति का कारण / Absence reason", row.absence_reason],
+    ["आने का समय / In time", time(row.time_in)],
+    ["जाने का समय / Out time", time(row.time_out)],
+  ];
+  return (
+    <Localized>
+      <>
+        <dl className="sp-details">
+          {items
+            .filter(([, value]) => value)
+            .map(([label, value]) => (
+              <div key={label}>
+                <dt>{label}</dt>
+                <dd
+                  translate={
+                    [
+                      "विभाग / Department",
+                      "प्रखंड / Block",
+                      "पंचायत / Panchayat",
+                      "पद / Position",
+                      "प्रतिनियुक्ति स्थान / Deputation workplace",
+                    ].includes(label || "")
+                      ? "no"
+                      : undefined
+                  }
+                >
+                  {value}
+                </dd>
+              </div>
+            ))}
+        </dl>
+      </>
+    </Localized>
+  );
+}
+
+export default function Portal({
+  adminLogin = false,
+}: {
+  adminLogin?: boolean;
+}) {
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [bootstrap, setBootstrap] = useState<Bootstrap | null>(null);
+  const [activeDepartment, setActiveDepartment] = useState("");
+  useEffect(() => {
+    setActiveDepartment("");
+  }, [profile?.id]);
+  const loginRole = adminLogin ? "admin" : "staff";
+  const [identifier, setIdentifier] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaReset, setCaptchaReset] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const sessionGeneration = useRef(0);
+  const fail = useCallback((err: unknown) => {
+    if (err instanceof RequestError && err.status === 401) {
+      sessionGeneration.current++;
+      setProfile(null);
+      setBootstrap(null);
+      setPassword("");
+      setShowPassword(false);
+    }
+    setError(err instanceof Error ? err.message : "अनुरोध विफल हुआ।");
   }, []);
   useEffect(() => {
-    if (!themeReady) return;
-    document.documentElement.lang = language;
-    document.documentElement.dataset.language = language;
-    localStorage.setItem("araria-language", language);
-  }, [language, themeReady]);
-  useEffect(() => {
-    if (!themeReady) return;
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem("araria-theme", theme);
-  }, [theme, themeReady]);
-  useEffect(() => {
-    if (!preview && profile) {
-      if (profile.role === "staff") {
-        fetch("/api/attendance")
-          .then((r) => r.json())
-          .then((r) => {
-            const current = r.records?.[0] || null;
-            setRecord(current);
-            if (current?.panchayat) setAssignment(current.panchayat);
-          })
-          .catch(() => notify("उपस्थिति लोड नहीं हुई। दोबारा कोशिश करें।"));
-      } else {
-        fetch("/api/admin?date=" + date)
-          .then((r) => r.json())
-          .then((r) => {
-            if (r.error) throw Error(r.error);
-            setRows(makeAdminRows(r.records || [], r.staff || []) as Row[]);
-          })
-          .catch((e) => notify(e.message));
-      }
-    }
-  }, [profile, preview, date, refresh]);
-  useEffect(() => {
-    if (!preview && profile && profile.role !== "staff") {
-      fetch("/api/staff")
-        .then((r) => r.json())
-        .then((d) => setDirectory(d.staff || []))
-        .catch(() => {});
-      fetch("/api/panchayats")
-        .then((r) => r.json())
-        .then((d) =>
-          setFences(
-            Object.fromEntries(
-              (d.panchayats || []).map((p: { name: string }) => [p.name, p]),
-            ),
-          ),
-        )
-        .catch(() => {});
-    }
-  }, [profile, preview, refresh]);
-  useEffect(() => {
-    if (camera && video.current && stream.current) {
-      video.current.srcObject = stream.current;
-      video.current.play().catch(() => {});
-    }
-  }, [camera]);
-  useEffect(
-    () => () => {
-      if (photoUrl) URL.revokeObjectURL(photoUrl);
-    },
-    [photoUrl],
-  );
-  useEffect(() => {
-    setPage(1);
-  }, [search, panchayat, status, date]);
-  const filtered = rows
-    .filter(
-      (r) =>
-        matchesWorkplace(r, panchayat) &&
-        (status === "all" ||
-          (status === "flagged" ? !!r.flag : r.status === status)) &&
-        [r.name, r.phone, ...r.assignments.map((a) => a.position)].some((s) =>
-          [s, translateText(s, language)].some((value) =>
-            value.toLowerCase().includes(search.toLowerCase()),
-          ),
-        ),
-    )
-    .map((r) => {
-      const assignment = r.assignments.find((a) => a.panchayat === panchayat);
-      return assignment
-        ? {
-            ...r,
-            position: assignment.position,
-            department: assignment.department,
+    let active = true;
+    const generation = sessionGeneration.current;
+    api("/api/session")
+      .then((data) => {
+        if (active && generation === sessionGeneration.current) {
+          if ((data.profile.role !== "staff") !== adminLogin) {
+            window.location.replace(
+              data.profile.role === "staff" ? "/" : "/admin",
+            );
+            return;
           }
-        : r;
-    });
-  const change = (v: View) => {
-    setView(v);
-    setMobile(false);
-    setSearch("");
-    setStatus("all");
-  };
-  async function signIn(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setBusy(true);
-    const form = new FormData(e.currentTarget);
-    try {
-      const r = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          identifier: form.get("identifier"),
-          password: form.get("password"),
-          admin: adminTab,
-        }),
+          setBootstrap(data.bootstrap || null);
+          setProfile(data.profile);
+        }
+      })
+      .catch((err) => {
+        if (
+          active &&
+          generation === sessionGeneration.current &&
+          !(err instanceof RequestError && err.status === 401)
+        )
+          fail(err);
       });
-      const data = await r.json();
-      if (!r.ok) throw Error(data.error);
-      setProfile(data.profile);
-      setPreview(false);
-      setLogin(false);
-      setConsent(false);
-      setAssignment(data.profile.assignments[0]?.panchayat || "");
-      setView(data.profile.role === "staff" ? "punch" : "overview");
-    } catch (e) {
-      notify((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function startCapture() {
-    setBusy(true);
-    setGps(null);
-    setPhoto(null);
-    try {
-      let c = challenge;
-      if (!preview) {
-        const r = await fetch("/api/attendance", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "challenge" }),
-        });
-        c = await r.json();
-        if (!r.ok) throw Error((c as unknown as { error: string }).error);
-        setChallenge(c);
-      } else {
-        c = {
-          id: "preview",
-          expires_at: new Date(Date.now() + 120000).toISOString(),
-          server_time: new Date().toISOString(),
-        };
-        setChallenge(c);
-      }
-      const location = await new Promise<GeolocationPosition>(
-        (resolve, reject) =>
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            maximumAge: 0,
-            timeout: 20000,
-          }),
-      );
-      if (location.coords.accuracy > 50)
-        throw Error(
-          "GPS सटीकता 50 मीटर से अधिक है। खुले स्थान में दोबारा कोशिश करें।",
-        );
-      setGps(location.coords);
-      stream.current?.getTracks().forEach((t) => t.stop());
-      stream.current = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 1280 } },
-        audio: false,
-      });
-      setCamera(true);
-    } catch (e) {
-      notify("कैमरा और लोकेशन चालू करें। " + (e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function capture() {
-    if (!video.current || !gps || !challenge) return;
-    if (Date.now() > new Date(challenge.expires_at).getTime()) {
-      notify("कैप्चर की समय सीमा समाप्त। दोबारा कैमरा खोलें।");
-      stopCamera();
-      return;
-    }
-    const canvas = document.createElement("canvas");
-    canvas.width = 960;
-    canvas.height = 720;
-    const ctx = canvas.getContext("2d")!;
-    ctx.drawImage(video.current, 0, 0, 960, 720);
-    ctx.fillStyle = "rgba(0,0,0,.8)";
-    ctx.fillRect(0, 630, 960, 90);
-    ctx.fillStyle = "#fff";
-    ctx.font = "18px sans-serif";
-    ctx.fillText(
-      `ARARIA | ${new Date(challenge.server_time).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST`,
-      20,
-      660,
-    );
-    ctx.fillText(
-      `${gps.latitude.toFixed(6)}, ${gps.longitude.toFixed(6)} | ±${Math.round(gps.accuracy)}m | ${challenge.id.slice(0, 8)}`,
-      20,
-      690,
-    );
-    const b = await new Promise<Blob | null>((r) =>
-      canvas.toBlob(r, "image/jpeg", 0.7),
-    );
-    if (b) {
-      setPhoto(b);
-      setPhotoUrl(URL.createObjectURL(b));
-    }
-    stopCamera();
-  }
-  function stopCamera() {
-    stream.current?.getTracks().forEach((t) => t.stop());
-    stream.current = null;
-    setCamera(false);
-  }
-  async function punch(action: string) {
-    if (preview) {
-      notify("यह केवल पूर्वावलोकन है। वास्तविक उपस्थिति के लिए लॉगिन करें।");
-      return;
-    }
-    if (!consent) {
-      notify("पहले गोपनीयता सूचना स्वीकार करें।");
-      return;
-    }
-    setBusy(true);
-    try {
-      const form = new FormData();
-      form.set("action", action);
-      form.set("panchayat", assignment);
-      if (leave) {
-        if (!leaveFile) throw Error("CL/SL प्रमाण अपलोड करें।");
-        form.set("file", leaveFile);
-      } else {
-        if (!photo || !gps || !challenge) throw Error("ताज़ा GPS फोटो लें।");
-        form.set("file", photo);
-        form.set("challenge", challenge.id);
-        form.set("latitude", String(gps.latitude));
-        form.set("longitude", String(gps.longitude));
-        form.set("accuracy", String(gps.accuracy));
-      }
-      const uploadFile = form.get("file") as Blob;
-      const signedRes = await fetch("/api/upload", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: uploadFile.type, size: uploadFile.size }),
-      });
-      const signed = await signedRes.json();
-      if (!signedRes.ok) throw Error(signed.error);
-      const uploaded = await fetch(signed.url, {
-        method: "PUT",
-        headers: { "Content-Type": uploadFile.type },
-        body: uploadFile,
-      });
-      if (!uploaded.ok) throw Error("फ़ाइल अपलोड विफल। फिर कोशिश करें।");
-      form.delete("file");
-      form.set("upload_path", signed.path);
-      const r = await fetch("/api/attendance", { method: "POST", body: form });
-      const d = await r.json();
-      if (!r.ok) throw Error(d.error);
-      setRecord(d.record);
-      setPhoto(null);
-      setChallenge(null);
-      notify("उपस्थिति सुरक्षित दर्ज हो गई।");
-    } catch (e) {
-      notify((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function management(e: React.FormEvent<HTMLFormElement>, kind: string) {
-    e.preventDefault();
-    if (preview) {
-      notify("वास्तविक बदलाव के लिए एडमिन लॉगिन करें।");
-      return;
-    }
-    setBusy(true);
-    const f = new FormData(e.currentTarget);
-    let body: Record<string, unknown> = { reason: f.get("reason") };
-    let endpoint = "/api/admin";
-    if (kind === "geofence") {
-      body = {
-        ...body,
-        action: "geofence",
-        panchayat: modal?.slice(9),
-        latitude: Number(f.get("latitude")),
-        longitude: Number(f.get("longitude")),
-        radius: Number(f.get("radius")),
-      };
-    } else if (kind === "correct") {
-      body = {
-        ...body,
-        action: "correct",
-        id: modal?.split(":")[1],
-        correction: {
-          time_in: f.get("time_in")
-            ? new Date(String(f.get("time_in")) + "+05:30").toISOString()
-            : null,
-          time_out: f.get("time_out")
-            ? new Date(String(f.get("time_out")) + "+05:30").toISOString()
-            : null,
-        },
-      };
-    } else {
-      endpoint = "/api/staff";
-      body = {
-        ...body,
-        action: "update",
-        id: modal?.split(":")[1],
-        changes: {
-          name: f.get("name"),
-          phone: f.get("phone"),
-          active: f.get("active") === "on",
-          reset_device: f.get("reset_device") === "on",
-        },
-      };
-    }
-    try {
-      const r = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const d = await r.json();
-      if (!r.ok) throw Error(d.error);
-      notify("बदलाव सुरक्षित दर्ज है।");
-      setModal(null);
-      if (kind === "staff") {
-        const r = await fetch("/api/staff");
-        setDirectory((await r.json()).staff);
-      } else if (kind === "geofence") {
-        setFences({ ...fences, [String(body.panchayat)]: d });
-      }
-    } catch (e) {
-      notify((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  const masterStaff = preview ? previewDirectory : directory;
-  const placeStats = (place: string) => {
-    const people = rows.filter((r) => matchesWorkplace(r, place));
-    return {
-      total: people.length,
-      present: people.filter((r) => r.status === "present").length,
-      leave: people.filter((r) => r.status === "leave").length,
+    return () => {
+      active = false;
     };
-  };
-  const canManage =
-    preview ||
-    profile?.role === "super_admin" ||
-    profile?.role === "block_admin";
-  async function saveAdminData(
-    endpoint: string,
-    body: Record<string, unknown>,
-  ) {
-    if (preview) {
-      notify("वास्तविक बदलाव के लिए एडमिन लॉगिन करें।");
-      return;
-    }
+  }, [fail, adminLogin]);
+  async function login(event: React.FormEvent) {
+    event.preventDefault();
+    sessionGeneration.current++;
+    setShowPassword(false);
     setBusy(true);
+    setError("");
+    setMessage("");
     try {
-      const r = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+      const data = await api("/api/auth/login", {
+        identifier,
+        password,
+        admin: loginRole === "admin",
+        ...(adminLogin ? { captcha_token: captchaToken } : {}),
       });
-      const d = await r.json();
-      if (!r.ok) throw Error(d.error);
-      setModal(null);
-      setRefresh((v) => v + 1);
-      if (d.password) setCredential(d.password);
-      notify("बदलाव सुरक्षित दर्ज है।");
-    } catch (e) {
-      notify((e as Error).message);
+      setPassword("");
+      setBootstrap(data.bootstrap || null);
+      setProfile(data.profile);
+    } catch (err) {
+      fail(err);
+    } finally {
+      if (adminLogin) {
+        setCaptchaToken("");
+        setCaptchaReset((value) => value + 1);
+      }
+      setBusy(false);
+    }
+  }
+  async function logout() {
+    setBusy(true);
+    setError("");
+    try {
+      await api("/api/auth/logout", {});
+      sessionGeneration.current++;
+      setProfile(null);
+      setBootstrap(null);
+      setIdentifier("");
+      setPassword("");
+      setShowPassword(false);
+      setMessage("");
+    } catch (err) {
+      fail(err);
     } finally {
       setBusy(false);
     }
   }
-  function saveMaster(data: MasterInput) {
-    const id = modal?.split(":")[1];
-    saveAdminData(
-      "/api/staff",
-      modal === "staff:new"
-        ? { action: "create", ...data }
-        : {
-            action: "update",
-            id,
-            reason: data.reason,
-            changes: {
-              name: data.name,
-              phone: data.phone,
-              email: data.email,
-              active: data.active,
-              reset_device: data.reset_device,
-              assignments: data.assignments,
-            },
-          },
-    );
-  }
-  function removeData(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const f = new FormData(e.currentTarget);
-    const kind = modal?.split(":")[0];
-    saveAdminData(kind === "delete-staff" ? "/api/staff" : "/api/admin", {
-      action: "delete",
-      id: modal?.split(":")[1],
-      reason: f.get("reason"),
-    });
-  }
-  const present = preview
-      ? 186
-      : rows.filter((r) => r.status === "present").length,
-    onLeave = preview ? 18 : rows.filter((r) => r.status === "leave").length;
-  return localizeContent(
-    <div className="app">
-      {mobile && (
-        <button
-          className="scrim"
-          aria-label="मेनू बंद करें"
-          onClick={() => setMobile(false)}
-        />
-      )}
-      <aside className={"sidebar " + (mobile ? "open" : "")}>
-        <a
-          className="brand"
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            change("overview");
-          }}
-        >
-          <div className="seal">
-            <Icon name="shield" size={27} />
-          </div>
-          <div>
-            <strong>अररिया</strong>
-            <span>कर्मी उपस्थिति पोर्टल</span>
-          </div>
-        </a>
-        <div className="office-label">
-          पंचायती राज विभाग<span>ARARIA DISTRICT · BIHAR</span>
-        </div>
-        <div className="nav-label">
-          कार्यस्थल <span>WORKSPACE</span>
-        </div>
-        <nav aria-label="मुख्य नेविगेशन">
-          {(profile?.role === "staff" ? [] : nav).map(([v, icon, hi, en]) => (
-            <button
-              key={v}
-              className={"nav-item " + (view === v ? "active" : "")}
-              onClick={() => change(v)}
-            >
-              <Icon name={icon} />
-              <span>
-                {hi}
-                <small>{en}</small>
-              </span>
-              {v === "attendance" && (
-                <b className="nav-count">{preview ? "242" : rows.length}</b>
-              )}
-              {v === "sheets" && <i className="pending-dot" />}
-            </button>
-          ))}
-          <button
-            className={"nav-item " + (view === "punch" ? "active" : "")}
-            onClick={() => change("punch")}
-          >
-            <Icon name="camera" />
-            <span>
-              मेरी उपस्थिति<small>Staff punch in / out</small>
-            </span>
-          </button>
-        </nav>
-        <div className="sidebar-bottom">
-          <div className="secure-note">
-            <Icon name="shield" size={17} />
-            <span>
-              सुरक्षित एवं निजी<small>Location-verified attendance</small>
-            </span>
-          </div>
-          <button
-            className={"nav-item " + (view === "settings" ? "active" : "")}
-            onClick={() => change("settings")}
-          >
-            <Icon name="settings" />
-            <span>
-              सेटिंग्स<small>Settings & help</small>
-            </span>
-          </button>
-          <div className="account">
-            <div className="avatar">
-              {preview ? "प्र" : profile?.name.slice(0, 1)}
-            </div>
-            <div>
-              <strong>{preview ? "पूर्वावलोकन" : profile?.name}</strong>
-              <small>
-                {preview
-                  ? "Preview workspace"
-                  : profile?.role.replaceAll("_", " ")}
-              </small>
-            </div>
-            <button
-              title="लॉगिन / लॉगआउट"
-              className="icon-button"
-              onClick={async () => {
-                if (profile) {
-                  await fetch("/api/auth/logout", { method: "POST" });
-                  setProfile(null);
-                  setPreview(true);
-                  setRows(demoRows);
-                  change("overview");
-                } else setLogin(true);
-              }}
-            >
-              <Icon name={profile ? "logout" : "lock"} size={17} />
-            </button>
-          </div>
-        </div>
-      </aside>
-      <div className="workspace">
-        <header className="topbar">
-          <div className="breadcrumb">
-            <button
-              className="icon-button mobile-menu"
-              onClick={() => setMobile(true)}
-              aria-label="मेनू खोलें"
-            >
-              <Icon name="menu" />
-            </button>
-            <span>प्रखंड पंचायत राज कार्यालय</span>
-            <Icon name="chevron" size={13} />
-            <strong>अररिया</strong>
-          </div>
-          <div className="header-right">
-            <div
-              className="language-switch"
-              role="group"
-              aria-label="Language"
-              translate="no"
-            >
-              <button
-                aria-pressed={language === "hi"}
-                onClick={() => setLanguage("hi")}
-              >
-                हिन्दी
-              </button>
-              <button
-                aria-pressed={language === "en"}
-                onClick={() => setLanguage("en")}
-              >
-                English
-              </button>
-            </div>
-            <span className={"network " + (!online ? "offline" : "")}>
-              <i />
-              {online ? "ऑनलाइन" : "ऑफ़लाइन"}
-            </span>
-            <button
-              className="theme-button"
-              onClick={() => setTheme(theme === "light" ? "dark" : "light")}
-              aria-label={theme === "light" ? "रात्रि मोड" : "दिन मोड"}
-            >
-              <Icon name={theme === "light" ? "moon" : "sun"} size={17} />
-              <span>{theme === "light" ? "रात्रि" : "दिन"}</span>
-            </button>
-            <button
-              className="icon-button notification"
-              aria-label="सूचनाएँ"
-              onClick={() => setModal("notifications")}
-            >
-              <Icon name="bell" />
-              <i />
-            </button>
-            <div className="header-avatar">अ</div>
-          </div>
-        </header>
-        <main>
-          <div className="preview-banner">
-            <Icon name="eye" size={16} />
-            <span>
-              {preview ? (
-                <>
-                  <strong>पूर्वावलोकन मोड</strong> · उदाहरण डेटा। वास्तविक कर्मी
-                  जानकारी सुरक्षित है।
-                </>
-              ) : (
-                <>
-                  <strong>सुरक्षित कार्यस्थल</strong> · सभी समय सर्वर से दर्ज
-                  होते हैं।
-                </>
-              )}
-            </span>
-            {preview && (
-              <button onClick={() => setLogin(true)}>
-                लॉगिन करें <Icon name="arrow" size={14} />
-              </button>
+  return (
+    <Localized>
+      <div className="simple-portal">
+        <header className="sp-header">
+          <DepartmentBrand
+            key={profile?.id || "public"}
+            profile={profile}
+            selected={activeDepartment}
+            adminLogin={adminLogin}
+          />
+          <div className="sp-header-controls">
+            <LanguageSwitcher />
+            {profile && (
+              <div className="sp-account">
+                <span translate="no">{profile.name}</span>
+                <button
+                  type="button"
+                  className="sp-button sp-secondary"
+                  disabled={busy}
+                  onClick={logout}
+                >
+                  लॉग आउट / Logout
+                </button>
+              </div>
             )}
           </div>
-          <div className="page-heading">
-            <div>
-              <div className="eyebrow">DISTRICT ADMINISTRATION · BIHAR</div>
+        </header>
+        <main className={profile ? "sp-main" : "sp-main sp-login-main"}>
+          {error && (
+            <div role="alert" className="sp-alert sp-error">
+              {error}
+            </div>
+          )}
+          {message && (
+            <div role="status" className="sp-alert sp-success">
+              {message}
+            </div>
+          )}
+          {!profile ? (
+            <section className="sp-card sp-login">
+              <span className="sp-eyebrow">सुरक्षित प्रवेश / SECURE LOGIN</span>
               <h1>
-                {view === "overview"
-                  ? "आज की उपस्थिति"
-                  : view === "attendance"
-                    ? "उपस्थिति रजिस्टर"
-                    : view === "staff"
-                      ? "कर्मी प्रबंधन"
-                      : view === "panchayats"
-                        ? "पंचायत एवं कार्यस्थल"
-                        : view === "reports"
-                          ? "रिपोर्ट एवं निर्यात"
-                          : view === "sheets"
-                            ? "गूगल शीट समन्वयन"
-                            : view === "punch"
-                              ? "मेरी दैनिक उपस्थिति"
-                              : "सेटिंग्स एवं सहायता"}
+                {adminLogin
+                  ? "प्रशासक लॉगिन / Admin login"
+                  : "कर्मी लॉगिन / Staff login"}
               </h1>
+              <p className="sp-muted">अपना लॉगिन विवरण और पासवर्ड डालें।</p>
+              <form onSubmit={login}>
+                <label className="sp-field">
+                  {loginRole === "admin"
+                    ? "ईमेल या मोबाइल / Email or mobile"
+                    : "मोबाइल नंबर / Mobile number"}
+                  <input
+                    required
+                    autoComplete="username"
+                    inputMode={loginRole === "staff" ? "tel" : "email"}
+                    value={identifier}
+                    onChange={(e) => setIdentifier(e.target.value)}
+                  />
+                </label>
+                <div className="sp-field">
+                  <label htmlFor="login-password">पासवर्ड / Password</label>
+                  <div className="sp-password-row">
+                    <input
+                      id="login-password"
+                      required
+                      type={showPassword ? "text" : "password"}
+                      autoComplete="current-password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="sp-button sp-secondary sp-password-toggle"
+                      aria-controls="login-password"
+                      aria-pressed={showPassword}
+                      aria-label={
+                        showPassword ? "पासवर्ड छिपाएँ" : "पासवर्ड दिखाएँ"
+                      }
+                      title={showPassword ? "पासवर्ड छिपाएँ" : "पासवर्ड दिखाएँ"}
+                      onClick={() => setShowPassword((visible) => !visible)}
+                    >
+                      <EyeIcon visible={showPassword} />
+                    </button>
+                  </div>
+                </div>
+                {adminLogin && (
+                  <AdminCaptcha
+                    onToken={setCaptchaToken}
+                    resetKey={captchaReset}
+                  />
+                )}
+                <button
+                  className="sp-button sp-primary sp-full"
+                  disabled={busy || (adminLogin && !captchaToken)}
+                >
+                  {busy ? "प्रवेश हो रहा है…" : "लॉगिन / Login"}
+                </button>
+              </form>
+              <p className="sp-note">
+                केवल पंजीकृत कर्मी और प्रशासक प्रवेश कर सकते हैं। पासवर्ड के लिए
+                कार्यालय से संपर्क करें।
+              </p>
+            </section>
+          ) : profile.role === "staff" ? (
+            <Staff
+              key={profile.id}
+              profile={profile}
+              initial={bootstrap?.profile.id === profile.id ? bootstrap : null}
+              onDepartmentChange={setActiveDepartment}
+              fail={fail}
+              notify={(value) => {
+                setMessage(value);
+                setError("");
+              }}
+            />
+          ) : (
+            <Admin
+              key={profile.id}
+              fail={fail}
+              initial={bootstrap?.profile.id === profile.id ? bootstrap : null}
+              canManage={profile.role !== "district_viewer"}
+              adminBlock={profile.block}
+            />
+          )}
+        </main>
+        <footer className="sp-footer">
+          <span>अररिया • कर्मचारी उपस्थिति पोर्टल</span>
+          <span className="sp-footer-credit" translate="no">
+            Built by{" "}
+            <a
+              href="https://github.com/ashuujha"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Ashutosh Jha
+            </a>
+          </span>
+        </footer>
+      </div>
+    </Localized>
+  );
+}
+
+function Staff({
+  profile,
+  initial,
+  onDepartmentChange,
+  fail,
+  notify,
+}: {
+  profile: Profile;
+  initial?: Bootstrap | null;
+  onDepartmentChange: (department: string) => void;
+  fail: (err: unknown) => void;
+  notify: (message: string) => void;
+}) {
+  const office = useOfficeFeed(initial?.office);
+  const closure = office.feed
+    ? officeClosure(office.feed.today, office.feed.holidays)
+    : null;
+  const [record, setRecord] = useState<RecordRow | null>(
+    initial?.records[0] || null,
+  );
+  const [loading, setLoading] = useState(!initial),
+    [busy, setBusy] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [department, setDepartment] = useState(""),
+    [panchayat, setPanchayat] = useState(""),
+    [position, setPosition] = useState("");
+  useEffect(() => {
+    onDepartmentChange(record?.department || department);
+  }, [record?.department, department, onDepartmentChange]);
+  const [status, setStatus] = useState("present"),
+    [deputation, setDeputation] = useState(""),
+    [leaveType, setLeaveType] = useState("CL");
+  const [workplacePhoto, setWorkplacePhoto] = useState<File | null>(null);
+  const [absenceReason, setAbsenceReason] = useState("");
+  const [photoPreview, setPhotoPreview] = useState("");
+  useEffect(() => {
+    if (!workplacePhoto) {
+      setPhotoPreview("");
+      return;
+    }
+    const url = URL.createObjectURL(workplacePhoto);
+    setPhotoPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [workplacePhoto]);
+  const [leave, setLeave] = useState<File | null>(null),
+    [consent, setConsent] = useState(false);
+  const alive = useRef(true);
+  const assignments = (profile.assignments || []).filter(
+    (a) => a.department?.trim() && a.panchayat?.trim() && a.position?.trim(),
+  );
+  const departments = unique(assignments.map((a) => a.department));
+  const panchayats = unique(
+    assignments
+      .filter((a) => a.department === department)
+      .map((a) => a.panchayat),
+  );
+  const positions = unique(
+    assignments
+      .filter((a) => a.department === department && a.panchayat === panchayat)
+      .map((a) => a.position),
+  );
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await api("/api/attendance-workflow");
+      if (alive.current) {
+        setRecord(
+          (data.records || []).find(
+            (row: RecordRow) => row.date === dateToday(),
+          ) || null,
+        );
+        setLoadError(false);
+      }
+    } catch (err) {
+      if (alive.current) {
+        setLoadError(true);
+        fail(err);
+      }
+    } finally {
+      if (alive.current) setLoading(false);
+    }
+  }, [fail]);
+  useEffect(() => {
+    alive.current = true;
+    if (!initial) void load();
+    return () => {
+      alive.current = false;
+    };
+  }, [load, initial]);
+  useEffect(() => {
+    if (departments.length === 1) setDepartment(departments[0]);
+  }, [departments.join("|")]); // Only workbook-backed options are selected.
+  useEffect(() => {
+    if (panchayats.length === 1) setPanchayat(panchayats[0]);
+  }, [panchayats.join("|")]);
+  useEffect(() => {
+    if (positions.length === 1) setPosition(positions[0]);
+  }, [positions.join("|")]);
+  async function upload(file: Blob, purpose = "leave_document") {
+    if (!file.size || file.size >= 5 * 1024 * 1024)
+      throw new Error(
+        "फ़ाइल 5 MB से कम होनी चाहिए। / File must be smaller than 5 MB.",
+      );
+    if (purpose === "workplace_photo") file = await prepareWorkplacePhoto(file);
+    const signed = await api("/api/upload", {
+      type: file.type,
+      size: file.size,
+      purpose,
+    });
+    const result = await fetch(signed.url, {
+      method: "PUT",
+      headers: { "Content-Type": file.type },
+      body: file,
+      signal: AbortSignal.timeout(45000),
+    });
+    if (!result.ok) throw new Error("फ़ाइल अपलोड विफल। फिर कोशिश करें।");
+    return signed.path;
+  }
+  async function save(event?: React.FormEvent, complete = false) {
+    event?.preventDefault();
+    setBusy(true);
+    notify("");
+    try {
+      if (!office.feed || office.error || closure)
+        throw new Error(
+          closure
+            ? `Holiday (${closure}). Attendance is closed.`
+            : "अवकाश कैलेंडर रीफ़्रेश करें। / Refresh the holiday calendar.",
+        );
+
+      const body: { [key: string]: unknown } = {
+        action: complete
+          ? "complete"
+          : status === "present" || status === "deputation"
+            ? "save_draft"
+            : "save_status",
+        panchayat,
+        department,
+        position,
+        status,
+        deputation_workplace:
+          status === "deputation" ? deputation.trim() : null,
+        leave_type: status === "leave" ? leaveType : null,
+        absence_reason: status === "absent" ? absenceReason.trim() : null,
+      };
+      if (complete) {
+        body.id = record?.id;
+      } else {
+        if (!consent)
+          throw new Error("उपस्थिति की जानकारी साझा करने की सहमति दें।");
+        if (
+          status === "absent" &&
+          (absenceReason.trim().length < 3 ||
+            absenceReason.trim().length > 1000)
+        )
+          throw new Error(
+            "अनुपस्थिति का कारण लिखें (3–1000 अक्षर)। / Enter an absence reason (3–1000 characters).",
+          );
+        if (status === "present" || status === "deputation") {
+          if (
+            !workplacePhoto ||
+            !["image/jpeg", "image/png"].includes(workplacePhoto.type) ||
+            !workplacePhoto.size ||
+            workplacePhoto.size >= 5 * 1024 * 1024
+          )
+            throw new Error(
+              "कार्यस्थल की JPEG/PNG फोटो दें, 5 MB से कम। / Upload a workplace JPEG/PNG photo smaller than 5 MB.",
+            );
+          body.photo_upload_path = await upload(
+            workplacePhoto,
+            "workplace_photo",
+          );
+        }
+        if (status === "leave") {
+          if (
+            !leave ||
+            !["image/jpeg", "application/pdf"].includes(leave.type) ||
+            !leave.size ||
+            leave.size >= 5 * 1024 * 1024
+          )
+            throw new Error(
+              "अवकाश के लिए JPG या PDF दस्तावेज़ दें, 5 MB से कम। / Upload a leave document in JPG or PDF, smaller than 5 MB.",
+            );
+          body.leave_upload_path = await upload(leave);
+        }
+      }
+      const saved = await api("/api/attendance-workflow", body);
+      if (!alive.current) return;
+      if (!saved.record?.id)
+        throw new Error(
+          "सहेजी गई उपस्थिति नहीं मिली। रीफ़्रेश करें। / Saved attendance not returned. Refresh to confirm.",
+        );
+      setRecord(saved.record);
+      setLoadError(false);
+      setLeave(null);
+      setWorkplacePhoto(null);
+      notify(
+        complete
+          ? "जाने का समय सहेज दिया गया।"
+          : "उपस्थिति सहेज दी गई। प्रशासक इसे देख सकते हैं।",
+      );
+    } catch (err) {
+      if (alive.current) fail(err);
+    } finally {
+      if (alive.current) setBusy(false);
+    }
+  }
+  return (
+    <Localized>
+      <>
+        <div className="sp-page-title">
+          <div>
+            <span className="sp-eyebrow">कर्मी / STAFF</span>
+            <h1>आज की उपस्थिति</h1>
+            <p className="sp-muted">
+              {dateToday()} • आने पर जानकारी सहेजें, जाते समय आउट टाइम दर्ज
+              करें।
+            </p>
+          </div>
+          <button
+            className="sp-button sp-secondary"
+            onClick={() => {
+              void load();
+              void office.reload();
+            }}
+            disabled={busy || loading}
+          >
+            रीफ़्रेश / Refresh
+          </button>
+        </div>
+        {office.feed && <NoticeBoard notices={office.feed.notices} />}
+        <section className="sp-card">
+          <div className="sp-identity">
+            <div>
+              <span className="sp-muted">कर्मी का नाम / Staff name</span>
+              <strong translate="no">{profile.name}</strong>
+            </div>
+            <div>
+              <span className="sp-muted">प्रखंड / Block</span>
+              <strong>{profile.block || "कार्यालय से संपर्क करें"}</strong>
+            </div>
+          </div>
+          {loading ? (
+            <p role="status">उपस्थिति लोड हो रही है…</p>
+          ) : loadError ? (
+            <p>उपस्थिति नहीं मिली। रीफ़्रेश करके दोबारा प्रयास करें।</p>
+          ) : office.error ? (
+            <p role="alert" className="sp-alert sp-error">
+              {office.error}
+            </p>
+          ) : !office.feed ? (
+            <p role="status">
+              अवकाश कैलेंडर लोड हो रहा है… / Loading holiday calendar…
+            </p>
+          ) : closure ? (
+            <div role="status" className="sp-alert sp-holiday">
+              <h2>अवकाश / Holiday</h2>
+              <p translate="no">
+                {office.feed.today} • {closure}
+              </p>
               <p>
-                {view === "overview"
-                  ? "अपने प्रखंड की उपस्थिति, एक नज़र में।"
-                  : view === "punch"
-                    ? "लोकेशन सत्यापित करें, कैमरे से फोटो लें और उपस्थिति दर्ज करें।"
-                    : "अररिया प्रखंड · पंचायती राज विभाग"}
+                आज उपस्थिति दर्ज नहीं की जा सकती। / Attendance cannot be
+                recorded today.
               </p>
             </div>
-            <div className="heading-actions">
-              {["overview", "attendance", "reports"].includes(view) && (
-                <>
-                  <label className="date-control">
-                    <Icon name="calendar" size={17} />
+          ) : record ? (
+            <>
+              <div className="sp-record-title">
+                <h2>आज की सहेजी गई जानकारी</h2>
+                <span className="sp-badge">{phaseLabel(record)}</span>
+              </div>
+              <RecordDetails row={{ ...record, profiles: profile }} />
+              {phase(record) === "draft" ? (
+                <div className="sp-finish">
+                  <p>
+                    आपका इन टाइम सहेजा गया है और प्रशासक को दिखाई देता है।
+                    कार्यस्थल छोड़ते समय नीचे दबाएँ।
+                  </p>
+                  <button
+                    className="sp-button sp-primary"
+                    disabled={busy}
+                    onClick={() => save(undefined, true)}
+                  >
+                    {busy
+                      ? "सहेजा जा रहा है…"
+                      : "आउट टाइम सहेजें / Save out time & finish"}
+                  </button>
+                </div>
+              ) : (
+                <p className="sp-alert sp-success">
+                  आज की उपस्थिति पूरी हो गई है।
+                </p>
+              )}
+            </>
+          ) : !assignments.length ? (
+            <p className="sp-alert sp-error">
+              आपके विभाग, पंचायत और पद का आवंटन उपलब्ध नहीं है। कार्यालय से
+              संपर्क करें।
+            </p>
+          ) : (
+            <form onSubmit={(event) => save(event)}>
+              <fieldset className="sp-form-controls" disabled={busy}>
+                <div className="sp-grid">
+                  <SelectField
+                    label="विभाग / Department"
+                    value={department}
+                    required
+                    options={departments}
+                    onChange={(value) => {
+                      setDepartment(value);
+                      setPanchayat("");
+                      setPosition("");
+                    }}
+                  />
+                  <SelectField
+                    label="पंचायत / Panchayat"
+                    value={panchayat}
+                    required
+                    options={panchayats}
+                    onChange={(value) => {
+                      setPanchayat(value);
+                      setPosition("");
+                    }}
+                  />
+                  <SelectField
+                    label="पद / Position"
+                    value={position}
+                    required
+                    options={positions}
+                    onChange={setPosition}
+                  />
+                  <label className="sp-field">
+                    कार्य स्थिति / Work status
+                    <select
+                      value={status}
+                      onChange={(e) => {
+                        setStatus(e.target.value);
+                        setWorkplacePhoto(null);
+                        setLeave(null);
+                      }}
+                    >
+                      {Object.entries(statusLabels).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {status === "deputation" && (
+                    <label className="sp-field">
+                      प्रतिनियुक्ति कार्यस्थल का नाम / Workplace name
+                      <input
+                        required
+                        maxLength={200}
+                        value={deputation}
+                        onChange={(e) => setDeputation(e.target.value)}
+                      />
+                    </label>
+                  )}
+                  {(status === "present" || status === "deputation") && (
+                    <label className="sp-field" key={status}>
+                      कार्यस्थल की फोटो / Workplace photo
+                      <input
+                        type="file"
+                        required
+                        accept="image/jpeg,image/png,.jpg,.jpeg,.png"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (
+                            file &&
+                            (!["image/jpeg", "image/png"].includes(file.type) ||
+                              !file.size ||
+                              file.size >= 5 * 1024 * 1024)
+                          ) {
+                            event.target.value = "";
+                            setWorkplacePhoto(null);
+                            fail(
+                              new Error(
+                                "JPEG/PNG फोटो चुनें, 5 MB से कम। / Choose a JPEG/PNG photo smaller than 5 MB.",
+                              ),
+                            );
+                          } else setWorkplacePhoto(file || null);
+                        }}
+                      />
+                      <small>JPEG / PNG • 5 MB से कम / Smaller than 5 MB</small>
+                      {photoPreview && (
+                        <img
+                          className="sp-workplace-preview"
+                          src={photoPreview}
+                          alt="कार्यस्थल फोटो का पूर्वावलोकन / Workplace photo preview"
+                        />
+                      )}
+                    </label>
+                  )}
+                  {status === "absent" && (
+                    <label className="sp-field">
+                      अनुपस्थिति का कारण / Absence reason
+                      <textarea
+                        required
+                        minLength={3}
+                        maxLength={1000}
+                        rows={3}
+                        value={absenceReason}
+                        onChange={(event) =>
+                          setAbsenceReason(event.target.value)
+                        }
+                      />
+                    </label>
+                  )}
+                  {status === "leave" && (
+                    <>
+                      <label className="sp-field">
+                        अवकाश प्रकार / Leave type
+                        <select
+                          value={leaveType}
+                          onChange={(e) => setLeaveType(e.target.value)}
+                        >
+                          <option value="CL">CL / आकस्मिक अवकाश</option>
+                          <option value="SL">SL / बीमारी अवकाश</option>
+                        </select>
+                      </label>
+                      <label className="sp-field">
+                        CL / SL दस्तावेज़ / Required leave document
+                        <input
+                          type="file"
+                          required
+                          accept="image/jpeg,application/pdf,.jpg,.jpeg,.pdf"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (
+                              file &&
+                              (!["image/jpeg", "application/pdf"].includes(
+                                file.type,
+                              ) ||
+                                !file.size ||
+                                file.size >= 5 * 1024 * 1024)
+                            ) {
+                              e.target.value = "";
+                              setLeave(null);
+                              fail(
+                                new Error(
+                                  "JPG या PDF चुनें, 5 MB से कम। / Choose JPG or PDF smaller than 5 MB.",
+                                ),
+                              );
+                            } else setLeave(file || null);
+                          }}
+                        />
+                        <small>
+                          JPG या PDF • 5 MB से कम / Smaller than 5 MB
+                        </small>
+                      </label>
+                    </>
+                  )}
+                </div>
+                <label className="sp-consent">
+                  <input
+                    type="checkbox"
+                    checked={consent}
+                    onChange={(e) => setConsent(e.target.checked)}
+                    required
+                  />
+                  <span>
+                    मैं उपस्थिति की जानकारी कार्यालय के प्रशासक के साथ साझा करने
+                    की सहमति देता/देती हूँ।
+                  </span>
+                </label>
+                <button className="sp-button sp-primary" disabled={busy}>
+                  {busy
+                    ? "सहेजा जा रहा है…"
+                    : status === "present" || status === "deputation"
+                      ? "इन टाइम और ड्राफ़्ट सहेजें / Save arrival draft"
+                      : "स्थिति सहेजें / Save status"}
+                </button>
+                <p className="sp-note">
+                  समय अपने आप दर्ज होगा।
+                  {status === "present" || status === "deputation"
+                    ? " ड्राफ़्ट तुरंत प्रशासक को दिखाई देगा।"
+                    : " अनुपस्थिति और अवकाश के लिए इन/आउट टाइम नहीं लगेगा।"}
+                </p>
+              </fieldset>
+            </form>
+          )}
+        </section>
+      </>
+    </Localized>
+  );
+}
+
+function Admin({
+  fail,
+  initial,
+  canManage,
+  adminBlock,
+}: {
+  initial?: Bootstrap | null;
+  fail: (err: unknown) => void;
+  canManage: boolean;
+  adminBlock: string;
+}) {
+  const office = useOfficeFeed(initial?.office);
+  const [editor, setEditor] = useState<{
+    person: Profile | null;
+    remove?: boolean;
+  } | null>(null);
+  const [records, setRecords] = useState<RecordRow[]>(initial?.records || []),
+    [staff, setStaff] = useState<Profile[]>(initial?.staff || []);
+  const [date, setDate] = useState(initial?.date || dateToday()),
+    [search, setSearch] = useState("");
+  const [tab, setTab] = useState("attendance"),
+    [loading, setLoading] = useState(!initial),
+    [busy, setBusy] = useState(false);
+  const [filters, setFilters] = useState<Record<string, string>>({
+    department: "",
+    block: "",
+    panchayat: "",
+    position: "",
+    status: "",
+    phase: "",
+  });
+  const [detail, setDetail] = useState<RecordRow | Profile | null>(null);
+  const [file, setFile] = useState<{ url: string; kind: string } | null>(null);
+  const [fileBusy, setFileBusy] = useState(false);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const fileRequest = useRef(0);
+  const requestId = useRef(0),
+    alive = useRef(true);
+  const directoryLoaded = useRef(initial ? Date.now() : 0);
+  const skipInitial = useRef(!!initial);
+  const load = useCallback(
+    async (forceDirectory = false) => {
+      const id = ++requestId.current;
+      setBusy(true);
+      try {
+        const includeDirectory =
+          forceDirectory || Date.now() - directoryLoaded.current > 300000;
+        const data = await api(
+          `/api/admin?date=${encodeURIComponent(date)}${includeDirectory ? "" : "&directory=0"}`,
+        );
+        if (alive.current && id === requestId.current) {
+          setRecords(data.records || []);
+          if (Array.isArray(data.staff)) {
+            setStaff(data.staff);
+            directoryLoaded.current = Date.now();
+          }
+        }
+      } catch (err) {
+        if (alive.current && id === requestId.current) fail(err);
+      } finally {
+        if (alive.current && id === requestId.current) {
+          setLoading(false);
+          setBusy(false);
+        }
+      }
+    },
+    [date, fail],
+  );
+  useEffect(() => {
+    alive.current = true;
+    if (skipInitial.current) skipInitial.current = false;
+    else void load();
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, 30000);
+    return () => {
+      clearInterval(interval);
+      alive.current = false;
+      requestId.current++;
+    };
+  }, [load]);
+  useEffect(() => {
+    fileRequest.current++;
+    setFileBusy(false);
+    if (detail) dialog.current?.showModal();
+    else dialog.current?.close();
+    setFile(null);
+  }, [detail]);
+  const normalized = useMemo(() => {
+    const people = new Map(staff.map((person) => [person.id, person]));
+    return records.map((row) => {
+      const livePerson = row.profiles || people.get(row.staff_id);
+      const person =
+        livePerson && row.staff_name
+          ? { ...livePerson, name: row.staff_name }
+          : livePerson;
+      const a = row.working_places?.find((a) => a.panchayat === row.panchayat);
+      return {
+        ...row,
+        profiles: person,
+        block: row.block || person?.block,
+        department: row.department || a?.department,
+        position: row.position || a?.position,
+      };
+    });
+  }, [records, staff]);
+  const recordsByStaff = useMemo(() => {
+    const index = new Map<string, typeof normalized>();
+    for (const row of normalized)
+      index.set(row.staff_id, [...(index.get(row.staff_id) || []), row]);
+    return index;
+  }, [normalized]);
+  const searchMatches = (person?: Profile) =>
+    !search.trim() ||
+    `${person?.name || ""} ${person?.phone || ""}`
+      .toLocaleLowerCase()
+      .includes(search.trim().toLocaleLowerCase());
+  const visibleRecords = normalized.filter(
+    (row) =>
+      searchMatches(row.profiles) &&
+      Object.entries(filters).every(
+        ([key, value]) =>
+          !value ||
+          (key === "phase" ? phase(row) : row[key as keyof RecordRow]) ===
+            value,
+      ),
+  );
+  const visibleStaff = staff.filter(
+    (person) =>
+      searchMatches(person) &&
+      (!filters.block || person.block === filters.block) &&
+      ((!filters.department && !filters.panchayat && !filters.position) ||
+        person.assignments.some(
+          (a) =>
+            (!filters.department || a.department === filters.department) &&
+            (!filters.panchayat || a.panchayat === filters.panchayat) &&
+            (!filters.position || a.position === filters.position),
+        )),
+  );
+  const [page, setPage] = useState(1);
+  const totalRows =
+    tab === "staff" ? visibleStaff.length : visibleRecords.length;
+  const pages = Math.max(1, Math.ceil(totalRows / 25));
+  const activePage = Math.min(page, pages);
+  useEffect(() => {
+    setPage(1);
+  }, [search, filters, tab, date]);
+  const start = (activePage - 1) * 25;
+  const allAssignments = staff.flatMap((person) => person.assignments || []);
+  async function openFile(row: RecordRow, kind: string) {
+    const fileId = ++fileRequest.current;
+    setFileBusy(true);
+    setFile(null);
+    try {
+      const data = await api(
+        `/api/files?id=${encodeURIComponent(row.id)}&kind=${kind}`,
+      );
+      if (alive.current && fileId === fileRequest.current)
+        setFile({ url: data.url, kind });
+    } catch (err) {
+      fail(err);
+    } finally {
+      if (alive.current && fileId === fileRequest.current) setFileBusy(false);
+    }
+  }
+  function editStaff(person: Profile | null, remove = false) {
+    setDetail(null);
+    setEditor({ person, remove });
+  }
+  function filter(key: string, value: string) {
+    setFilters((previous) => ({ ...previous, [key]: value }));
+  }
+  return (
+    <Localized>
+      <>
+        <div className="sp-page-title">
+          <div>
+            <span className="sp-eyebrow">प्रशासक / ADMIN</span>
+            <h1>कर्मी और उपस्थिति</h1>
+            <p className="sp-muted">
+              आने का ड्राफ़्ट और जाने का समय एक ही जगह देखें।
+            </p>
+          </div>
+          <div className="sp-title-actions">
+            {canManage && (
+              <button
+                className="sp-button sp-primary"
+                onClick={() => editStaff(null)}
+              >
+                कर्मी जोड़ें / Add staff
+              </button>
+            )}
+            <button
+              className="sp-button sp-secondary"
+              disabled={busy}
+              onClick={() => void load(true)}
+            >
+              {busy ? "लोड हो रहा है…" : "रीफ़्रेश / Refresh"}
+            </button>
+          </div>
+        </div>
+        <section className="sp-card">
+          <div className="sp-tabs" role="tablist" aria-label="Dashboard view">
+            <button
+              role="tab"
+              aria-selected={tab === "attendance"}
+              onClick={() => setTab("attendance")}
+            >
+              उपस्थिति / Attendance
+            </button>
+            <button
+              role="tab"
+              aria-selected={tab === "staff"}
+              onClick={() => setTab("staff")}
+            >
+              सभी कर्मी / Staff directory
+            </button>
+            <button
+              role="tab"
+              aria-selected={tab === "office"}
+              onClick={() => setTab("office")}
+            >
+              अवकाश और सूचनाएँ / Holidays & Notices
+            </button>
+          </div>
+          {tab === "office" ? (
+            <OfficeSettings
+              feed={office.feed}
+              error={office.error}
+              reload={office.reload}
+              canManage={canManage}
+            />
+          ) : (
+            <>
+              {office.feed && officeClosure(date, office.feed.holidays) && (
+                <p className="sp-alert sp-holiday">
+                  अवकाश / Holiday ({officeClosure(date, office.feed.holidays)})
+                </p>
+              )}
+              <div className="sp-filters">
+                <label className="sp-field sp-search">
+                  कर्मी खोजें / Search staff
+                  <input
+                    type="search"
+                    placeholder="नाम या मोबाइल नंबर / Name or mobile"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </label>
+                {tab === "attendance" && (
+                  <label className="sp-field">
+                    तारीख / Date
                     <input
                       type="date"
                       value={date}
-                      max={today()}
-                      onChange={(e) => setDate(e.target.value)}
-                      aria-label="उपस्थिति की तिथि"
+                      required
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          setDate(e.target.value);
+                          setRecords([]);
+                          setLoading(true);
+                        }
+                      }}
                     />
                   </label>
-                  <button
-                    className="button primary"
-                    onClick={() => csv(filtered, panchayat)}
-                  >
-                    <Icon name="download" size={17} />
-                    निर्यात <span>Export</span>
-                  </button>
-                </>
-              )}
-              {["overview", "attendance"].includes(view) && canManage && (
-                <button
-                  className="button secondary"
-                  onClick={() => setModal("attendance:new")}
-                >
-                  <Icon name="calendar" size={17} />
-                  उपस्थिति दर्ज करें
-                </button>
-              )}
-              {view === "staff" && canManage && (
-                <button
-                  className="button primary"
-                  onClick={() => setModal("staff:new")}
-                >
-                  <Icon name="users" size={17} />
-                  नया कर्मी जोड़ें
-                </button>
-              )}
-            </div>
-          </div>
-          {view === "overview" && (
-            <>
-              <div className="stats-grid">
-                {[
-                  [
-                    "उपस्थित",
-                    "Present",
-                    present,
-                    "users",
-                    "green",
-                    preview ? "कुल कर्मियों का 76.9%" : "आज पंच इन किए",
-                  ],
-                  [
-                    "अनुपस्थित",
-                    "Absent",
-                    preview
-                      ? 38
-                      : rows.filter((r) => r.status === "absent").length,
-                    "calendar",
-                    "red",
-                    "अभी तक उपस्थिति दर्ज नहीं",
-                  ],
-                  [
-                    "अवकाश पर",
-                    "On leave",
-                    onLeave,
-                    "file",
-                    "amber",
-                    "CL / SL प्रमाण सहित",
-                  ],
-                  [
-                    "पंच आउट बाकी",
-                    "Awaiting punch out",
-                    preview
-                      ? 12
-                      : rows.filter((r) => r.time_in && !r.time_out).length,
-                    "clock",
-                    "blue",
-                    "पंच इन दर्ज हो चुका है",
-                  ],
-                ].map(([hi, en, n, ic, color, hint]) => (
-                  <button
-                    className={"stat-card " + color}
-                    key={String(en)}
-                    onClick={() => {
-                      change("attendance");
-                      setStatus(
-                        en === "Present"
-                          ? "present"
-                          : en === "Absent"
-                            ? "absent"
-                            : en === "On leave"
-                              ? "leave"
-                              : "all",
-                      );
-                    }}
-                  >
-                    <div className="stat-top">
-                      <span>
-                        {hi}
-                        <small>{en}</small>
-                      </span>
-                      <span className="stat-icon">
-                        <Icon name={String(ic)} />
-                      </span>
-                    </div>
-                    <div className="stat-number">
-                      {n}
-                      <span>
-                        {en === "Present"
-                          ? "/ " + (preview ? "242" : rows.length)
-                          : ""}
-                      </span>
-                    </div>
-                    <div className="stat-hint">
-                      {en === "Present" && <i className="tiny-dot" />}
-                      {hint}
-                    </div>
-                  </button>
-                ))}
-              </div>
-              <div className="summary-grid">
-                <section className="panel panchayat-summary">
-                  <div className="panel-heading">
-                    <div>
-                      <h2>पंचायतवार स्थिति</h2>
-                      <p>Attendance across panchayats</p>
-                    </div>
-                    <button
-                      className="text-button"
-                      onClick={() => change("panchayats")}
-                    >
-                      सभी देखें <Icon name="chevron" size={14} />
-                    </button>
-                  </div>
-                  <div className="chart-legend">
-                    <span>
-                      <i className="green-dot" />
-                      उपस्थित
-                    </span>
-                    <span>
-                      <i className="amber-dot" />
-                      अवकाश
-                    </span>
-                    <span>
-                      <i className="gray-dot" />
-                      अनुपस्थित
-                    </span>
-                  </div>
-                  <div className="bar-chart">
-                    {panchayats.slice(0, 5).map((p, i) => (
-                      <button
-                        className="bar-row"
-                        key={p}
-                        onClick={() => {
-                          change("attendance");
-                          setPanchayat(p);
-                        }}
+                )}
+                <SelectField
+                  label="विभाग / Department"
+                  value={filters.department}
+                  onChange={(v) => filter("department", v)}
+                  options={unique([
+                    ...allAssignments.map((a) => a.department),
+                    ...normalized.map((r) => r.department),
+                  ])}
+                />
+                <SelectField
+                  label="प्रखंड / Block"
+                  value={filters.block}
+                  onChange={(v) => filter("block", v)}
+                  options={unique(staff.map((p) => p.block))}
+                />
+                <SelectField
+                  label="पंचायत / Panchayat"
+                  value={filters.panchayat}
+                  onChange={(v) => filter("panchayat", v)}
+                  options={unique([
+                    ...allAssignments.map((a) => a.panchayat),
+                    ...normalized.map((r) => r.panchayat),
+                  ])}
+                />
+                <SelectField
+                  label="पद / Position"
+                  value={filters.position}
+                  onChange={(v) => filter("position", v)}
+                  options={unique([
+                    ...allAssignments.map((a) => a.position),
+                    ...normalized.map((r) => r.position),
+                  ])}
+                />
+                {tab === "attendance" && (
+                  <>
+                    <label className="sp-field">
+                      स्थिति / Status
+                      <select
+                        value={filters.status}
+                        onChange={(e) => filter("status", e.target.value)}
                       >
-                        <span>{p}</span>
-                        <div className="bar-track">
-                          <i
-                            className="bar-present"
-                            style={{
-                              width: preview
-                                ? `${[83, 72, 90, 64, 78][i]}%`
-                                : `${placeStats(p).total ? (placeStats(p).present / placeStats(p).total) * 100 : 0}%`,
-                            }}
-                          />
-                          <i
-                            className="bar-leave"
-                            style={{
-                              width: preview
-                                ? "7%"
-                                : `${placeStats(p).total ? (placeStats(p).leave / placeStats(p).total) * 100 : 0}%`,
-                            }}
-                          />
-                        </div>
-                        <b>
-                          {preview
-                            ? [15, 13, 18, 11, 14][i]
-                            : placeStats(p).present}
-                          <small>
-                            {" "}
-                            /{" "}
-                            {preview
-                              ? [18, 18, 20, 17, 18][i]
-                              : placeStats(p).total}
-                          </small>
-                        </b>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="chart-foot">
-                    <Icon name="pin" size={14} />
-                    <span>30 ग्राम पंचायतें + प्रखंड कार्यालय</span>
-                  </div>
-                </section>
-                <section className="panel attention-panel">
-                  <div className="panel-heading">
-                    <div>
-                      <h2>ध्यान देने योग्य</h2>
-                      <p>Items that need your attention</p>
-                    </div>
-                    <span className="attention-count">
-                      {preview ? "03" : "02"}
-                    </span>
-                  </div>
-                  <button
-                    className="attention-item"
-                    onClick={() => {
-                      change("attendance");
-                      setStatus("flagged");
-                    }}
-                  >
-                    <span className="attention-icon amber">
-                      <Icon name="pin" size={18} />
-                    </span>
-                    <div>
-                      <strong>लोकेशन की समीक्षा</strong>
-                      <p>
-                        {preview
-                          ? "2 रिकॉर्ड सत्यापन के लिए चिह्नित"
-                          : "सत्यापन किए गए रिकॉर्ड यहाँ दिखेंगे"}
-                      </p>
-                    </div>
-                    <Icon name="chevron" size={15} />
-                  </button>
-                  <button
-                    className="attention-item"
-                    onClick={() => change("staff")}
-                  >
-                    <span className="attention-icon red">
-                      <Icon name="users" size={18} />
-                    </span>
-                    <div>
-                      <strong>कर्मी विवरण सुधारें</strong>
-                      <p>2 पहचान में नाम का अंतर · Needs fix</p>
-                    </div>
-                    <Icon name="chevron" size={15} />
-                  </button>
-                  <button
-                    className="attention-item"
-                    onClick={() => change("sheets")}
-                  >
-                    <span className="attention-icon blue">
-                      <Icon name="sheet" size={18} />
-                    </span>
-                    <div>
-                      <strong>गूगल शीट जोड़ें</strong>
-                      <p>समन्वयन सेटअप अभी बाकी है</p>
-                    </div>
-                    <Icon name="chevron" size={15} />
-                  </button>
-                  <div className="attention-foot">
-                    <Icon name="shield" size={14} />
-                    <span>हर सुधार का ऑडिट लॉग रखा जाता है</span>
-                  </div>
-                </section>
+                        <option value="">सभी / All</option>
+                        {Object.entries(statusLabels).map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="sp-field">
+                      ड्राफ़्ट / पूर्ण
+                      <select
+                        value={filters.phase}
+                        onChange={(e) => filter("phase", e.target.value)}
+                      >
+                        <option value="">सभी / All</option>
+                        <option value="draft">कार्यस्थल पर / Draft</option>
+                        <option value="completed">सहेजा गया / Saved</option>
+                      </select>
+                    </label>
+                  </>
+                )}
               </div>
-            </>
-          )}
-          {["overview", "attendance"].includes(view) && (
-            <section className="panel attendance-panel">
-              <div className="panel-heading">
-                <div>
-                  <h2>
-                    {view === "overview"
-                      ? "आज का उपस्थिति रजिस्टर"
-                      : "उपस्थिति विवरण"}{" "}
-                    <span className="count-pill">{filtered.length}</span>
-                  </h2>
-                  <p>
-                    {preview
-                      ? "Illustrative records · no personal staff data"
-                      : "Verified attendance records"}
-                  </p>
-                </div>
+              <div className="sp-list-caption">
+                <p>
+                  {tab === "attendance"
+                    ? `${visibleRecords.length} उपस्थिति रिकॉर्ड`
+                    : `${visibleStaff.length} कर्मी`}
+                </p>
                 <button
-                  className="text-button"
-                  onClick={() => {
-                    change("attendance");
-                    setStatus("flagged");
-                  }}
-                >
-                  <Icon name="alert" size={15} />
-                  चिह्नित रिकॉर्ड
-                </button>
-              </div>
-              <div className="filters">
-                <label className="search">
-                  <Icon name="search" size={18} />
-                  <input
-                    placeholder="कर्मी का नाम या मोबाइल खोजें…"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    aria-label="कर्मी खोजें"
-                  />
-                </label>
-                <select
-                  value={panchayat}
-                  onChange={(e) => setPanchayat(e.target.value)}
-                  aria-label="पंचायत फ़िल्टर"
-                >
-                  <option value="all">सभी पंचायतें</option>
-                  {panchayats.map((p) => (
-                    <option key={p}>{p}</option>
-                  ))}
-                </select>
-                <select
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value)}
-                  aria-label="स्थिति फ़िल्टर"
-                >
-                  <option value="all">सभी स्थितियाँ</option>
-                  <option value="present">उपस्थित</option>
-                  <option value="absent">अनुपस्थित</option>
-                  <option value="leave">अवकाश</option>
-                  <option value="flagged">चिह्नित</option>
-                </select>
-                <button
-                  className="icon-button filter-reset"
+                  className="sp-text-button"
                   onClick={() => {
                     setSearch("");
-                    setPanchayat("all");
-                    setStatus("all");
+                    setFilters({
+                      department: "",
+                      block: "",
+                      panchayat: "",
+                      position: "",
+                      status: "",
+                      phase: "",
+                    });
                   }}
-                  title="फ़िल्टर साफ़ करें"
                 >
-                  <Icon name="refresh" size={17} />
+                  फ़िल्टर हटाएँ / Clear filters
                 </button>
               </div>
-              <div className="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>
-                        कर्मी का नाम <small>STAFF NAME</small>
-                      </th>
-                      <th>
-                        पंचायत / पद <small>PANCHAYAT / POSITION</small>
-                      </th>
-                      <th>
-                        पंच इन <small>TIME IN</small>
-                      </th>
-                      <th>
-                        पंच आउट <small>TIME OUT</small>
-                      </th>
-                      <th>
-                        लोकेशन <small>LOCATION</small>
-                      </th>
-                      <th>
-                        स्थिति <small>STATUS</small>
-                      </th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filtered.slice((page - 1) * 6, page * 6).map((r, i) => (
-                      <tr key={r.id}>
-                        <td>
-                          <div className="staff-name">
-                            <div className={"small-avatar av-" + (i % 3)}>
-                              क{r.name.match(/\d+/)?.[0] || ""}
-                            </div>
-                            <div>
-                              <strong>{r.name}</strong>
-                              <small>{r.department}</small>
-                            </div>
-                          </div>
-                        </td>
-                        <td>
-                          <strong>
-                            {panchayat === "all" ? r.panchayat : panchayat}
-                          </strong>
-                          {r.working_places.length > 1 && (
-                            <small className="shared-place-label">
-                              सभी नियुक्त स्थल:{" "}
-                              {r.working_places.map((place, i) => (
-                                <span key={place}>
-                                  {i > 0 ? " · " : ""}
-                                  {place}
-                                </span>
-                              ))}
-                            </small>
-                          )}
-                          <small>{r.position}</small>
-                        </td>
-                        <td className="time-cell">{r.time_in || "—"}</td>
-                        <td className="time-cell">{r.time_out || "—"}</td>
-                        <td>
-                          {r.status === "present" ? (
-                            <span
-                              className={
-                                "location-badge " + (r.flag ? "warning" : "")
-                              }
-                            >
-                              <Icon
-                                name={
-                                  r.origin === "admin"
-                                    ? "file"
-                                    : r.flag
-                                      ? "alert"
-                                      : "pin"
-                                }
-                                size={13}
-                              />
-                              {r.origin === "admin"
-                                ? "एडमिन द्वारा दर्ज"
-                                : r.flag
-                                  ? "समीक्षा बाकी"
-                                  : `± ${r.accuracy} m`}
-                            </span>
-                          ) : (
-                            <span className="muted">—</span>
-                          )}
-                        </td>
-                        <td>
-                          <span className={"status-badge " + r.status}>
-                            <i />
-                            {r.status === "present"
-                              ? "उपस्थित"
-                              : r.status === "leave"
-                                ? "अवकाश"
-                                : "अनुपस्थित"}
-                          </span>
-                        </td>
-                        <td>
-                          <button
-                            className="icon-button"
-                            aria-label={r.name + " विवरण"}
-                            onClick={() => setModal("record:" + r.id)}
-                          >
-                            <Icon name="chevron" size={16} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {!filtered.length && (
-                  <div className="empty">
-                    <Icon name="search" size={28} />
-                    <h3>कोई रिकॉर्ड नहीं मिला</h3>
-                    <p>फ़िल्टर बदलें या दूसरी तिथि चुनें।</p>
+              {loading ? (
+                <p role="status" className="sp-empty">
+                  जानकारी लोड हो रही है…
+                </p>
+              ) : tab === "attendance" ? (
+                visibleRecords.length ? (
+                  <div className="sp-table-scroll">
+                    <table className="sp-table sp-attendance-table">
+                      <thead>
+                        <tr>
+                          <th scope="col">कर्मी / Staff</th>
+                          <th scope="col">पंचायत / Panchayat</th>
+                          <th scope="col">स्थिति / Status</th>
+                          <th scope="col">इन / In</th>
+                          <th scope="col">आउट / Out</th>
+                          <th scope="col">विवरण / Details</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visibleRecords.slice(start, start + 25).map((row) => (
+                          <tr key={row.id}>
+                            <td>
+                              <span
+                                className="sp-cell-label"
+                                aria-hidden="true"
+                              >
+                                कर्मी / Staff
+                              </span>
+                              <div className="sp-cell-value">
+                                <strong translate="no">
+                                  {row.profiles?.name || "कर्मी"}
+                                </strong>
+                                <small>
+                                  {row.profiles?.phone || ""} •{" "}
+                                  {row.position || ""}
+                                </small>
+                              </div>
+                            </td>
+                            <td>
+                              <span
+                                className="sp-cell-label"
+                                aria-hidden="true"
+                              >
+                                पंचायत / Panchayat
+                              </span>
+                              <div className="sp-cell-value">
+                                {row.panchayat}
+                                <small>
+                                  {row.department || ""} • {row.block || ""}
+                                </small>
+                              </div>
+                            </td>
+                            <td>
+                              <span
+                                className="sp-cell-label"
+                                aria-hidden="true"
+                              >
+                                स्थिति / Status
+                              </span>
+                              <div className="sp-cell-value">
+                                {statusLabels[row.status] || row.status}
+                                <small
+                                  className={
+                                    phase(row) === "draft" ? "sp-draft" : ""
+                                  }
+                                >
+                                  {phaseLabel(row)}
+                                </small>
+                              </div>
+                            </td>
+                            <td>
+                              <span
+                                className="sp-cell-label"
+                                aria-hidden="true"
+                              >
+                                इन / In
+                              </span>
+                              <div className="sp-cell-value">
+                                {time(row.time_in)}
+                              </div>
+                            </td>
+                            <td>
+                              <span
+                                className="sp-cell-label"
+                                aria-hidden="true"
+                              >
+                                आउट / Out
+                              </span>
+                              <div className="sp-cell-value">
+                                {time(row.time_out)}
+                              </div>
+                            </td>
+                            <td>
+                              <span
+                                className="sp-cell-label"
+                                aria-hidden="true"
+                              >
+                                विवरण / Details
+                              </span>
+                              <div className="sp-cell-value">
+                                <div className="sp-actions">
+                                  <button
+                                    className="sp-button sp-secondary"
+                                    onClick={() => setDetail(row)}
+                                    aria-label={`${row.profiles?.name || "कर्मी"} का विवरण`}
+                                  >
+                                    देखें / View
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                )}
-              </div>
-              <div className="table-footer">
-                <span>
-                  {filtered.length
-                    ? `${(page - 1) * 6 + 1}–${Math.min(page * 6, filtered.length)}`
-                    : "0"}{" "}
-                  / {filtered.length} रिकॉर्ड
-                </span>
-                <div>
+                ) : (
+                  <p className="sp-empty">
+                    इस तारीख और फ़िल्टर के लिए उपस्थिति नहीं है। सभी कर्मी देखने
+                    के लिए Staff directory खोलें।
+                  </p>
+                )
+              ) : visibleStaff.length ? (
+                <div className="sp-table-scroll">
+                  <table className="sp-table sp-directory-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">कर्मी / Staff</th>
+                        <th scope="col">प्रखंड / Block</th>
+                        <th scope="col">विभाग, पंचायत और पद / Assignment</th>
+                        <th scope="col">उपस्थिति / Attendance ({date})</th>
+                        <th scope="col">विवरण / Details</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleStaff.slice(start, start + 25).map((person) => (
+                        <tr key={person.id}>
+                          <td>
+                            <span className="sp-cell-label" aria-hidden="true">
+                              कर्मी / Staff
+                            </span>
+                            <div className="sp-cell-value">
+                              <strong translate="no">{person.name}</strong>
+                              <small>{person.phone}</small>
+                              {!person.active && (
+                                <small>निष्क्रिय / Inactive</small>
+                              )}
+                            </div>
+                          </td>
+                          <td>
+                            <span className="sp-cell-label" aria-hidden="true">
+                              प्रखंड / Block
+                            </span>
+                            <div className="sp-cell-value">{person.block}</div>
+                          </td>
+                          <td>
+                            <span className="sp-cell-label" aria-hidden="true">
+                              विभाग, पंचायत और पद / Assignment
+                            </span>
+                            <div className="sp-cell-value">
+                              {person.assignments.map((a, i) => (
+                                <small key={i}>
+                                  {a.department} • {a.panchayat} • {a.position}
+                                </small>
+                              ))}
+                            </div>
+                          </td>
+                          <td>
+                            <span className="sp-cell-label" aria-hidden="true">
+                              उपस्थिति / Attendance
+                            </span>
+                            <div className="sp-cell-value">
+                              {recordsByStaff.has(person.id)
+                                ? recordsByStaff.get(person.id)!.map((row) => (
+                                    <small key={row.id}>
+                                      {statusLabels[row.status] || row.status} •{" "}
+                                      {phaseLabel(row)}
+                                    </small>
+                                  ))
+                                : "दर्ज नहीं / Not recorded"}
+                            </div>
+                          </td>
+                          <td>
+                            <span className="sp-cell-label" aria-hidden="true">
+                              विवरण / Details
+                            </span>
+                            <div className="sp-cell-value">
+                              <div className="sp-actions">
+                                <button
+                                  className="sp-button sp-secondary"
+                                  onClick={() => setDetail(person)}
+                                  aria-label={`${person.name} का विवरण`}
+                                >
+                                  देखें / View
+                                </button>
+                                {canManage && (
+                                  <>
+                                    <button
+                                      className="sp-button sp-secondary"
+                                      onClick={() => editStaff(person)}
+                                    >
+                                      बदलें / Edit
+                                    </button>
+                                    <button
+                                      className="sp-button sp-secondary"
+                                      onClick={() => editStaff(person, true)}
+                                    >
+                                      हटाएँ / Remove
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="sp-empty">
+                  कोई कर्मी नहीं मिला। खोज या फ़िल्टर बदलें।
+                </p>
+              )}
+              {pages > 1 && (
+                <nav className="sp-pagination" aria-label="Staff list pages">
                   <button
-                    className="pagination"
-                    disabled={page === 1}
-                    onClick={() => setPage(page - 1)}
+                    type="button"
+                    className="sp-button sp-secondary"
+                    disabled={activePage <= 1}
+                    onClick={() => setPage(activePage - 1)}
                   >
-                    पिछला
+                    पिछला / Previous
                   </button>
                   <span>
-                    {page} / {Math.max(1, Math.ceil(filtered.length / 6))}
+                    {start + 1}–{Math.min(start + 25, totalRows)} / {totalRows}
                   </span>
                   <button
-                    className="pagination"
-                    disabled={page * 6 >= filtered.length}
-                    onClick={() => setPage(page + 1)}
+                    type="button"
+                    className="sp-button sp-secondary"
+                    disabled={activePage >= pages}
+                    onClick={() => setPage(activePage + 1)}
                   >
-                    अगला <Icon name="chevron" size={13} />
+                    अगला / Next
                   </button>
-                </div>
-              </div>
-            </section>
-          )}
-          {view === "staff" && (
-            <section className="panel master-directory">
-              <div className="panel-heading">
-                <div>
-                  <h2>मास्टर डेटा — कर्मी</h2>
-                  <p>नियुक्त कार्यस्थल, पद और संपर्क विवरण</p>
-                </div>
-                <span className="count-pill">{masterStaff.length}</span>
-              </div>
-              <div className="info-box">
-                <Icon name="users" />
-                <div>
-                  <strong>एक कर्मी, एक दैनिक रिकॉर्ड</strong>
-                  <p>
-                    कई कार्यस्थल चुनें। किसी एक स्थल पर दर्ज उपस्थिति सभी
-                    नियुक्त पंचायतों में दिखाई जाएगी।
-                  </p>
-                </div>
-              </div>
-              <div className="master-list">
-                {masterStaff.map((p) => (
-                  <div className="master-row" key={p.id}>
-                    <div className="small-avatar">
-                      <Icon name="users" size={17} />
-                    </div>
-                    <div className="master-person">
-                      <strong>{p.name}</strong>
-                      <small>
-                        {p.phone} · {p.assignments[0]?.position}
-                      </small>
-                      <div className="workplace-tags">
-                        {p.assignments.map((a) => (
-                          <span key={a.panchayat}>{a.panchayat}</span>
-                        ))}
-                      </div>
-                    </div>
-                    <span
-                      className={
-                        "status-badge " + (p.active ? "present" : "absent")
-                      }
-                    >
-                      {p.active ? "सक्रिय" : "निष्क्रिय"}
-                    </span>
-                    {canManage && (
-                      <div className="master-row-actions">
-                        <button
-                          className="button secondary"
-                          onClick={() => setModal("staff:" + p.id)}
-                        >
-                          सुधारें
-                        </button>
-                        <button
-                          className="button danger"
-                          onClick={() => setModal("delete-staff:" + p.id)}
-                        >
-                          हटाएँ
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-              {!masterStaff.length && (
-                <div className="empty">
-                  <h3>अभी कोई कर्मी दर्ज नहीं है</h3>
-                  <p>नया कर्मी जोड़कर उसकी नियुक्त पंचायतें चुनें।</p>
-                </div>
+                </nav>
               )}
-              <div className="directory-footer">
-                <button
-                  className="text-button"
-                  onClick={() => setModal("import")}
-                >
-                  <Icon name="upload" size={16} />
-                  आयात निर्देश देखें
-                </button>
-              </div>
-            </section>
-          )}
-          {view === "panchayats" && (
-            <>
-              <div className="info-box">
-                <Icon name="pin" />
-                <div>
-                  <strong>जियोफेंस सेटअप बाकी है</strong>
-                  <p>
-                    पंचायतों के सत्यापित निर्देशांक मिलने तक वास्तविक पंच बंद
-                    रहेंगे। प्रत्येक कार्यस्थल का प्रारंभिक दायरा 300 मीटर है।
-                  </p>
-                </div>
-              </div>
-              <div className="panchayat-grid">
-                {panchayats.map((p, i) => (
-                  <section className="panel panchayat-card" key={p}>
-                    <span className="panchayat-number">
-                      {String(i + 1).padStart(2, "0")}
-                    </span>
-                    <h3>{p}</h3>
-                    <p>
-                      {i === 30
-                        ? "Block Panchayati Raj Office"
-                        : "Gram Panchayat · Araria"}
-                    </p>
-                    <div>
-                      <span>
-                        <i
-                          className={
-                            fences[p]?.latitude != null
-                              ? "green-dot"
-                              : "amber-dot"
-                          }
-                        />
-                        {fences[p]?.latitude != null
-                          ? "जियोफेंस तैयार"
-                          : "निर्देशांक बाकी"}
-                      </span>
-                      <b>{fences[p]?.radius || 300} m</b>
-                    </div>
-                    <button
-                      className="text-button"
-                      onClick={() => setModal("geofence:" + p)}
-                    >
-                      जियोफेंस देखें <Icon name="arrow" size={14} />
-                    </button>
-                  </section>
-                ))}
-              </div>
+              <p className="sp-note">जानकारी हर 30 सेकंड में अपडेट होती है।</p>
             </>
           )}
-          {view === "reports" && (
-            <div className="report-grid">
-              {[
-                ["दैनिक उपस्थिति", "Daily attendance", "calendar"],
-                ["पंचायतवार रिपोर्ट", "Panchayat breakdown", "pin"],
-                ["पंच इन बाकी", "Missing punch report", "clock"],
-                ["संदिग्ध रिकॉर्ड", "Flagged attendance", "alert"],
-              ].map(([hi, en, ic]) => (
-                <section className="panel report-card" key={en}>
-                  <span className="report-icon">
-                    <Icon name={ic} size={26} />
-                  </span>
-                  <h2>{hi}</h2>
-                  <p>{en}</p>
-                  <span className="muted">चुनी गई तिथि: {date}</span>
-                  <button
-                    className="button secondary"
-                    onClick={() =>
-                      csv(
-                        en === "Flagged attendance"
-                          ? rows.filter((r) => !!r.flag)
-                          : en === "Missing punch report"
-                            ? rows.filter(
-                                (r) => !r.time_in && r.status !== "leave",
-                              )
-                            : rows,
-                      )
-                    }
-                  >
-                    <Icon name="download" size={16} />
-                    CSV डाउनलोड
-                  </button>
-                </section>
-              ))}
-              <section className="panel section-content full-width">
-                <h2>PDF के रूप में सहेजें</h2>
-                <p>
-                  उपस्थिति रजिस्टर खोलें और ब्राउज़र में प्रिंट → PDF चुनें।
-                </p>
-                <button
-                  className="button secondary"
-                  onClick={() => {
-                    change("attendance");
-                    setTimeout(() => window.print(), 100);
-                  }}
-                >
-                  प्रिंट / PDF
-                </button>
-              </section>
-            </div>
-          )}
-          {view === "sheets" && (
-            <section className="panel setup-panel">
-              <div className="setup-icon">
-                <Icon name="sheet" size={36} />
-              </div>
-              <span className="status-badge leave">
-                <i />
-                सेटअप बाकी
-              </span>
-              <h2>आपकी रिपोर्ट, अपने आप अपडेट।</h2>
-              <p>
-                Google Sheet जोड़ने पर दैनिक उपस्थिति की सुरक्षित कॉपी अपने आप
-                समन्वयित होगी। मूल रिकॉर्ड डेटाबेस में रहेंगे।
-              </p>
-              <div className="sheet-features">
-                <span>
-                  <Icon name="check" size={17} />
-                  हर महीने अलग टैब
-                </span>
-                <span>
-                  <Icon name="check" size={17} />
-                  पंच आउट पर वही पंक्ति अपडेट
-                </span>
-                <span>
-                  <Icon name="check" size={17} />
-                  विफलता पर दोबारा प्रयास
-                </span>
-              </div>
-              <button
-                className="button primary"
-                onClick={() => setModal("sheets")}
-              >
-                सेटअप निर्देश <Icon name="arrow" size={16} />
-              </button>
-              <div className="setup-foot">
-                अंतिम समन्वयन: अभी तक नहीं · Database is the source of truth
-              </div>
-            </section>
-          )}
-          {view === "settings" && (
-            <section className="panel section-content">
-              <h2>पोर्टल की जानकारी</h2>
-              <div className="settings-list">
-                {[
-                  ["समय क्षेत्र", "Asia/Kolkata · समय सर्वर से"],
-                  ["स्थान सत्यापन", "ताज़ा GPS · अधिकतम सटीकता 50 मीटर"],
-                  ["जियोफेंस", "प्रत्येक पंचायत का दायरा 300 मीटर"],
-                  ["फोटो", "लाइव कैमरा · समय और GPS वॉटरमार्क"],
-                  ["एडमिन संपर्क", "sfc.aditya@gmail.com"],
-                  ["स्टोरेज", "निजी · सीमित समय के हस्ताक्षरित लिंक"],
-                  ["गूगल शीट", "सेटअप बाकी"],
-                ].map(([a, b]) => (
-                  <div key={a}>
-                    <strong>{a}</strong>
-                    <span>{b}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="button-row">
-                <button
-                  className="button secondary"
-                  onClick={() => setModal("privacy")}
-                >
-                  <Icon name="shield" size={17} />
-                  गोपनीयता सूचना
-                </button>
-                <button
-                  className="button secondary"
-                  onClick={() => setModal("help")}
-                >
-                  <Icon name="help" size={17} />
-                  कर्मी सहायता
-                </button>
-              </div>
-            </section>
-          )}
-          {view === "punch" && (
-            <section className="panel punch-panel">
-              <div className="panel-heading">
-                <div>
-                  <h2>
-                    दैनिक उपस्थिति <small>Daily attendance</small>
-                  </h2>
-                  <p>
-                    {preview ? "उदाहरण कर्मी · पूर्वावलोकन" : profile?.name} ·{" "}
-                    {today()}
-                  </p>
-                </div>
-                <span className="status-badge present">
-                  <Icon name="lock" size={13} />
-                  सर्वर समय
-                </span>
-              </div>
-              {!preview && !consent && (
-                <div className="info-box">
-                  <Icon name="shield" />
-                  <div>
-                    <strong>गोपनीयता एवं सहमति</strong>
-                    <p>
-                      उपस्थिति सत्यापन के लिए आपकी लाइव फोटो, स्थान, समय एवं
-                      डिवाइस जानकारी सुरक्षित रखी जाएगी। केवल अधिकृत अधिकारी इसे
-                      देख सकते हैं।
-                    </p>
-                    <label className="checkbox">
-                      <input
-                        type="checkbox"
-                        checked={consent}
-                        onChange={(e) => setConsent(e.target.checked)}
-                      />
-                      मैंने सूचना पढ़ी और स्वीकार की है।
-                    </label>
-                  </div>
-                </div>
-              )}
-              <div className="readonly-profile">
-                <div>
-                  <small>नाम / Name</small>
-                  <strong>{preview ? "उदाहरण कर्मी" : profile?.name}</strong>
-                </div>
-                <div>
-                  <small>पद / Position</small>
-                  <strong>
-                    {preview
-                      ? "पंचायत सचिव"
-                      : profile?.assignments.find(
-                          (a) => a.panchayat === assignment,
-                        )?.position}
-                  </strong>
-                </div>
-                <div>
-                  <small>विभाग / Department</small>
-                  <strong>
-                    {preview
-                      ? "पंचायती राज विभाग"
-                      : profile?.assignments.find(
-                          (a) => a.panchayat === assignment,
-                        )?.department}
-                  </strong>
-                </div>
-              </div>
-              <label className="field-label">
-                कार्यस्थल / Panchayat
-                <select
-                  value={preview ? undefined : assignment}
-                  onChange={(e) => setAssignment(e.target.value)}
-                >
-                  {(preview
-                    ? panchayats.slice(0, 3)
-                    : profile?.assignments.map((a) => a.panchayat) || []
-                  ).map((p) => (
-                    <option key={p}>{p}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="checkbox leave-choice">
-                <input
-                  type="checkbox"
-                  checked={leave}
-                  onChange={(e) => {
-                    setLeave(e.target.checked);
-                    stopCamera();
-                  }}
-                />
-                अवकाश पर हूँ / On leave (CL / SL)
-              </label>
-              {leave ? (
-                <label className="upload-zone">
-                  <Icon name="upload" size={28} />
-                  <strong>CL / SL प्रमाण अपलोड करें</strong>
-                  <span>PDF, JPG या PNG · अधिकतम 5 MB</span>
-                  <input
-                    type="file"
-                    accept="application/pdf,image/jpeg,image/png"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f && f.size > 5 * 1024 * 1024) {
-                        notify("फ़ाइल 5 MB से छोटी रखें।");
-                        e.target.value = "";
-                      } else setLeaveFile(f || null);
-                    }}
-                  />
-                </label>
-              ) : (
-                <div className="capture-grid">
-                  <div className="camera-box">
-                    {camera ? (
-                      <>
-                        <video ref={video} autoPlay muted playsInline />
-                        <button className="button primary" onClick={capture}>
-                          <Icon name="camera" size={17} />
-                          फोटो लें
-                        </button>
-                      </>
-                    ) : photoUrl ? (
-                      <>
-                        <img src={photoUrl} alt="कैप्चर की गई GPS फोटो" />
-                        <button
-                          className="button secondary"
-                          onClick={startCapture}
-                        >
-                          दोबारा लें
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <span className="camera-icon">
-                          <Icon name="camera" size={32} />
-                        </span>
-                        <h3>कैमरे से ताज़ा फोटो लें</h3>
-                        <p>समय और स्थान फोटो पर दर्ज होंगे।</p>
-                        <button
-                          className="button secondary"
-                          disabled={busy || (!preview && !consent)}
-                          onClick={startCapture}
-                        >
-                          <Icon name="camera" size={17} />
-                          {busy
-                            ? "अनुमति जाँच रहे हैं…"
-                            : "कैमरा एवं GPS खोलें"}
-                        </button>
-                      </>
-                    )}
-                  </div>
-                  <div className="location-card">
-                    <Icon name="pin" size={26} />
-                    <h3>आपका वर्तमान स्थान</h3>
-                    {gps ? (
-                      <>
-                        <strong>
-                          {gps.latitude.toFixed(6)}, {gps.longitude.toFixed(6)}
-                        </strong>
-                        <span className="location-badge">
-                          सटीकता ± {Math.round(gps.accuracy)} मीटर
-                        </span>
-                      </>
-                    ) : (
-                      <p>
-                        फोटो लेने पर GPS अपने आप प्राप्त होगा। लोकेशन अनुमति
-                        चालू रखें।
-                      </p>
-                    )}
-                    <div className="location-note">
-                      <Icon name="lock" size={15} />
-                      लोकेशन टाइप या पेस्ट नहीं की जा सकती
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div className="punch-actions">
-                <button
-                  className="button primary"
-                  disabled={busy || (!preview && (!consent || !!record))}
-                  onClick={() => punch(leave ? "leave" : "in")}
-                >
-                  <Icon name={leave ? "file" : "check"} size={18} />
-                  {leave ? "अवकाश दर्ज करें" : "पंच इन / Punch in"}
-                </button>
-                {!leave && (
-                  <button
-                    className="button secondary"
-                    disabled={busy || !record?.time_in || !!record.time_out}
-                    onClick={() => punch("out")}
-                  >
-                    <Icon name="logout" size={18} />
-                    पंच आउट / Punch out
-                  </button>
-                )}
-              </div>
-              {record && (
-                <div className="info-box">
-                  <Icon name="check" />
-                  <p>
-                    {record.status === "leave"
-                      ? "अवकाश दर्ज है।"
-                      : `पंच इन: ${new Date(record.time_in!).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata" })} ${record.time_out ? "· पंच आउट दर्ज है।" : "· पंच आउट बाकी है।"}`}
-                  </p>
-                </div>
-              )}
-              <p className="form-foot">
-                एक दिन में एक पंच इन और एक पंच आउट। जमा करने के बाद बदलाव केवल
-                एडमिन कर सकते हैं।
-              </p>
-            </section>
-          )}
-          <footer className="footer">
-            <span>अररिया प्रखंड · पंचायती राज विभाग</span>
-            <span>
-              <Icon name="shield" size={13} />
-              सुरक्षित उपस्थिति, बेहतर जवाबदेही
-            </span>
-            <span>समय क्षेत्र: IST (UTC +05:30)</span>
-          </footer>
-        </main>
-      </div>
-      {notice && (
-        <div className="toast" role="status">
-          <Icon name="alert" size={18} />
-          <span>{notice}</span>
-          <button
-            className="icon-button"
-            onClick={() => setNotice("")}
-            aria-label="संदेश बंद करें"
-          >
-            <Icon name="close" size={17} />
-          </button>
-        </div>
-      )}
-      {login && (
-        <div className="modal-overlay">
-          <section
-            className="modal login-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label="लॉगिन"
-          >
+        </section>
+        <dialog
+          ref={dialog}
+          className="sp-dialog"
+          onCancel={() => setDetail(null)}
+          onClose={() => {
+            setDetail(null);
+            setFile(null);
+          }}
+          aria-labelledby="staff-detail-title"
+        >
+          <div className="sp-dialog-header">
+            <h2 id="staff-detail-title" translate="no">
+              {(detail &&
+                ("staff_id" in detail ? detail.profiles?.name : detail.name)) ||
+                "कर्मी विवरण"}
+            </h2>
             <button
-              className="modal-close icon-button"
-              onClick={() => setLogin(false)}
-              aria-label="बंद करें"
+              className="sp-button sp-secondary"
+              onClick={() => setDetail(null)}
             >
-              <Icon name="close" />
+              बंद करें / Close
             </button>
-            <div className="setup-icon">
-              <Icon name="shield" size={30} />
-            </div>
-            <h2>उपस्थिति पोर्टल में प्रवेश</h2>
-            <p>Araria staff attendance · Secure sign in</p>
-            <div className="login-tabs">
+          </div>
+          {detail && !("staff_id" in detail) && canManage && (
+            <div className="sp-actions">
               <button
-                className={!adminTab ? "selected" : ""}
-                onClick={() => setAdminTab(false)}
+                className="sp-button sp-secondary"
+                onClick={() => editStaff(detail)}
               >
-                कर्मी / Staff
+                कर्मी विवरण बदलें / Edit staff
               </button>
               <button
-                className={adminTab ? "selected" : ""}
-                onClick={() => setAdminTab(true)}
+                className="sp-button sp-secondary"
+                onClick={() => editStaff(detail, true)}
               >
-                एडमिन / Admin
+                कर्मी हटाएँ / Remove staff
               </button>
             </div>
-            <form onSubmit={signIn}>
-              <label className="field-label">
-                मोबाइल या ईमेल
-                <input
-                  name="identifier"
-                  required
-                  autoComplete="username"
-                  placeholder={
-                    adminTab ? "एडमिन ईमेल" : "10 अंकों का मोबाइल या ईमेल"
-                  }
-                />
-              </label>
-              <label className="field-label">
-                पासवर्ड
-                <input
-                  name="password"
-                  type="password"
-                  required
-                  autoComplete="current-password"
-                  placeholder="अपना पासवर्ड दर्ज करें"
-                />
-              </label>
-              <button className="button primary" disabled={busy}>
-                {busy ? "प्रवेश हो रहा है…" : "सुरक्षित लॉगिन"}
-                <Icon name="arrow" size={16} />
-              </button>
-            </form>
-            <small>लॉगिन सहायता: sfc.aditya@gmail.com</small>
-          </section>
-        </div>
-      )}
-      {credential && (
-        <div className="modal-overlay">
-          <section
-            className="modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label="नए खाते का पासवर्ड"
-          >
-            <h2>कर्मी खाता बन गया</h2>
-            <p>
-              यह पासवर्ड केवल अभी दिखाया जा रहा है। कर्मी तक सुरक्षित पहुँचाएँ।
-            </p>
-            <code className="credential-value">{credential}</code>
-            <button
-              className="button primary"
-              onClick={() => setCredential(null)}
-            >
-              बंद करें
-            </button>
-          </section>
-        </div>
-      )}
-      {modal && (
-        <div className="modal-overlay" onClick={() => setModal(null)}>
-          <section
-            className="modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label="विवरण"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              className="modal-close icon-button"
-              onClick={() => setModal(null)}
-              aria-label="बंद करें"
-            >
-              <Icon name="close" />
-            </button>
-            {modal.startsWith("record:") ? (
+          )}
+          {detail &&
+            ("staff_id" in detail ? (
               <>
-                <h2>उपस्थिति विवरण</h2>
-                {(() => {
-                  const r = rows.find((r) => r.id === modal.split(":")[1]);
-                  return r ? (
-                    <>
-                      <p>
-                        {r.name} · {r.panchayat}
-                      </p>
-                      <div className="shared-record-note">
-                        <strong>सभी नियुक्त कार्यस्थल</strong>
-                        <p>
-                          {r.working_places.map((place, i) => (
-                            <span key={place}>
-                              {i > 0 ? " · " : ""}
-                              {place}
-                            </span>
-                          ))}
-                        </p>
-                      </div>
-                      {canManage && !r.id.startsWith("absent-") && (
-                        <button
-                          className="button danger"
-                          onClick={() => setModal("delete-attendance:" + r.id)}
-                        >
-                          उपस्थिति हटाएँ
-                        </button>
-                      )}
-                      <div className="settings-list">
-                        <div>
-                          <strong>पद</strong>
-                          <span>{r.position}</span>
-                        </div>
-                        <div>
-                          <strong>पंच इन</strong>
-                          <span>{r.time_in || "—"}</span>
-                        </div>
-                        <div>
-                          <strong>पंच आउट</strong>
-                          <span>{r.time_out || "—"}</span>
-                        </div>
-                        <div>
-                          <strong>समीक्षा</strong>
-                          <span>{r.flag || "कोई चिह्न नहीं"}</span>
-                        </div>
-                      </div>
-                      <p>
-                        {preview
-                          ? "उदाहरण रिकॉर्ड। इसमें वास्तविक फोटो या कर्मी विवरण नहीं हैं।"
-                          : "निजी फोटो केवल अधिकृत कर्मी एवं एडमिन देख सकते हैं।"}
-                      </p>
-                      {!preview && (
-                        <div className="button-row">
-                          {["photo_path", "out_photo_path", "leave_path"].map(
-                            (kind, i) => (
-                              <button
-                                className="button secondary"
-                                key={kind}
-                                onClick={async () => {
-                                  const res = await fetch(
-                                    "/api/files?id=" + r.id + "&kind=" + kind,
-                                  );
-                                  const d = await res.json();
-                                  if (res.ok)
-                                    window.open(
-                                      d.url,
-                                      "_blank",
-                                      "noopener,noreferrer",
-                                    );
-                                  else notify(d.error);
-                                }}
-                              >
-                                {
-                                  [
-                                    "पंच इन फोटो",
-                                    "पंच आउट फोटो",
-                                    "अवकाश प्रमाण",
-                                  ][i]
-                                }
-                              </button>
-                            ),
-                          )}
-                        </div>
-                      )}
-                      {!preview && profile?.role !== "district_viewer" && (
-                        <form onSubmit={(e) => management(e, "correct")}>
-                          <label className="field-label">
-                            पंच इन (IST)
-                            <input
-                              type="datetime-local"
-                              name="time_in"
-                              required
-                            />
-                          </label>
-                          <label className="field-label">
-                            पंच आउट (IST)
-                            <input type="datetime-local" name="time_out" />
-                          </label>
-                          <label className="field-label">
-                            सुधार कारण
-                            <input name="reason" required minLength={10} />
-                          </label>
-                          <button className="button primary" disabled={busy}>
-                            सुधार सुरक्षित करें
-                          </button>
-                        </form>
-                      )}
-                    </>
-                  ) : null;
-                })()}
-              </>
-            ) : modal.startsWith("geofence:") ? (
-              <>
-                <h2>{modal.slice(9)}</h2>
                 <p>
-                  सत्यापित अक्षांश और देशांतर एडमिन सेटअप में आवश्यक हैं।
-                  अनुमानित निर्देशांक इस्तेमाल नहीं किए जाते।
+                  {detail.date} • {phaseLabel(detail)}
                 </p>
-                <div className="settings-list">
-                  <div>
-                    <strong>प्रारंभिक दायरा</strong>
-                    <span>300 मीटर</span>
-                  </div>
-                  <div>
-                    <strong>स्थिति</strong>
-                    <span>
-                      {fences[modal.slice(9)]?.latitude != null
-                        ? "जियोफेंस तैयार"
-                        : "निर्देशांक बाकी · पंच बंद"}
-                    </span>
-                  </div>
-                </div>
-                {!preview && profile?.role === "super_admin" && (
-                  <form onSubmit={(e) => management(e, "geofence")}>
-                    <label className="field-label">
-                      अक्षांश
-                      <input
-                        name="latitude"
-                        type="number"
-                        step="any"
-                        required
-                        min={-90}
-                        max={90}
-                        defaultValue={
-                          fences[modal.slice(9)]?.latitude ?? undefined
-                        }
-                      />
-                    </label>
-                    <label className="field-label">
-                      देशांतर
-                      <input
-                        name="longitude"
-                        type="number"
-                        step="any"
-                        required
-                        min={-180}
-                        max={180}
-                        defaultValue={
-                          fences[modal.slice(9)]?.longitude ?? undefined
-                        }
-                      />
-                    </label>
-                    <label className="field-label">
-                      दायरा (मीटर)
-                      <input
-                        name="radius"
-                        type="number"
-                        required
-                        min={50}
-                        max={5000}
-                        defaultValue={fences[modal.slice(9)]?.radius || 300}
-                      />
-                    </label>
-                    <label className="field-label">
-                      बदलाव का कारण
-                      <input name="reason" minLength={10} required />
-                    </label>
-                    <button className="button primary" disabled={busy}>
-                      जियोफेंस सुरक्षित करें
+                <RecordDetails row={detail} />
+                <div className="sp-actions">
+                  {detail.photo_path && (
+                    <button
+                      className="sp-button sp-secondary"
+                      disabled={fileBusy}
+                      onClick={() => openFile(detail, "photo_path")}
+                    >
+                      कार्यस्थल फोटो देखें / View workplace photo
                     </button>
-                  </form>
+                  )}
+                  {detail.leave_path && (
+                    <button
+                      className="sp-button sp-secondary"
+                      disabled={fileBusy}
+                      onClick={() => openFile(detail, "leave_path")}
+                    >
+                      अवकाश दस्तावेज़ देखें
+                    </button>
+                  )}
+                </div>
+                {fileBusy && <p role="status">फ़ाइल खुल रही है…</p>}
+                {file && (
+                  <p className="sp-alert">
+                    <a
+                      href={file.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="sp-file-link"
+                    >
+                      {file.kind === "photo_path"
+                        ? "कार्यस्थल फोटो खोलें / Open workplace photo"
+                        : "दस्तावेज़ खोलें / Open document"}
+                    </a>
+                    <small>सुरक्षित लिंक 60 सेकंड तक मान्य है।</small>
+                  </p>
                 )}
-              </>
-            ) : modal.startsWith("staff:") ? (
-              <>
-                <h2>
-                  {modal === "staff:new"
-                    ? "नया कर्मी जोड़ें"
-                    : "कर्मी विवरण सुधारें"}
-                </h2>
-                <MasterDataForm
-                  key={modal}
-                  staff={masterStaff.find((p) => p.id === modal.split(":")[1])}
-                  language={language}
-                  busy={busy}
-                  onSave={saveMaster}
-                />
-              </>
-            ) : modal === "attendance:new" ? (
-              <>
-                <h2>एडमिन द्वारा उपस्थिति दर्ज करें</h2>
-                <AdminAttendanceForm
-                  staff={masterStaff}
-                  date={date}
-                  language={language}
-                  busy={busy}
-                  onSave={(data) => saveAdminData("/api/admin", data)}
-                />
-              </>
-            ) : modal.startsWith("delete-") ? (
-              <>
-                <h2>
-                  {modal.startsWith("delete-staff")
-                    ? "कर्मी हटाएँ"
-                    : "उपस्थिति हटाएँ"}
-                </h2>
-                <p>
-                  {modal.startsWith("delete-staff")
-                    ? masterStaff.find((p) => p.id === modal.split(":")[1])
-                        ?.name
-                    : rows.find((r) => r.id === modal.split(":")[1])?.name}
-                </p>
-                <p>
-                  रिकॉर्ड सामान्य सूची से हट जाएगा। पुराना डेटा और हटाने का कारण
-                  ऑडिट में सुरक्षित रहेगा।
-                </p>
-                <form onSubmit={removeData}>
-                  <label className="field-label">
-                    हटाने का कारण
-                    <input
-                      name="reason"
-                      required
-                      minLength={10}
-                      maxLength={1000}
-                    />
-                  </label>
-                  <button className="button danger" disabled={busy}>
-                    हटाने की पुष्टि करें
-                  </button>
-                </form>
-              </>
-            ) : modal === "sheets" ? (
-              <>
-                <h2>Google Sheets सेटअप</h2>
-                <ol>
-                  <li>Google Cloud में Sheets API चालू करें।</li>
-                  <li>सेवा खाते के ईमेल को शीट का Editor बनाएँ।</li>
-                  <li>
-                    Vercel में Sheet ID और सेवा खाते की credentials सेट करें।
-                  </li>
-                  <li>संरक्षित sync endpoint को प्रति मिनट चलाएँ।</li>
-                </ol>
-                <p>शीट में परिवर्तन मूल उपस्थिति को नहीं बदलते।</p>
-              </>
-            ) : modal === "import" ? (
-              <>
-                <h2>सुरक्षित कर्मी आयात</h2>
-                <p>
-                  स्रोत workbook का निजी आयात तैयार है। 242 खाते तैयार हैं; दो
-                  पहचान की समीक्षा करें।
-                </p>
-                <ol>
-                  <li>Supabase schema लागू करें।</li>
-                  <li>सर्वर की Supabase secret key सेट करें।</li>
-                  <li>निजी import फ़ाइल को समीक्षा करके seed script चलाएँ।</li>
-                  <li>
-                    बनी credentials फ़ाइल केवल अधिकृत कर्मियों तक पहुँचाएँ।
-                  </li>
-                </ol>
-                <p>
-                  किसी भी credential फ़ाइल को सार्वजनिक repository में न रखें।
-                </p>
-              </>
-            ) : modal === "privacy" ? (
-              <>
-                <h2>गोपनीयता सूचना</h2>
-                <p>
-                  उपस्थिति के लिए GPS फोटो, वर्तमान स्थान, समय, नेटवर्क एवं
-                  डिवाइस संकेत लिए जाते हैं। जानकारी निजी डेटाबेस और स्टोरेज में
-                  रखी जाती है। अधिकृत एडमिन सत्यापन और आवश्यक सुधार कर सकते हैं।
-                </p>
-                <p>
-                  डेटा कम से कम एक वर्ष रखा जाएगा। पूछताछ: sfc.aditya@gmail.com।
-                </p>
-              </>
-            ) : modal === "notifications" ? (
-              <>
-                <h2>सूचनाएँ</h2>
-                <p>
-                  Google Sheet सेटअप बाकी है। दो आयात पहचान की समीक्षा आवश्यक
-                  है। पंचायतों के निर्देशांक सेट करने के बाद वास्तविक पंच चालू
-                  होंगे।
-                </p>
               </>
             ) : (
               <>
-                <h2>कर्मी सहायता</h2>
-                <ol>
-                  <li>अपने मोबाइल या ईमेल एवं पासवर्ड से लॉगिन करें।</li>
-                  <li>अपनी नियुक्त पंचायत चुनें।</li>
-                  <li>लोकेशन और कैमरे की अनुमति दें, ताज़ा फोटो लें।</li>
-                  <li>
-                    पंच इन करें; कार्यालय छोड़ते समय नई फोटो लेकर पंच आउट करें।
-                  </li>
-                  <li>अवकाश पर हों तो CL / SL प्रमाण अपलोड करें।</li>
-                </ol>
-                <p>
-                  ऑफ़लाइन होने पर उपस्थिति जमा नहीं होती। नेटवर्क आने पर दोबारा
-                  प्रयास करें।
-                </p>
+                <dl className="sp-details">
+                  <div>
+                    <dt>मोबाइल / Mobile</dt>
+                    <dd>{detail.phone}</dd>
+                  </div>
+                  <div>
+                    <dt>प्रखंड / Block</dt>
+                    <dd>{detail.block}</dd>
+                  </div>
+                  <div>
+                    <dt>ईमेल / Email</dt>
+                    <dd>{detail.email || "—"}</dd>
+                  </div>
+                </dl>
+                <h3>आवंटन / Assignments</h3>
+                {detail.assignments.map((a, i) => (
+                  <p key={i}>
+                    {a.department} • {a.panchayat} • {a.position}
+                  </p>
+                ))}
               </>
-            )}
-          </section>
-        </div>
-      )}
-    </div>,
-    language,
+            ))}
+        </dialog>
+        {editor && (
+          <StaffEditor
+            block={adminBlock}
+            person={editor.person}
+            remove={editor.remove}
+            staff={staff}
+            onClose={() => setEditor(null)}
+            onSaved={(saved, removedId) => {
+              if (removedId)
+                setStaff((previous) =>
+                  previous.filter((person) => person.id !== removedId),
+                );
+              else if (saved)
+                setStaff((previous) =>
+                  [
+                    ...previous.filter((person) => person.id !== saved.id),
+                    saved,
+                  ].sort((a, b) => a.name.localeCompare(b.name)),
+                );
+              void load();
+            }}
+          />
+        )}
+      </>
+    </Localized>
   );
 }

@@ -19,7 +19,14 @@ export type Attendance = {
   staff_id: string;
   date: string;
   panchayat: string;
-  status: "present" | "leave";
+  status: "present" | "absent" | "leave" | "deputation";
+  phase?: "draft" | "submitted";
+  department?: string | null;
+  position?: string | null;
+  block?: string | null;
+  staff_name?: string | null;
+  deputation_workplace?: string | null;
+  leave_type?: "CL" | "SL" | null;
   deleted_at?: string | null;
   working_places?: Assignment[];
   time_in: string | null;

@@ -9,6 +9,7 @@ import {
 } from "../../../lib/server";
 import { processPhoto } from "../../../lib/photo";
 import { istDate, validateLocation, fileKind } from "../../../lib/security.mjs";
+import { requireWorkingDay } from "../../../lib/office-server";
 export const runtime = "nodejs";
 export async function GET(req: Request) {
   try {
@@ -34,6 +35,7 @@ export async function POST(req: Request) {
     const { profile, device } = await identity(req);
     if (profile.role !== "staff")
       throw new HttpError(403, "पंच केवल कर्मी खाते से करें।");
+    await requireWorkingDay();
     if (req.headers.get("content-type")?.includes("application/json")) {
       const body = await req.json();
       if (body.action !== "challenge")

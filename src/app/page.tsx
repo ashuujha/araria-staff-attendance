@@ -1,5 +1,9 @@
 import Portal from "../components/Portal";
-export const dynamic = "force-dynamic";
+import { LanguageProvider } from "../lib/portal-language";
 export default function Page() {
-  return <Portal />;
+  return (
+    <LanguageProvider>
+      <Portal />
+    </LanguageProvider>
+  );
 }

@@ -14,21 +14,26 @@ export async function GET(req: Request) {
     admin(profile);
     const url = new URL(req.url);
     const date = url.searchParams.get("date") || istDate();
+    const includeStaff = url.searchParams.get("directory") !== "0";
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
       throw new HttpError(400, "तिथि अमान्य।");
-    const records = await sb(
-      "/rest/v1/attendance?date=eq." +
-        date +
-        "&deleted_at=is.null&select=*,profiles(id,name,phone,assignments,block)&order=time_in.desc",
-      {},
-      token,
-    );
-    const staff = await sb(
-      "/rest/v1/profiles?active=eq.true&deleted_at=is.null&role=eq.staff&select=id,name,phone,assignments",
-      {},
-      token,
-    );
-    return json({ records, staff });
+    const [records, staff] = await Promise.all([
+      sb(
+        "/rest/v1/attendance?date=eq." +
+          date +
+          "&deleted_at=is.null&select=id,staff_id,date,panchayat,department,position,block,staff_name,status,phase,deputation_workplace,leave_type,absence_reason,time_in,time_out,photo_path,leave_path,working_places,profiles(id,name,phone,email,block,role,active)&order=created_at.desc",
+        {},
+        token,
+      ),
+      includeStaff
+        ? sb(
+            "/rest/v1/profiles?deleted_at=is.null&role=eq.staff&select=id,name,phone,email,assignments,block,role,active&order=name",
+            {},
+            token,
+          )
+        : Promise.resolve(undefined),
+    ]);
+    return json({ records, ...(includeStaff ? { staff } : {}) });
   } catch (e) {
     return failure(e);
   }
@@ -39,9 +44,19 @@ export async function POST(req: Request) {
     const { profile } = await identity(req);
     admin(profile, true);
     const body = await req.json();
-    const reason = String(body.reason || "").trim();
-    if (reason.length < 10 || reason.length > 1000)
-      throw new HttpError(400, "सुधार का स्पष्ट कारण लिखें (10–1000 अक्षर)।");
+    if (
+      !body ||
+      typeof body !== "object" ||
+      Array.isArray(body) ||
+      !["input", "delete", "correct", "geofence"].includes(body.action)
+    )
+      throw new HttpError(400, "कार्रवाई अमान्य।");
+    const reason = {
+      input: "Administrator entered attendance",
+      delete: "Administrator removed attendance",
+      correct: "Administrator corrected attendance",
+      geofence: "Administrator updated workplace geofence",
+    }[body.action as "input" | "delete" | "correct" | "geofence"];
     if (body.action === "input") {
       if (
         !/^[0-9a-f-]{36}$/.test(String(body.staff_id)) ||

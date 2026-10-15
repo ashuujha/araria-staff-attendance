@@ -1,21 +1,27 @@
 import {
   csrf,
   sb,
-  json,
   failure,
   HttpError,
   requireSetup,
-  rateLimit,
-  cookies,
   sessionCookie,
-  hash,
-  randomUUID,
 } from "../../../../lib/server";
+import { verifyAdminCaptcha } from "../../../../lib/admin-captcha";
+import { isIP } from "node:net";
+import { portalBootstrap } from "../../../../lib/bootstrap";
 export async function POST(req: Request) {
+  const started = performance.now();
   try {
     csrf(req);
     requireSetup();
     const body = await req.json();
+    if (
+      !body ||
+      typeof body !== "object" ||
+      Array.isArray(body) ||
+      (body.admin !== undefined && typeof body.admin !== "boolean")
+    )
+      throw new HttpError(400, "अनुरोध अमान्य।");
     const identifier = String(body.identifier || "")
       .trim()
       .toLowerCase();
@@ -27,7 +33,7 @@ export async function POST(req: Request) {
       password.length > 128
     )
       throw new HttpError(400, "मोबाइल/ईमेल और पासवर्ड जाँचें।");
-    const key = await rateLimit(req, identifier);
+    if (body.admin === true) await verifyAdminCaptcha(body.captcha_token);
     let email = identifier;
     if (!identifier.includes("@")) {
       const phone = identifier.replace(/^(?:\+91|91(?=\d{10}$))/, "");
@@ -38,39 +44,61 @@ export async function POST(req: Request) {
       );
       email = profiles?.[0]?.login_email || `${phone}@staff.araria.invalid`;
     }
+    // Enable only after Supabase's trusted IP forwarding is configured. Use
+    // Vercel's overwritten header, never a client-supplied forwarded-for value.
+    const forwardedIp =
+      process.env.VERCEL === "1" &&
+      process.env.SUPABASE_AUTH_FORWARD_IP === "true"
+        ? req.headers.get("x-vercel-forwarded-for")?.split(",")[0].trim()
+        : undefined;
+    const forward = forwardedIp && isIP(forwardedIp) ? forwardedIp : null;
     const res = await fetch(
       `${process.env.SUPABASE_URL}/auth/v1/token?grant_type=password`,
       {
         method: "POST",
         headers: {
-          apikey: process.env.SUPABASE_PUBLISHABLE_KEY!,
+          apikey: forward
+            ? process.env.SUPABASE_SECRET_KEY!
+            : process.env.SUPABASE_PUBLISHABLE_KEY!,
           "Content-Type": "application/json",
+          ...(forward ? { "Sb-Forwarded-For": forward } : {}),
         },
         body: JSON.stringify({ email, password }),
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(8000),
       },
     );
+    if (res.status === 429)
+      throw new HttpError(
+        429,
+        "लॉगिन सेवा व्यस्त है। थोड़ी देर में फिर कोशिश करें। / Login service busy. Please retry shortly.",
+      );
+    if (res.status >= 500)
+      throw new HttpError(
+        503,
+        "लॉगिन सेवा उपलब्ध नहीं है। फिर कोशिश करें। / Login service unavailable. Please retry.",
+      );
     if (!res.ok) throw new HttpError(401, "मोबाइल/ईमेल या पासवर्ड गलत है।");
     const session = await res.json();
-    const profiles = await sb(
-      "/rest/v1/profiles?id=eq." +
-        session.user.id +
-        "&select=id,name,phone,email,assignments,role,block,active",
-      {},
-      session.access_token,
-    );
+    const bootstrap = await portalBootstrap(session.access_token);
+    const profiles = bootstrap
+      ? [bootstrap.profile]
+      : await sb(
+          "/rest/v1/profiles?id=eq." +
+            session.user.id +
+            "&deleted_at=is.null&select=id,name,phone,email,assignments,role,block,active",
+          {},
+          session.access_token,
+        );
     const profile = profiles?.[0];
-    if (!profile?.active || (body.admin && profile.role === "staff"))
+    if (
+      !profile?.active ||
+      (body.admin ? profile.role === "staff" : profile.role !== "staff")
+    )
       throw new HttpError(403, "इस कार्यस्थल में प्रवेश की अनुमति नहीं है।");
-    const device = cookies(req).araria_device || randomUUID();
-    await sb("/rest/v1/rpc/bind_device", {
-      method: "POST",
-      body: JSON.stringify({ user_id: profile.id, device_hash: hash(device) }),
-    });
-    await sb("/rest/v1/login_attempts?key=eq." + key, { method: "DELETE" });
     const headers = new Headers({
       "Cache-Control": "no-store",
       "Content-Type": "application/json",
+      "Server-Timing": `login;dur=${Math.round(performance.now() - started)}`,
     });
     headers.append(
       "Set-Cookie",
@@ -80,13 +108,12 @@ export async function POST(req: Request) {
         Math.min(session.expires_in || 3600, 3600),
       ),
     );
-    headers.append(
-      "Set-Cookie",
-      sessionCookie("araria_device", device, 31536000),
-    );
     delete profile.login_email;
     delete profile.device_hash;
-    return new Response(JSON.stringify({ profile }), { headers });
+    return new Response(
+      JSON.stringify({ profile, ...(bootstrap ? { bootstrap } : {}) }),
+      { headers },
+    );
   } catch (e) {
     return failure(e);
   }

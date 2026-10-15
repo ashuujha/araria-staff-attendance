@@ -4,6 +4,7 @@ export class HttpError extends Error {
   constructor(
     public status: number,
     message: string,
+    public code?: string,
   ) {
     super(message);
   }
@@ -20,6 +21,14 @@ export function json(
 }
 export function failure(e: unknown) {
   if (e instanceof HttpError) return json({ error: e.message }, e.status);
+  if (e instanceof Error && ["TimeoutError", "AbortError"].includes(e.name))
+    return json(
+      {
+        error:
+          "कनेक्शन में देर हो रही है। फिर कोशिश करें। / Connection timed out. Please retry.",
+      },
+      504,
+    );
   console.error(
     "Portal operation failed:",
     e instanceof Error ? e.name : "Unknown",
@@ -63,16 +72,39 @@ export async function sb(path: string, init: RequestInit = {}, token?: string) {
       ...init.headers,
     },
     cache: "no-store",
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(8000),
   });
   if (!res.ok) {
     let detail = "";
+    let code = "";
     try {
       const d = await res.json();
       detail = d.message || d.msg || d.error_description || "";
+      code = String(d.code || "");
     } catch {}
     if (detail.includes("PORTAL:"))
       throw new HttpError(409, detail.split("PORTAL:")[1]);
+    // Log only endpoint/status/code: queries, tokens and private data stay out of logs.
+    console.error("Supabase request failed", {
+      endpoint: path.split("?")[0],
+      status: res.status,
+      code,
+    });
+    if (
+      ["PGRST202", "PGRST205", "42P01", "42883", "42703", "PGRST204"].includes(
+        code,
+      )
+    )
+      throw new HttpError(
+        503,
+        "डेटाबेस सेटअप अधूरा है। प्रशासक को Supabase में पोर्टल की SQL फ़ाइलें लागू करनी होंगी।",
+        code,
+      );
+    if (res.status === 401 && !token)
+      throw new HttpError(
+        503,
+        "डेटाबेस की सर्वर कुंजी अमान्य है। प्रशासक Supabase कॉन्फ़िगरेशन जाँचें।",
+      );
     throw new HttpError(
       res.status === 401 ? 401 : 502,
       res.status === 401
@@ -100,20 +132,31 @@ export async function identity(
   requireSetup();
   const c = cookies(req);
   if (!c.araria_session) throw new HttpError(401, "कृपया लॉगिन करें।");
-  const user = await sb("/auth/v1/user", {}, c.araria_session);
+  // This subject is only a query hint, never proof of identity. Supabase
+  // validates the JWT and applies RLS to the following profile request.
+  let subject: string | undefined;
+  try {
+    const payload = JSON.parse(
+      Buffer.from(c.araria_session.split(".")[1], "base64url").toString(),
+    );
+    if (/^[0-9a-f-]{36}$/i.test(payload.sub)) subject = payload.sub;
+  } catch {}
+  if (!subject) subject = (await sb("/auth/v1/user", {}, c.araria_session)).id;
   const profiles = await sb(
     "/rest/v1/profiles?id=eq." +
-      encodeURIComponent(user.id) +
-      "&select=id,name,phone,email,assignments,role,block,active",
+      encodeURIComponent(subject!) +
+      "&deleted_at=is.null&select=id,name,phone,email,assignments,role,block,active",
     {},
     c.araria_session,
   );
   const profile = profiles?.[0];
   if (!profile?.active)
     throw new HttpError(403, "खाता निष्क्रिय या अपूर्ण है।");
-  if (!c.araria_device)
-    throw new HttpError(403, "डिवाइस पंजीकरण आवश्यक है। फिर लॉगिन करें।");
-  return { profile, token: c.araria_session, device: hash(c.araria_device) };
+  return {
+    profile,
+    token: c.araria_session,
+    device: hash(c.araria_device || profile.id),
+  };
 }
 export function admin(profile: Profile, write = false) {
   if (profile.role === "staff" || (write && profile.role === "district_viewer"))
@@ -124,25 +167,6 @@ export function hash(value: string | Uint8Array) {
 }
 export function sessionCookie(name: string, value: string, maxAge: number) {
   return `${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${process.env.NODE_ENV === "production" ? "; Secure" : ""}`;
-}
-export async function rateLimit(req: Request, identifier: string) {
-  const ip = (
-    req.headers.get("x-vercel-forwarded-for") ||
-    req.headers.get("x-forwarded-for") ||
-    "unknown"
-  )
-    .split(",")[0]
-    .trim();
-  const keys = [hash("user:" + identifier), hash("ip:" + ip)];
-  for (const key of keys) {
-    const allowed = await sb("/rest/v1/rpc/consume_login_attempt", {
-      method: "POST",
-      body: JSON.stringify({ attempt_key: key }),
-    });
-    if (!allowed)
-      throw new HttpError(429, "बहुत अधिक प्रयास। 15 मिनट बाद कोशिश करें।");
-  }
-  return keys[0];
 }
 export async function audit(
   actor: string,

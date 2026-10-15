@@ -1,0 +1,12 @@
+node_modules/
+.next/
+.preview/
+.vercel/
+.env*
+private/
+test-results/
+__pycache__/
+*.xlsx
+*.pdf
+*.log
+*.tsbuildinfo
