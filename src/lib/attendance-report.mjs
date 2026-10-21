@@ -43,6 +43,23 @@ export function attendanceCode(record, date, today, holidayDates) {
 function assignments(profile) {
   return Array.isArray(profile?.assignments) ? profile.assignments : [];
 }
+function historicalAssignments(history) {
+  const snapshot = history.find(
+    (row) => Array.isArray(row.working_places) && row.working_places.length,
+  );
+  if (snapshot) return snapshot.working_places;
+  const unique = new Map();
+  for (const row of history) {
+    if (!row.department && !row.panchayat && !row.position) continue;
+    const place = {
+      department: row.department || "",
+      panchayat: row.panchayat || "",
+      position: row.position || "",
+    };
+    unique.set(JSON.stringify(place), place);
+  }
+  return [...unique.values()];
+}
 function istDay(value) {
   return value
     ? new Intl.DateTimeFormat("en-CA", {
@@ -170,7 +187,16 @@ export function makeAttendanceReport({
         if (!existing || (row.version || 0) > (existing.version || 0))
           daily.set(row.date, row);
       }
-      return { id, profile, history, daily, service: serviceWindow(profile) };
+      return {
+        id,
+        profile,
+        history,
+        daily,
+        workplaces: assignments(profile).length
+          ? assignments(profile)
+          : historicalAssignments(history),
+        service: serviceWindow(profile),
+      };
     })
     .sort((a, b) =>
       (a.profile?.name || a.history[0]?.staff_name || "").localeCompare(
@@ -186,37 +212,51 @@ export function makeAttendanceReport({
     holidays,
     sections: sections.map((section) => ({
       ...section,
-      rows: staff.map(({ id, profile, history, daily, service }) => {
-        const inSection = history.filter((r) => section.dates.includes(r.date));
-        const first = inSection[0];
-        const label =
-          (section.dates.length === 1 && section.dates[0] === today
-            ? profile?.name
-            : first?.staff_name) ||
-          profile?.name ||
-          history[0]?.staff_name ||
-          "Unknown staff";
-        const block = first?.block || profile?.block || "";
-        const cells = section.dates.map((date) => {
-          const record = daily.get(date) || null;
+      rows: staff.map(
+        ({ id, profile, history, daily, workplaces, service }) => {
+          const inSection = history.filter((r) =>
+            section.dates.includes(r.date),
+          );
+          const first = inSection[0];
+          const label =
+            (section.dates.length === 1 && section.dates[0] === today
+              ? profile?.name
+              : first?.staff_name) ||
+            profile?.name ||
+            history[0]?.staff_name ||
+            "Unknown staff";
+          const block = first?.block || profile?.block || "";
+          const cells = section.dates.map((date) => {
+            const record = daily.get(date) || null;
+            return {
+              date,
+              code:
+                record || inService(service, date)
+                  ? attendanceCode(record, date, today, holidayDates)
+                  : "",
+              record,
+            };
+          });
           return {
-            date,
-            code:
-              record || inService(service, date)
-                ? attendanceCode(record, date, today, holidayDates)
-                : "",
-            record,
+            id,
+            name: label,
+            currentName: profile?.name || label,
+            phone: profile?.phone || "",
+            secondaryPhones: Array.isArray(profile?.secondary_phones)
+              ? profile.secondary_phones
+              : [],
+            email: profile?.email || "",
+            block,
+            workplaces,
+            active: profile
+              ? Boolean(profile.active && !profile.deleted_at)
+              : null,
+            joinedAt: profile?.created_at || "",
+            removedAt: profile?.deleted_at || "",
+            cells,
           };
-        });
-        return {
-          id,
-          name: label,
-          currentName: profile?.name || label,
-          phone: profile?.phone || "",
-          block,
-          cells,
-        };
-      }),
+        },
+      ),
     })),
   };
 }

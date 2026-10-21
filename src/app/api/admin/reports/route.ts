@@ -90,9 +90,9 @@ export async function GET(req: Request) {
       throw new HttpError(400, "Invalid status filter.");
     if (filters.phase && !["draft", "submitted"].includes(filters.phase))
       throw new HttpError(400, "Invalid phase filter.");
-    const recordsPath = `/rest/v1/attendance?date=gte.${start}&date=lte.${end}&deleted_at=is.null&select=id,staff_id,date,staff_name,block,department,panchayat,position,status,phase,leave_type,deputation_workplace,absence_reason,time_in,time_out,created_at,version&order=date.asc,staff_id.asc,id.asc`;
+    const recordsPath = `/rest/v1/attendance?date=gte.${start}&date=lte.${end}&deleted_at=is.null&select=id,staff_id,date,staff_name,block,department,panchayat,position,working_places,status,phase,leave_type,deputation_workplace,absence_reason,time_in,time_out,created_at,version&order=date.asc,staff_id.asc,id.asc`;
     const profilesPath =
-      "/rest/v1/profiles?role=eq.staff&select=id,name,phone,block,assignments,role,active,created_at,deleted_at&order=id.asc";
+      "/rest/v1/profiles?role=eq.staff&select=id,name,phone,secondary_phones,email,block,assignments,role,active,created_at,deleted_at&order=id.asc";
     const [records, profiles, holidays] = await Promise.all([
       allPages(recordsPath, token),
       allPages(profilesPath, token),

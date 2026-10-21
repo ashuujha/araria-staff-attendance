@@ -224,3 +224,36 @@ test("today's daily report shows the current staff name", () => {
   });
   assert.equal(report.sections[0].rows[0].name, "Current name");
 });
+
+test("staff contact and every current assignment accompany attendance", () => {
+  const assignments = [
+    { department: "Agriculture", panchayat: "North", position: "Clerk" },
+    { department: "Welfare", panchayat: "South", position: "Coordinator" },
+  ];
+  const report = makeAttendanceReport({
+    profiles: [
+      {
+        id: "1",
+        name: "Staff member",
+        phone: "1111111111",
+        secondary_phones: ["2222222222"],
+        email: "staff@example.org",
+        role: "staff",
+        block: "Araria",
+        active: true,
+        assignments,
+      },
+    ],
+    records: [],
+    holidays: [],
+    start: "2026-10-21",
+    end: "2026-10-21",
+    today: "2026-10-21",
+  });
+  const row = report.sections[0].rows[0];
+  assert.equal(row.phone, "1111111111");
+  assert.deepEqual(row.secondaryPhones, ["2222222222"]);
+  assert.equal(row.email, "staff@example.org");
+  assert.deepEqual(row.workplaces, assignments);
+  assert.equal(row.cells[0].code, "NR");
+});

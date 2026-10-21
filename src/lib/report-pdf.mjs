@@ -133,23 +133,33 @@ function page(doc, title, period, office, emblem) {
 }
 function gridHeader(doc, dates, y) {
   const width = WIDTH - MARGIN * 2,
-    nameWidth = 170,
-    dayWidth = (width - nameWidth) / dates.length;
+    nameWidth = 145,
+    phoneWidth = 82,
+    blockWidth = 78,
+    dayWidth = (width - nameWidth - phoneWidth - blockWidth) / dates.length;
   doc.rect(MARGIN, y, width, 25).fill(BLUE);
   doc
     .fillColor("#ffffff")
     .font("LatinBold")
     .fontSize(8)
     .text("Staff name", MARGIN + 5, y + 7, { width: nameWidth - 10 });
+  doc.text("Mobile", MARGIN + nameWidth, y + 7, {
+    width: phoneWidth,
+    align: "center",
+  });
+  doc.text("Block", MARGIN + nameWidth + phoneWidth, y + 7, {
+    width: blockWidth,
+    align: "center",
+  });
   dates.forEach((date, index) =>
     doc.text(
       String(Number(date.slice(-2))),
-      MARGIN + nameWidth + index * dayWidth,
+      MARGIN + nameWidth + phoneWidth + blockWidth + index * dayWidth,
       y + 7,
       { width: dayWidth, align: "center" },
     ),
   );
-  return { nameWidth, dayWidth };
+  return { nameWidth, phoneWidth, blockWidth, dayWidth };
 }
 function gridRow(doc, row, index, dates, y, columns) {
   const width = WIDTH - MARGIN * 2,
@@ -171,8 +181,40 @@ function gridRow(doc, row, index, dates, y, columns) {
     "left",
     2,
   );
+  const phoneX = MARGIN + columns.nameWidth;
+  doc
+    .strokeColor("#d7e1ea")
+    .moveTo(phoneX, y)
+    .lineTo(phoneX, y + height)
+    .stroke();
+  write(
+    doc,
+    row.phone,
+    phoneX + 2,
+    y + 8,
+    columns.phoneWidth - 4,
+    7,
+    false,
+    "center",
+  );
+  const blockX = phoneX + columns.phoneWidth;
+  doc
+    .strokeColor("#d7e1ea")
+    .moveTo(blockX, y)
+    .lineTo(blockX, y + height)
+    .stroke();
+  write(
+    doc,
+    row.block,
+    blockX + 2,
+    y + 8,
+    columns.blockWidth - 4,
+    7,
+    false,
+    "center",
+  );
   row.cells.forEach((cell, column) => {
-    const x = MARGIN + columns.nameWidth + column * columns.dayWidth;
+    const x = blockX + columns.blockWidth + column * columns.dayWidth;
     doc
       .strokeColor("#d7e1ea")
       .moveTo(x, y)
@@ -189,6 +231,59 @@ function gridRow(doc, row, index, dates, y, columns) {
       "center",
     );
   });
+}
+function staffEntry(doc, row, y, index) {
+  const width = WIDTH - MARGIN * 2;
+  if (index % 2) doc.rect(MARGIN, y, width, 59).fill("#f1f5f9");
+  doc.strokeColor("#d7e1ea").rect(MARGIN, y, width, 59).stroke();
+  write(doc, row.currentName, MARGIN + 7, y + 4, 280, 9, true);
+  write(
+    doc,
+    row.active === null
+      ? "Account status: Unknown"
+      : row.active
+        ? "Active"
+        : "Inactive",
+    MARGIN + 292,
+    y + 5,
+    100,
+    7.5,
+  );
+  write(doc, `Staff ID: ${row.id}`, MARGIN + 400, y + 5, width - 410, 6.8);
+  write(doc, `Mobile: ${row.phone || "—"}`, MARGIN + 7, y + 20, 240, 7.6);
+  write(
+    doc,
+    `Additional mobiles: ${row.secondaryPhones.join(", ") || "—"}`,
+    MARGIN + 252,
+    y + 20,
+    width - 260,
+    7.4,
+  );
+  write(doc, `Email: ${row.email || "—"}`, MARGIN + 7, y + 37, 320, 7.5);
+  write(doc, `Block: ${row.block || "—"}`, MARGIN + 332, y + 37, 130, 7.5);
+  const day = (value) =>
+    value
+      ? new Date(value).toLocaleDateString("en-IN", {
+          timeZone: "Asia/Kolkata",
+        })
+      : "—";
+  write(
+    doc,
+    `Joined: ${day(row.joinedAt)}  Removed: ${day(row.removedAt)}`,
+    MARGIN + 470,
+    y + 37,
+    width - 480,
+    7.2,
+  );
+}
+function assignmentEntry(doc, place, y, index) {
+  const width = WIDTH - MARGIN * 2;
+  if (index % 2) doc.rect(MARGIN, y, width, 23).fill("#f1f5f9");
+  doc.strokeColor("#d7e1ea").rect(MARGIN, y, width, 23).stroke();
+  const value = place
+    ? `Department: ${place.department || "—"}    Panchayat: ${place.panchayat || "—"}    Position: ${place.position || "—"}`
+    : "No assigned workplace recorded";
+  write(doc, value, MARGIN + 14, y + 4, width - 28, 7.6, false, "left", 2);
 }
 function detailEntry(doc, item, y, index) {
   const { row, cell } = item,
@@ -283,6 +378,40 @@ export async function renderReportPdf(report) {
         10,
       );
     }
+  }
+  const staff = report.sections[0]?.rows || [];
+  let staffY = 0;
+  for (let index = 0; index < staff.length; index++) {
+    const row = staff[index];
+    if (!staffY || staffY + 59 > HEIGHT - 55) {
+      page(
+        doc,
+        "Staff details",
+        `${report.start} to ${report.end}`,
+        report.officeLabel,
+        emblem,
+      );
+      staffY = 124;
+    }
+    staffEntry(doc, row, staffY, index);
+    staffY += 59;
+    for (const place of row.workplaces.length ? row.workplaces : [null]) {
+      if (staffY + 23 > HEIGHT - 55) {
+        page(
+          doc,
+          "Staff details (continued)",
+          `${report.start} to ${report.end}`,
+          report.officeLabel,
+          emblem,
+        );
+        staffY = 124;
+        write(doc, row.currentName, MARGIN + 7, staffY, 400, 8.5, true);
+        staffY += 18;
+      }
+      assignmentEntry(doc, place, staffY, index);
+      staffY += 23;
+    }
+    staffY += 7;
   }
   const details = report.sections.flatMap((section) =>
     section.rows.flatMap((row) =>

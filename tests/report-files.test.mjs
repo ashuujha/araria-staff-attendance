@@ -12,10 +12,23 @@ test("Excel and PDF downloads contain a Hindi staff member's saved attendance", 
         id: "staff-1",
         name: "सीमा कुमारी",
         phone: "0000000000",
+        secondary_phones: ["0000000001"],
+        email: "staff@example.org",
         role: "staff",
         active: true,
         block: "Araria",
-        assignments: [],
+        assignments: [
+          {
+            department: "Agriculture",
+            panchayat: "Pokharia",
+            position: "Assistant",
+          },
+          {
+            department: "Welfare",
+            panchayat: "Rampur",
+            position: "Coordinator",
+          },
+        ],
         created_at: "2026-01-01T00:00:00Z",
       },
     ],
@@ -51,10 +64,35 @@ test("Excel and PDF downloads contain a Hindi staff member's saved attendance", 
     workbook.getWorksheet("2026_10").getCell("A8").value,
     "सीमा कुमारी",
   );
-  assert.equal(workbook.getWorksheet("2026_10").getCell("B8").value, "P");
   assert.equal(
-    workbook.getWorksheet("Details").getCell("L8").value,
+    workbook.getWorksheet("2026_10").getCell("B8").value,
+    "0000000000",
+  );
+  assert.equal(workbook.getWorksheet("2026_10").getCell("C8").value, "Araria");
+  assert.equal(workbook.getWorksheet("2026_10").getCell("D8").value, "P");
+  assert.equal(
+    workbook.getWorksheet("Staff Details").getCell("F8").value,
+    "staff@example.org",
+  );
+  assert.equal(
+    workbook.getWorksheet("Staff Details").getCell("E8").value,
+    "0000000001",
+  );
+  assert.equal(
+    workbook.getWorksheet("Staff Details").getCell("H8").value,
+    "Agriculture",
+  );
+  assert.equal(
+    workbook.getWorksheet("Staff Details").getCell("H9").value,
+    "Welfare",
+  );
+  assert.equal(
+    workbook.getWorksheet("Details").getCell("O8").value,
     "20 Oct 2026, 09:30 am",
+  );
+  assert.equal(
+    workbook.getWorksheet("Details").getCell("F8").value,
+    "staff@example.org",
   );
   assert.equal(pdf.subarray(0, 5).toString(), "%PDF-");
   assert.ok(pdf.length > 1000);

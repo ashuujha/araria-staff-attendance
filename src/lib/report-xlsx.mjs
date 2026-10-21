@@ -116,6 +116,16 @@ function detailRows(report) {
     )
     .filter(({ cell }) => cell.record || cell.code === "A");
 }
+function workplaceText(workplaces) {
+  return (workplaces || [])
+    .map((place) =>
+      [place.department, place.panchayat, place.position]
+        .filter(Boolean)
+        .join(" / "),
+    )
+    .filter(Boolean)
+    .join("; ");
+}
 
 export async function renderReportXlsx(report) {
   const emblem = await reportEmblem();
@@ -128,12 +138,14 @@ export async function renderReportXlsx(report) {
   book.created = new Date();
   for (const section of report.sections) {
     const sheet = book.addWorksheet(section.month.replace("-", "_"));
-    sheet.getColumn(1).width = 33;
+    sheet.getColumn(1).width = 29;
+    sheet.getColumn(2).width = 17;
+    sheet.getColumn(3).width = 16;
     for (let i = 0; i < section.dates.length; i++)
-      sheet.getColumn(i + 2).width = 7;
+      sheet.getColumn(i + 4).width = 7;
     heading(
       sheet,
-      section.dates.length + 1,
+      section.dates.length + 3,
       "Attendance report",
       `Month: ${section.month}`,
       `${section.dates[0]} to ${section.dates.at(-1)}`,
@@ -146,12 +158,19 @@ export async function renderReportXlsx(report) {
       });
     sheet.getRow(7).values = [
       "Staff name",
+      "Mobile",
+      "Block",
       ...section.dates.map((d) => Number(d.slice(-2))),
     ];
     styleHeader(sheet.getRow(7));
     section.rows.forEach((row, index) => {
       const out = sheet.getRow(8 + index);
-      out.values = [safe(row.name), ...row.cells.map((cell) => cell.code)];
+      out.values = [
+        safe(row.name),
+        safe(row.phone),
+        safe(row.block),
+        ...row.cells.map((cell) => cell.code),
+      ];
       styleData(out, index);
     });
     const legendRow = sheet.getRow(9 + section.rows.length);
@@ -159,7 +178,7 @@ export async function renderReportXlsx(report) {
       legendRow.number,
       1,
       legendRow.number,
-      section.dates.length + 1,
+      section.dates.length + 3,
     );
     legendRow.getCell(1).value = STATUS_LEGEND.map(
       ([code, label]) => `${code} ${label}`,
@@ -171,16 +190,82 @@ export async function renderReportXlsx(report) {
     };
     sheet.autoFilter = {
       from: { row: 7, column: 1 },
-      to: { row: 7 + section.rows.length, column: section.dates.length + 1 },
+      to: { row: 7 + section.rows.length, column: section.dates.length + 3 },
     };
   }
+  const staffDetails = book.addWorksheet("Staff Details");
+  const staffHeaders = [
+    "Staff ID",
+    "Current name",
+    "Name in report",
+    "Mobile",
+    "Additional mobiles",
+    "Email",
+    "Block",
+    "Department",
+    "Panchayat",
+    "Position",
+    "Account status",
+    "Joined (IST)",
+    "Removed (IST)",
+  ];
+  heading(
+    staffDetails,
+    staffHeaders.length,
+    "Staff details",
+    "One row for each assigned workplace",
+    `${report.start} to ${report.end}`,
+    report.officeLabel,
+  );
+  if (image !== null)
+    staffDetails.addImage(image, {
+      tl: { col: 0.15, row: 0.1 },
+      ext: { width: 45, height: 57 },
+    });
+  staffDetails.getRow(7).values = staffHeaders;
+  styleHeader(staffDetails.getRow(7));
+  [40, 28, 28, 17, 25, 30, 18, 25, 25, 25, 18, 23, 23].forEach(
+    (width, index) => (staffDetails.getColumn(index + 1).width = width),
+  );
+  const staffRows = (report.sections[0]?.rows || []).flatMap((row) =>
+    (row.workplaces.length ? row.workplaces : [null]).map((place) => ({
+      row,
+      place,
+    })),
+  );
+  staffRows.forEach(({ row, place }, index) => {
+    const out = staffDetails.getRow(8 + index);
+    out.values = [
+      safe(row.id),
+      safe(row.currentName),
+      safe(row.name),
+      safe(row.phone),
+      safe(row.secondaryPhones.join(", ")),
+      safe(row.email),
+      safe(row.block),
+      safe(place?.department),
+      safe(place?.panchayat),
+      safe(place?.position),
+      row.active === null ? "Unknown" : row.active ? "Active" : "Inactive",
+      time(row.joinedAt),
+      time(row.removedAt),
+    ];
+    styleData(out, index);
+  });
+  staffDetails.autoFilter = {
+    from: { row: 7, column: 1 },
+    to: { row: 7 + staffRows.length, column: staffHeaders.length },
+  };
   const details = book.addWorksheet("Details");
   const headers = [
     "Date",
+    "Staff ID",
     "Staff name",
     "Current name",
     "Phone",
+    "Email",
     "Block",
+    "Assigned workplaces",
     "Department",
     "Panchayat",
     "Position",
@@ -211,7 +296,8 @@ export async function renderReportXlsx(report) {
   headers.forEach(
     (_, index) =>
       (details.getColumn(index + 1).width = [
-        14, 28, 28, 17, 16, 22, 22, 22, 9, 16, 13, 23, 23, 12, 26, 42,
+        14, 40, 28, 28, 17, 30, 16, 55, 22, 22, 22, 9, 16, 13, 23, 23, 12, 26,
+        42,
       ][index]),
   );
   const items = detailRows(report);
@@ -220,10 +306,13 @@ export async function renderReportXlsx(report) {
     const out = details.getRow(8 + index);
     out.values = [
       cell.date,
+      safe(row.id),
       safe(row.name),
       safe(row.currentName),
       safe(row.phone),
+      safe(row.email),
       safe(row.block),
+      safe(workplaceText(row.workplaces)),
       safe(r.department),
       safe(r.panchayat),
       safe(r.position),

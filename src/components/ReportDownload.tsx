@@ -73,7 +73,8 @@ export default function ReportDownload({
       </summary>
       <p className="sp-muted">
         The report includes all staff matching the current search and filters,
-        across every dashboard page.
+        across every dashboard page. Staff contact details and all assigned
+        workplaces are included with attendance.
       </p>
       <div className="sp-filters">
         <label className="sp-field">
