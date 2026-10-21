@@ -100,3 +100,148 @@ test("optional camera position is stored while ordinary photo uploads remain val
     ),
   );
 });
+
+test("CL and female SL balances enforce annual and monthly limits and restore deleted leave", async () => {
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const year = Number(today.slice(0, 4));
+  const month = Number(today.slice(5, 7));
+  const clMonth = month === 1 ? 2 : 1;
+  await db.query(
+    "update profiles set gender='female',active=true where id=$1",
+    [staff],
+  );
+  await db.query("update profiles set gender='male' where id=$1", [other]);
+  const date = (m, d) =>
+    `${year}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  const workdays = (m, count) =>
+    Array.from({ length: 31 }, (_, index) => index + 1)
+      .filter((day) => {
+        const d = new Date(Date.UTC(year, m - 1, day));
+        return d.getUTCMonth() === m - 1 && d.getUTCDay() !== 0;
+      })
+      .slice(0, count)
+      .map((day) => date(m, day));
+  const clDates = workdays(clMonth, 17);
+  const slDates = workdays(month, 3);
+  for (const day of clDates.slice(0, 16))
+    await db.query(
+      "insert into attendance(staff_id,date,panchayat,status,leave_type) values($1,$2,'Office','leave','CL')",
+      [staff, day],
+    );
+  await assert.rejects(
+    db.query(
+      "insert into attendance(staff_id,date,panchayat,status,leave_type) values($1,$2,'Office','leave','CL')",
+      [staff, clDates[16]],
+    ),
+    /16 CL/,
+  );
+  await db.query(
+    "insert into attendance(staff_id,date,panchayat,status,leave_type) values($1,$2,'Office','leave','SL')",
+    [staff, slDates[0]],
+  );
+  await db.query(
+    "insert into attendance(staff_id,date,panchayat,status,leave_type) values($1,$2,'Office','leave','SL')",
+    [staff, slDates[1]],
+  );
+  await assert.rejects(
+    db.query(
+      "insert into attendance(staff_id,date,panchayat,status,leave_type) values($1,$2,'Office','leave','SL')",
+      [staff, slDates[2]],
+    ),
+    /दोनों SL/,
+  );
+  await assert.rejects(
+    db.query(
+      "insert into attendance(staff_id,date,panchayat,status,leave_type) values($1,$2,'Office','leave','SL')",
+      [other, slDates[2]],
+    ),
+    /महिला/,
+  );
+  let snapshot = await as(admin, "select leave_balance_snapshot() value");
+  let balance = snapshot.balances.find((row) => row.staff_id === staff);
+  assert.equal(balance.cl_left, 0);
+  assert.equal(balance.sl_left, 22);
+  assert.equal(balance.sl_month_left, 0);
+  await db.query(
+    "update attendance set deleted_at=now() where staff_id=$1 and date=$2",
+    [staff, clDates[0]],
+  );
+  snapshot = await as(staff, "select leave_balance_snapshot() value");
+  balance = snapshot.balances.find((row) => row.staff_id === staff);
+  assert.equal(snapshot.balances.length, 1);
+  assert.equal(balance.cl_left, 1);
+  for (let m = 1; m <= 12; m++) {
+    if (m === month) continue;
+    const dates = workdays(m, m === clMonth ? 18 : 2);
+    for (const leaveDate of m === clMonth ? dates.slice(16, 18) : dates)
+      await db.query(
+        "insert into attendance(staff_id,date,panchayat,status,leave_type) values($1,$2,'Office','leave','SL')",
+        [staff, leaveDate],
+      );
+  }
+  await assert.rejects(
+    db.query(
+      "insert into attendance(staff_id,date,panchayat,status,leave_type) values($1,$2,'Office','leave','SL')",
+      [staff, slDates[2]],
+    ),
+    /24 SL/,
+  );
+  snapshot = await as(admin, "select leave_balance_snapshot() value");
+  assert.equal(
+    snapshot.balances.find((row) => row.staff_id === staff).sl_left,
+    0,
+  );
+});
+
+test("admin gender management and typed manual leave use the same quota checks", async () => {
+  const newcomer = "44444444-4444-4444-8444-444444444444";
+  await db.query("insert into auth.users values($1)", [newcomer]);
+  const created = await db.query(
+    "select create_master_staff_with_gender($1,$2,'New Staff','9000000044','','9000000044@fixture.invalid','Araria',$3::jsonb,'Administrator added a staff account','female') value",
+    [
+      admin,
+      newcomer,
+      JSON.stringify([
+        { panchayat: "Office", department: "Office", position: "Staff" },
+      ]),
+    ],
+  );
+  assert.equal(created.rows[0].value.gender, "female");
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const day = new Date(today + "T00:00:00Z");
+  if (day.getUTCDay() !== 0) {
+    const result = await db.query(
+      "select admin_input_attendance_with_leave($1,$2,$3,'Office','leave',null,null,'Administrator entered attendance','SL') value",
+      [admin, newcomer, today],
+    );
+    assert.equal(result.rows[0].value.leave_type, "SL");
+    await assert.rejects(
+      db.query(
+        "select manage_staff_with_gender($1,$2,$3::jsonb,'Administrator updated staff details')",
+        [admin, newcomer, JSON.stringify({ gender: "unknown" })],
+      ),
+      /लिंग/,
+    );
+    await db.query(
+      "select manage_staff_with_gender($1,$2,$3::jsonb,'Administrator updated staff details')",
+      [admin, newcomer, JSON.stringify({ gender: "male" })],
+    );
+    await assert.rejects(
+      db.query(
+        "select admin_input_attendance_with_leave($1,$2,$3,'Office','leave',null,null,'Administrator entered attendance','SL')",
+        [admin, newcomer, today],
+      ),
+      /महिला/,
+    );
+  }
+});

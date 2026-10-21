@@ -12,7 +12,23 @@ export type Profile = {
   assignments: Assignment[];
   block: string;
   active: boolean;
+  gender?: "female" | "male" | null;
   deleted_at?: string | null;
+};
+export type LeaveBalance = {
+  staff_id: string;
+  gender: "female" | "male" | null;
+  cl_used: number;
+  cl_left: number;
+  sl_used: number;
+  sl_left: number;
+  sl_month_used: number;
+  sl_month_left: number;
+};
+export type LeaveBalanceSnapshot = {
+  year: number;
+  month: number;
+  balances: LeaveBalance[];
 };
 export type Attendance = {
   id: string;

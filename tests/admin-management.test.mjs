@@ -72,6 +72,7 @@ test("admin add/edit/remove uses scoped RPCs, returns only new account password 
         name: "New Staff",
         phone: "9000000002",
         email: "",
+        gender: "female",
         assignments: [
           { department: "Office", panchayat: "Pokharia", position: "Staff" },
         ],
@@ -83,7 +84,12 @@ test("admin add/edit/remove uses scoped RPCs, returns only new account password 
       request({
         action: "update",
         id: staff,
-        changes: { name: "Edited Staff", phone: "9000000002", active: false },
+        changes: {
+          name: "Edited Staff",
+          phone: "9000000002",
+          active: false,
+          gender: "female",
+        },
       }),
     );
     assert.equal(updated.status, 200);
@@ -91,8 +97,8 @@ test("admin add/edit/remove uses scoped RPCs, returns only new account password 
     const removed = await POST(request({ action: "delete", id: staff }));
     assert.equal(removed.status, 200);
     for (const name of [
-      "create_master_staff",
-      "manage_staff",
+      "create_master_staff_with_gender",
+      "manage_staff_with_gender",
       "delete_master_staff",
     ])
       assert.ok(
@@ -108,7 +114,7 @@ test("admin add/edit/remove uses scoped RPCs, returns only new account password 
       assert.ok(call.body.reason_text.startsWith("Administrator "));
     }
     const before = calls.filter((c) =>
-      c.url.pathname.endsWith("/manage_staff"),
+      c.url.pathname.endsWith("/manage_staff_with_gender"),
     ).length;
     assert.equal(
       (
@@ -123,7 +129,8 @@ test("admin add/edit/remove uses scoped RPCs, returns only new account password 
       400,
     );
     assert.equal(
-      calls.filter((c) => c.url.pathname.endsWith("/manage_staff")).length,
+      calls.filter((c) => c.url.pathname.endsWith("/manage_staff_with_gender"))
+        .length,
       before,
     );
     role = "district_viewer";
@@ -162,6 +169,8 @@ test("admin loading validates JWT through Supabase then starts attendance and di
       );
       return Response.json([]);
     }
+    if (url.pathname === "/rest/v1/rpc/leave_balance_snapshot")
+      return Response.json({ year: 2026, month: 10, balances: [] });
     if (url.pathname === "/rest/v1/profiles") {
       directoryStarted = true;
       return Response.json([]);
@@ -173,7 +182,7 @@ test("admin loading validates JWT through Supabase then starts attendance and di
       new Request(process.env.APP_URL + "/api/admin", { headers }),
     );
     assert.equal(response.status, 200);
-    assert.equal(calls.length, 4);
+    assert.equal(calls.length, 5);
   } finally {
     globalThis.fetch = original;
   }
@@ -227,6 +236,7 @@ test("removed staff stays discoverable and can be restored in scope", async () =
         action: "create",
         name: "New Staff",
         phone: "9000000002",
+        gender: "male",
         assignments: [],
       }),
     );
@@ -323,6 +333,8 @@ test("attendance polling skips the directory without returning a misleading empt
     if (url.pathname === "/rest/v1/profiles" && url.searchParams.has("id"))
       return Response.json([{ id: admin, role: "super_admin", active: true }]);
     if (url.pathname === "/rest/v1/attendance") return Response.json([]);
+    if (url.pathname === "/rest/v1/rpc/leave_balance_snapshot")
+      return Response.json({ year: 2026, month: 10, balances: [] });
     throw Error("Directory should not be downloaded on this request");
   };
   try {
@@ -333,7 +345,7 @@ test("attendance polling skips the directory without returning a misleading empt
     const data = await response.json();
     assert.deepEqual(data.records, []);
     assert.equal(Object.hasOwn(data, "staff"), false);
-    assert.equal(calls.length, 2);
+    assert.equal(calls.length, 3);
   } finally {
     globalThis.fetch = original;
   }

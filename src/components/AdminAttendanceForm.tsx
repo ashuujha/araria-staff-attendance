@@ -16,7 +16,8 @@ export default function AdminAttendanceForm({
   onSave: (data: Record<string, unknown>) => void;
 }) {
   const [selected, setSelected] = useState(""),
-    [status, setStatus] = useState("present");
+    [status, setStatus] = useState("present"),
+    [leaveType, setLeaveType] = useState("CL");
   const p = staff.find((p) => p.id === selected);
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -32,6 +33,7 @@ export default function AdminAttendanceForm({
       date: day,
       panchayat: f.get("panchayat"),
       status,
+      leave_type: status === "leave" ? leaveType : null,
       time_in: status === "present" ? stamp("time_in") : null,
       time_out: status === "present" ? stamp("time_out") : null,
     });
@@ -47,7 +49,10 @@ export default function AdminAttendanceForm({
         <select
           required
           value={selected}
-          onChange={(e) => setSelected(e.target.value)}
+          onChange={(e) => {
+            setSelected(e.target.value);
+            setLeaveType("CL");
+          }}
         >
           <option value="">कर्मी चुनें</option>
           {staff
@@ -117,6 +122,18 @@ export default function AdminAttendanceForm({
             <input type="time" name="time_out" />
           </label>
         </div>
+      )}
+      {status === "leave" && (
+        <label className="field-label">
+          अवकाश प्रकार / Leave type
+          <select
+            value={leaveType}
+            onChange={(event) => setLeaveType(event.target.value)}
+          >
+            <option value="CL">CL</option>
+            {p?.gender === "female" && <option value="SL">SL</option>}
+          </select>
+        </label>
       )}
 
       <button className="button primary" disabled={busy}>

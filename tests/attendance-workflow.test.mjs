@@ -203,7 +203,7 @@ test("SL evidence consumes owned attachment atomically without a camera challeng
   const user = "66666666-6666-4666-8666-666666666666";
   await db.query("insert into auth.users values($1)", [user]);
   await db.query(
-    `insert into profiles(id,name,phone,login_email,device_hash,assignments) values($1,'SL Staff','9000000006','sl@test.invalid','device','[{"panchayat":"Office","department":"Department","position":"Staff"}]')`,
+    `insert into profiles(id,name,phone,login_email,device_hash,assignments,gender) values($1,'SL Staff','9000000006','sl@test.invalid','device','[{"panchayat":"Office","department":"Department","position":"Staff"}]','female')`,
     [user],
   );
   const path = user + "/" + day + "/leave.pdf";

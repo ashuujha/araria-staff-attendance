@@ -13,7 +13,7 @@ export async function GET(req: Request) {
     const { profile, token } = await identity(req);
     admin(profile);
     const staff = await sb(
-      "/rest/v1/profiles?role=eq.staff&deleted_at=is.null&select=id,name,phone,email,secondary_phones,assignments,role,block,active&order=name",
+      "/rest/v1/profiles?role=eq.staff&deleted_at=is.null&select=id,name,phone,email,secondary_phones,assignments,role,block,active,gender&order=name",
       {},
       token,
     );
@@ -58,7 +58,8 @@ export async function POST(req: Request) {
         name.length > 150 ||
         !/^[6-9]\d{9}$/.test(phone) ||
         (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) ||
-        email.length > 254
+        email.length > 254 ||
+        !["female", "male"].includes(b.gender)
       )
         throw new HttpError(400, "कर्मी विवरण अमान्य है।");
       const existing = await sb(
@@ -104,20 +105,24 @@ export async function POST(req: Request) {
         }),
       });
       try {
-        const result = await sb("/rest/v1/rpc/create_master_staff", {
-          method: "POST",
-          body: JSON.stringify({
-            actor_id: profile.id,
-            user_id: user.id,
-            staff_name: name,
-            staff_phone: phone,
-            staff_email: email,
-            auth_email: loginEmail,
-            block_name: profile.block,
-            workplaces: b.assignments,
-            reason_text: reason,
-          }),
-        });
+        const result = await sb(
+          "/rest/v1/rpc/create_master_staff_with_gender",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              actor_id: profile.id,
+              user_id: user.id,
+              staff_name: name,
+              staff_phone: phone,
+              staff_email: email,
+              auth_email: loginEmail,
+              block_name: profile.block,
+              workplaces: b.assignments,
+              reason_text: reason,
+              gender_name: b.gender,
+            }),
+          },
+        );
         return json({ profile: result, password });
       } catch (e) {
         await sb("/auth/v1/admin/users/" + user.id, { method: "DELETE" }).catch(
@@ -146,7 +151,7 @@ export async function POST(req: Request) {
       const restored = await sb(
         "/rest/v1/profiles?id=eq." +
           b.id +
-          "&deleted_at=not.is.null&select=id,name,phone,email,assignments,role,block,active",
+          "&deleted_at=not.is.null&select=id,name,phone,email,assignments,role,block,active,gender",
         {
           method: "PATCH",
           headers: { Prefer: "return=representation" },
@@ -219,10 +224,11 @@ export async function POST(req: Request) {
           changes.email.length > 254 ||
           (changes.email &&
             !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(changes.email)))) ||
-      ("active" in changes && typeof changes.active !== "boolean")
+      ("active" in changes && typeof changes.active !== "boolean") ||
+      ("gender" in changes && !["female", "male"].includes(changes.gender))
     )
       throw new HttpError(400, "कर्मी विवरण अमान्य है।");
-    const record = await sb("/rest/v1/rpc/manage_staff", {
+    const record = await sb("/rest/v1/rpc/manage_staff_with_gender", {
       method: "POST",
       body: JSON.stringify({
         actor_id: profile.id,

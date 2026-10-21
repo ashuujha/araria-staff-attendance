@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import type { Profile, Assignment } from "../lib/types";
+import type {
+  Profile,
+  Assignment,
+  LeaveBalance,
+  LeaveBalanceSnapshot,
+} from "../lib/types";
 import "../app/simple.css";
 import { LanguageSwitcher, Localized } from "../lib/portal-language";
 import { EyeIcon } from "./ControlIcons";
@@ -49,7 +54,33 @@ type Bootstrap = {
   staff: Profile[];
   office: OfficeFeed;
   revisions?: Revisions;
+  leaveBalances?: LeaveBalanceSnapshot;
 };
+
+function LeaveBalanceDisplay({
+  balance,
+  gender,
+}: {
+  balance?: LeaveBalance;
+  gender?: Profile["gender"];
+}) {
+  return (
+    <span className="sp-leave-balance">
+      CL: {balance?.cl_left ?? "—"}/16 left
+      {gender === "female" ? (
+        <>
+          {" "}
+          • SL: {balance?.sl_left ?? "—"}/24 this year,{" "}
+          {balance?.sl_month_left ?? "—"}/2 this month
+        </>
+      ) : gender === "male" ? (
+        <> • SL: not eligible</>
+      ) : (
+        <> • SL: ask admin to set gender</>
+      )}
+    </span>
+  );
+}
 type Revisions = {
   profile: number;
   directory: number;
@@ -594,6 +625,11 @@ function Staff({
   const [record, setRecord] = useState<RecordRow | null>(
     initial?.records[0] || null,
   );
+  const [leaveBalances, setLeaveBalances] =
+    useState<LeaveBalanceSnapshot | null>(initial?.leaveBalances || null);
+  useEffect(() => {
+    if (initial?.leaveBalances) setLeaveBalances(initial.leaveBalances);
+  }, [initial?.leaveBalances]);
   const [loading, setLoading] = useState(!initial),
     [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -604,6 +640,9 @@ function Staff({
   const [status, setStatus] = useState("present"),
     [deputation, setDeputation] = useState(""),
     [leaveType, setLeaveType] = useState("CL");
+  useEffect(() => {
+    if (profile.gender !== "female" && leaveType === "SL") setLeaveType("CL");
+  }, [profile.gender, leaveType]);
   const [workplacePhoto, setWorkplacePhoto] = useState<File | null>(null);
   const [capturedLocation, setCapturedLocation] =
     useState<CameraLocation | null>(null);
@@ -676,6 +715,7 @@ function Staff({
             (row: RecordRow) => row.date === dateToday(),
           ) || null,
         );
+        if (data.leaveBalances) setLeaveBalances(data.leaveBalances);
         setLoadError(false);
       }
     } catch (err) {
@@ -853,6 +893,7 @@ function Staff({
         );
       staffRequestId.current++;
       setRecord(saved.record);
+      if (saved.leaveBalances) setLeaveBalances(saved.leaveBalances);
       setLoading(false);
       setLoadError(false);
       setLeave(null);
@@ -903,6 +944,20 @@ function Staff({
             <div>
               <span className="sp-muted">प्रखंड / Block</span>
               <strong>{profile.block || "कार्यालय से संपर्क करें"}</strong>
+            </div>
+            <div>
+              <span className="sp-muted">
+                अवकाश शेष / Leave left (
+                {leaveBalances?.year || new Date().getFullYear()})
+              </span>
+              <strong>
+                <LeaveBalanceDisplay
+                  balance={leaveBalances?.balances.find(
+                    (entry) => entry.staff_id === profile.id,
+                  )}
+                  gender={profile.gender}
+                />
+              </strong>
             </div>
           </div>
           {loading ? (
@@ -1170,7 +1225,9 @@ function Staff({
                           onChange={(e) => setLeaveType(e.target.value)}
                         >
                           <option value="CL">CL / आकस्मिक अवकाश</option>
-                          <option value="SL">SL / बीमारी अवकाश</option>
+                          {profile.gender === "female" && (
+                            <option value="SL">SL / बीमारी अवकाश</option>
+                          )}
                         </select>
                       </label>
                       <label className="sp-field">
@@ -1261,6 +1318,11 @@ function Admin({
   } | null>(null);
   const [records, setRecords] = useState<RecordRow[]>(initial?.records || []),
     [staff, setStaff] = useState<Profile[]>(initial?.staff || []);
+  const [leaveBalances, setLeaveBalances] =
+    useState<LeaveBalanceSnapshot | null>(initial?.leaveBalances || null);
+  useEffect(() => {
+    if (initial?.leaveBalances) setLeaveBalances(initial.leaveBalances);
+  }, [initial?.leaveBalances]);
   const [removedStaff, setRemovedStaff] = useState<Profile[]>([]);
   const [showRemoved, setShowRemoved] = useState(false);
   const [restoreNotice, setRestoreNotice] = useState("");
@@ -1302,6 +1364,7 @@ function Admin({
         if (alive.current && id === requestId.current) {
           if (retryAdmin.current) clearTimeout(retryAdmin.current);
           setRecords(data.records || []);
+          if (data.leaveBalances) setLeaveBalances(data.leaveBalances);
           if (Array.isArray(data.staff)) {
             setStaff(data.staff);
             setRemovedStaff(data.removedStaff || []);
@@ -1841,6 +1904,7 @@ function Admin({
                         <th scope="col">प्रखंड / Block</th>
                         <th scope="col">विभाग, पंचायत और पद / Assignment</th>
                         <th scope="col">उपस्थिति / Attendance ({date})</th>
+                        <th scope="col">अवकाश शेष / Leave left</th>
                         <th scope="col">विवरण / Details</th>
                       </tr>
                     </thead>
@@ -1894,6 +1958,19 @@ function Admin({
                                     </small>
                                   ))
                                 : "दर्ज नहीं / Not recorded"}
+                            </div>
+                          </td>
+                          <td>
+                            <span className="sp-cell-label" aria-hidden="true">
+                              अवकाश शेष / Leave left
+                            </span>
+                            <div className="sp-cell-value">
+                              <LeaveBalanceDisplay
+                                balance={leaveBalances?.balances.find(
+                                  (entry) => entry.staff_id === person.id,
+                                )}
+                                gender={person.gender}
+                              />
                             </div>
                           </td>
                           <td>
@@ -2081,6 +2158,29 @@ function Admin({
                   <div>
                     <dt>ईमेल / Email</dt>
                     <dd>{detail.email || "—"}</dd>
+                  </div>
+                  <div>
+                    <dt>लिंग / Gender</dt>
+                    <dd>
+                      {detail.gender === "female"
+                        ? "महिला / Female"
+                        : detail.gender === "male"
+                          ? "पुरुष / Male"
+                          : "दर्ज नहीं / Not set"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>
+                      अवकाश शेष / Leave left ({leaveBalances?.year || "—"})
+                    </dt>
+                    <dd>
+                      <LeaveBalanceDisplay
+                        balance={leaveBalances?.balances.find(
+                          (entry) => entry.staff_id === detail.id,
+                        )}
+                        gender={detail.gender}
+                      />
+                    </dd>
                   </div>
                 </dl>
                 <h3>आवंटन / Assignments</h3>

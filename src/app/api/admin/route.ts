@@ -17,7 +17,7 @@ export async function GET(req: Request) {
     const includeStaff = url.searchParams.get("directory") !== "0";
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
       throw new HttpError(400, "तिथि अमान्य।");
-    const [records, staff, removedStaff] = await Promise.all([
+    const [records, staff, removedStaff, leaveBalances] = await Promise.all([
       sb(
         "/rest/v1/attendance?date=eq." +
           date +
@@ -27,20 +27,29 @@ export async function GET(req: Request) {
       ),
       includeStaff
         ? sb(
-            "/rest/v1/profiles?deleted_at=is.null&role=eq.staff&select=id,name,phone,email,assignments,block,role,active&order=name",
+            "/rest/v1/profiles?deleted_at=is.null&role=eq.staff&select=id,name,phone,email,assignments,block,role,active,gender&order=name",
             {},
             token,
           )
         : Promise.resolve(undefined),
       includeStaff
         ? sb(
-            "/rest/v1/profiles?deleted_at=not.is.null&role=eq.staff&select=id,name,phone,email,assignments,block,role,active,deleted_at&order=name",
+            "/rest/v1/profiles?deleted_at=not.is.null&role=eq.staff&select=id,name,phone,email,assignments,block,role,active,gender,deleted_at&order=name",
             {},
             token,
           )
         : Promise.resolve(undefined),
+      sb(
+        "/rest/v1/rpc/leave_balance_snapshot",
+        { method: "POST", body: "{}" },
+        token,
+      ),
     ]);
-    return json({ records, ...(includeStaff ? { staff, removedStaff } : {}) });
+    return json({
+      records,
+      leaveBalances,
+      ...(includeStaff ? { staff, removedStaff } : {}),
+    });
   } catch (e) {
     return failure(e);
   }
@@ -71,19 +80,25 @@ export async function POST(req: Request) {
         !["present", "leave"].includes(body.status)
       )
         throw new HttpError(400, "तिथि, स्थिति या कार्यस्थल अमान्य है।");
-      const result = await sb("/rest/v1/rpc/admin_input_attendance", {
-        method: "POST",
-        body: JSON.stringify({
-          actor_id: profile.id,
-          user_id: body.staff_id,
-          attendance_date: body.date,
-          panchayat_name: body.panchayat,
-          status_name: body.status,
-          punch_in: body.time_in || null,
-          punch_out: body.time_out || null,
-          reason_text: reason,
-        }),
-      });
+      if (body.status === "leave" && !["CL", "SL"].includes(body.leave_type))
+        throw new HttpError(400, "CL या SL चुनें।");
+      const result = await sb(
+        "/rest/v1/rpc/admin_input_attendance_with_leave",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            actor_id: profile.id,
+            user_id: body.staff_id,
+            attendance_date: body.date,
+            panchayat_name: body.panchayat,
+            status_name: body.status,
+            punch_in: body.time_in || null,
+            punch_out: body.time_out || null,
+            reason_text: reason,
+            leave_kind: body.status === "leave" ? body.leave_type : null,
+          }),
+        },
+      );
       return json({ record: result });
     }
     if (body.action === "delete") {

@@ -23,12 +23,19 @@ export const maxDuration = 60;
 export async function GET(req: Request) {
   try {
     const { profile, token } = await identity(req);
-    const records = await sb(
-      `/rest/v1/attendance?staff_id=eq.${profile.id}&date=eq.${istDate()}&deleted_at=is.null&select=*`,
-      {},
-      token,
-    );
-    return json({ records });
+    const [records, leaveBalances] = await Promise.all([
+      sb(
+        `/rest/v1/attendance?staff_id=eq.${profile.id}&date=eq.${istDate()}&deleted_at=is.null&select=*`,
+        {},
+        token,
+      ),
+      sb(
+        "/rest/v1/rpc/leave_balance_snapshot",
+        { method: "POST", body: "{}" },
+        token,
+      ),
+    ]);
+    return json({ records, leaveBalances });
   } catch (e) {
     return failure(e);
   }
@@ -39,7 +46,7 @@ export async function POST(req: Request) {
   let releaseEvidence: (() => void) | undefined;
   try {
     csrf(req);
-    const { profile } = await identity(req);
+    const { profile, token } = await identity(req);
     if (profile.role !== "staff")
       throw new HttpError(403, "केवल कर्मी उपस्थिति दर्ज कर सकते हैं।");
     if (!req.headers.get("content-type")?.includes("application/json"))
@@ -239,7 +246,15 @@ export async function POST(req: Request) {
       }),
     });
     cleanup.length = 0;
-    return json({ record });
+    const leaveBalances =
+      body.status === "leave"
+        ? await sb(
+            "/rest/v1/rpc/leave_balance_snapshot",
+            { method: "POST", body: "{}" },
+            token,
+          ).catch(() => null)
+        : undefined;
+    return json({ record, ...(leaveBalances ? { leaveBalances } : {}) });
   } catch (e) {
     for (const path of cleanup) {
       const pending = await sb(

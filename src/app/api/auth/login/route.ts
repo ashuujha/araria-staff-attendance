@@ -85,7 +85,7 @@ export async function POST(req: Request) {
       : await sb(
           "/rest/v1/profiles?id=eq." +
             session.user.id +
-            "&deleted_at=is.null&select=id,name,phone,email,assignments,role,block,active",
+            "&deleted_at=is.null&select=id,name,phone,email,assignments,role,block,active,gender",
           {},
           session.access_token,
         );

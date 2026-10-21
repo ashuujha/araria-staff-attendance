@@ -24,6 +24,7 @@ export default function StaffEditor({
   const [name, setName] = useState(person?.name || "");
   const [phone, setPhone] = useState(person?.phone || "");
   const [email, setEmail] = useState(person?.email || "");
+  const [gender, setGender] = useState(person?.gender || "");
   const [active, setActive] = useState(person?.active ?? true);
   const [assignments, setAssignments] = useState<Assignment[]>(
     person?.assignments.length
@@ -102,6 +103,7 @@ export default function StaffEditor({
                     name: name.trim(),
                     phone,
                     email: email.trim(),
+                    gender,
                     active,
                     assignments,
                   },
@@ -111,6 +113,7 @@ export default function StaffEditor({
                   name: name.trim(),
                   phone,
                   email: email.trim(),
+                  gender,
                   assignments,
                 },
         ),
@@ -245,6 +248,22 @@ export default function StaffEditor({
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                       />
+                    </label>
+                    <label className="sp-field">
+                      लिंग / Gender (SL eligibility)
+                      <select
+                        required
+                        value={gender}
+                        onChange={(event) =>
+                          setGender(
+                            event.target.value as "female" | "male" | "",
+                          )
+                        }
+                      >
+                        <option value="">चुनें / Choose</option>
+                        <option value="female">महिला / Female</option>
+                        <option value="male">पुरुष / Male</option>
+                      </select>
                     </label>
                     {person && (
                       <label className="sp-field">

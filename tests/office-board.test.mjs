@@ -50,7 +50,7 @@ async function readAs(id, query) {
 }
 function attendance(date, status = "present") {
   return db.query(
-    "insert into attendance(staff_id,date,panchayat,status,phase,time_in) values($1,$2,'Office',$3,'draft','2026-10-19T04:00:00Z') returning id",
+    "insert into attendance(staff_id,date,panchayat,status,phase,time_in,leave_type) values($1,$2,'Office',$3,'draft','2026-10-19T04:00:00Z',case when $3='leave' then 'CL' else null end) returning id",
     [staff, date, status],
   );
 }
