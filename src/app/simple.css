@@ -382,6 +382,28 @@
   background: #18324c;
   margin: 16px 0;
 }
+.sp-workplace-camera {
+  margin-top: 12px;
+  margin-bottom: 12px;
+  min-width: 0;
+}
+.sp-camera-review {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.sp-camera-review p,
+.sp-camera-review small {
+  margin: 0;
+}
+.sp-camera-map {
+  display: block;
+  width: 100%;
+  max-width: 560px;
+  height: 220px;
+  border: 1px solid #c6d2df;
+  border-radius: 10px;
+}
 .sp-actions {
   display: flex;
   gap: 12px;

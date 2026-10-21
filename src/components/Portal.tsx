@@ -10,10 +10,12 @@ import DepartmentBrand from "./DepartmentBrand";
 import { useOfficeFeed, NoticeBoard, OfficeSettings } from "./OfficeBoard";
 import { officeClosure, type OfficeFeed } from "../lib/office-types";
 import { prepareWorkplacePhoto } from "../lib/photo-upload";
+import { openStreetMapUrl, type CameraLocation } from "../lib/osm-camera";
 import ReportDownload from "./ReportDownload";
 
 const StaffEditor = dynamic(() => import("./StaffEditor"));
 const AdminCaptcha = dynamic(() => import("./AdminCaptcha"));
+const WorkplaceCamera = dynamic(() => import("./WorkplaceCamera"));
 
 type RecordRow = {
   id: string;
@@ -208,6 +210,24 @@ function RecordDetails({ row }: { row: RecordRow }) {
               </div>
             ))}
         </dl>
+        {Number.isFinite(row.latitude) && Number.isFinite(row.longitude) && (
+          <p className="sp-note">
+            कैमरे द्वारा दिया गया स्थान / Camera-reported location:{" "}
+            {row.latitude?.toFixed(6)}, {row.longitude?.toFixed(6)}
+            {Number.isFinite(row.accuracy) &&
+              ` • ±${Math.round(row.accuracy!)} m`}{" "}
+            <a
+              href={openStreetMapUrl({
+                latitude: row.latitude!,
+                longitude: row.longitude!,
+              })}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Open in OpenStreetMap
+            </a>
+          </p>
+        )}
       </>
     </Localized>
   );
@@ -587,6 +607,9 @@ function Staff({
     [deputation, setDeputation] = useState(""),
     [leaveType, setLeaveType] = useState("CL");
   const [workplacePhoto, setWorkplacePhoto] = useState<File | null>(null);
+  const [capturedLocation, setCapturedLocation] =
+    useState<CameraLocation | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [absenceReason, setAbsenceReason] = useState("");
   const [photoPreview, setPhotoPreview] = useState("");
   useEffect(() => {
@@ -775,6 +798,11 @@ function Staff({
             workplacePhoto,
             "workplace_photo",
           );
+          if (capturedLocation) {
+            body.latitude = capturedLocation.latitude;
+            body.longitude = capturedLocation.longitude;
+            body.accuracy = capturedLocation.accuracy;
+          }
         }
         if (status === "leave") {
           if (
@@ -801,6 +829,8 @@ function Staff({
       setLoadError(false);
       setLeave(null);
       setWorkplacePhoto(null);
+      setCapturedLocation(null);
+      setCameraOpen(false);
       notify(
         complete
           ? "जाने का समय सहेज दिया गया।"
@@ -943,6 +973,8 @@ function Staff({
                       onChange={(e) => {
                         setStatus(e.target.value);
                         setWorkplacePhoto(null);
+                        setCapturedLocation(null);
+                        setCameraOpen(false);
                         setLeave(null);
                       }}
                     >
@@ -965,11 +997,13 @@ function Staff({
                     </label>
                   )}
                   {(status === "present" || status === "deputation") && (
-                    <label className="sp-field" key={status}>
-                      कार्यस्थल की फोटो / Workplace photo
+                    <div className="sp-field" key={status}>
+                      <label htmlFor="workplace-photo">
+                        कार्यस्थल की फोटो / Workplace photo
+                      </label>
                       <input
+                        id="workplace-photo"
                         type="file"
-                        required
                         accept="image/jpeg,image/png,.jpg,.jpeg,.png"
                         onChange={(event) => {
                           const file = event.target.files?.[0];
@@ -981,15 +1015,45 @@ function Staff({
                           ) {
                             event.target.value = "";
                             setWorkplacePhoto(null);
+                            setCapturedLocation(null);
                             fail(
                               new Error(
                                 "JPEG/PNG फोटो चुनें, 5 MB से कम। / Choose a JPEG/PNG photo smaller than 5 MB.",
                               ),
                             );
-                          } else setWorkplacePhoto(file || null);
+                          } else {
+                            setWorkplacePhoto(file || null);
+                            setCapturedLocation(null);
+                            setCameraOpen(false);
+                          }
                         }}
                       />
-                      <small>JPEG / PNG • 5 MB से कम / Smaller than 5 MB</small>
+                      <small>
+                        JPEG / PNG • 5 MB से कम / Smaller than 5 MB. या कैमरे से
+                        नई फोटो लें / Or take a new photo.
+                      </small>
+                      <button
+                        type="button"
+                        className="sp-button sp-secondary"
+                        onClick={() => setCameraOpen((open) => !open)}
+                      >
+                        {cameraOpen
+                          ? "कैमरा बंद करें / Close camera"
+                          : "कैमरा खोलें / Open camera"}
+                      </button>
+                      {cameraOpen && (
+                        <WorkplaceCamera
+                          onClose={() => setCameraOpen(false)}
+                          onUse={(file, location) => {
+                            setWorkplacePhoto(file);
+                            setCapturedLocation(location);
+                            const input = document.getElementById(
+                              "workplace-photo",
+                            ) as HTMLInputElement | null;
+                            if (input) input.value = "";
+                          }}
+                        />
+                      )}
                       {photoPreview && (
                         <img
                           className="sp-workplace-preview"
@@ -997,7 +1061,15 @@ function Staff({
                           alt="कार्यस्थल फोटो का पूर्वावलोकन / Workplace photo preview"
                         />
                       )}
-                    </label>
+                      {capturedLocation && (
+                        <small>
+                          कैमरा स्थान / Camera location:{" "}
+                          {capturedLocation.latitude.toFixed(6)},{" "}
+                          {capturedLocation.longitude.toFixed(6)} • ±
+                          {Math.round(capturedLocation.accuracy)} m
+                        </small>
+                      )}
+                    </div>
                   )}
                   {status === "absent" && (
                     <label className="sp-field">
@@ -1068,7 +1140,8 @@ function Staff({
                   />
                   <span>
                     मैं उपस्थिति की जानकारी कार्यालय के प्रशासक के साथ साझा करने
-                    की सहमति देता/देती हूँ।
+                    की सहमति देता/देती हूँ। कैमरा चुनने पर फोटो और उसका स्थान भी
+                    साझा होगा।
                   </span>
                 </label>
                 <button className="sp-button sp-primary" disabled={busy}>

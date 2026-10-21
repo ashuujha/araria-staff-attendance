@@ -118,7 +118,25 @@ export async function POST(req: Request) {
           "अनुपस्थिति का कारण लिखें (3–1000 अक्षर)। / Enter an absence reason (3–1000 characters).",
         );
     }
-    // GPS, camera challenges and browser binding remain disabled.
+    // Browser location is optional photo metadata, not verified GPS evidence.
+    // Existing gallery uploads may omit it; only arrival drafts can carry it.
+    const locationProvided =
+      body.latitude != null || body.longitude != null || body.accuracy != null;
+    if (
+      locationProvided &&
+      (!draft ||
+        ![body.latitude, body.longitude, body.accuracy].every(
+          (value) => typeof value === "number" && Number.isFinite(value),
+        ) ||
+        Math.abs(body.latitude) > 90 ||
+        Math.abs(body.longitude) > 180 ||
+        body.accuracy <= 0 ||
+        body.accuracy > 1_000_000)
+    )
+      throw new HttpError(
+        400,
+        "कैमरा स्थान अमान्य है। / Camera location is invalid.",
+      );
     if (
       body.action === "complete" &&
       (body.leave_upload_path || body.photo_upload_path)
@@ -205,9 +223,9 @@ export async function POST(req: Request) {
         photo_path:
           body.action === "save_draft" ? body.photo_upload_path : null,
         leave_path: body.leave_upload_path || null,
-        lat: null,
-        lng: null,
-        acc: null,
+        lat: locationProvided ? body.latitude : null,
+        lng: locationProvided ? body.longitude : null,
+        acc: locationProvided ? body.accuracy : null,
         capture_id: null,
         image_hash: null,
         perceptual_hash: null,

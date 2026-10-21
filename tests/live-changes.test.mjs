@@ -69,3 +69,34 @@ test("revision counters stay scoped and react to profile, attendance and office 
   await db.query("update profiles set active=false where id=$1", [staff]);
   await assert.rejects(changes(staff), /PORTAL:/);
 });
+
+test("optional camera position is stored while ordinary photo uploads remain valid", async () => {
+  const d = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  await db.query(
+    `update profiles set assignments='[{"panchayat":"Office","department":"Office","position":"Staff"}]' where id=$1`,
+    [other],
+  );
+  const photo = `${other}/${d}/camera.jpg`;
+  await db.query("insert into pending_uploads(path,staff_id) values($1,$2)", [
+    photo,
+    other,
+  ]);
+  const saved = await db.query(
+    `select save_attendance_with_evidence($1,'save_draft','Office','Office','Staff','present',null,null,null,$2,null,22.5643,88.3693,1200) as record`,
+    [other, photo],
+  );
+  assert.equal(saved.rows[0].record.latitude, 22.5643);
+  assert.equal(saved.rows[0].record.longitude, 88.3693);
+  assert.equal(saved.rows[0].record.accuracy, 1200);
+  const bootstrap = await as(admin, "select portal_bootstrap() value");
+  assert.ok(
+    bootstrap.records.some(
+      (r) => r.staff_id === other && r.latitude === 22.5643,
+    ),
+  );
+});

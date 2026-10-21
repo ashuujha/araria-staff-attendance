@@ -96,9 +96,6 @@ function fixture(
       const body = JSON.parse(init.body);
       for (const field of [
         "device_hash",
-        "lat",
-        "lng",
-        "acc",
         "capture_id",
         "image_hash",
         "perceptual_hash",
@@ -114,7 +111,7 @@ function fixture(
     throw Error("Unexpected request " + url.pathname);
   };
 }
-test("arrival and departure work without GPS, camera, challenge or device cookie", async () => {
+test("arrival and departure work without camera location or device cookie", async () => {
   const original = globalThis.fetch,
     calls = [];
   globalThis.fetch = fixture(calls);
@@ -123,14 +120,6 @@ test("arrival and departure work without GPS, camera, challenge or device cookie
       {},
       { action: "complete", photo_upload_path: null },
       { status: "deputation", deputation_workplace: "District office" },
-      {
-        latitude: 26,
-        longitude: 87,
-        accuracy: 5000,
-        photo_upload_path: path.replace("leave.pdf", "photo.jpg"),
-        challenge: "expired",
-        location_confirmed: false,
-      },
     ]) {
       const response = await POST(request(patch));
       assert.equal(response.status, 200);
@@ -144,6 +133,53 @@ test("arrival and departure work without GPS, camera, challenge or device cookie
       ),
       false,
     );
+    for (const call of calls.filter(
+      (c) => c.url.pathname === "/rest/v1/rpc/save_attendance_with_evidence",
+    )) {
+      const body = JSON.parse(call.init.body);
+      assert.equal(body.lat, null);
+      assert.equal(body.lng, null);
+      assert.equal(body.acc, null);
+    }
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+test("camera coordinates are passed only for a valid arrival photo", async () => {
+  const original = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = fixture(calls);
+  try {
+    const response = await POST(
+      request({ latitude: 26.123456, longitude: 87.654321, accuracy: 5000 }),
+    );
+    assert.equal(response.status, 200);
+    const rpc = calls.find(
+      (c) => c.url.pathname === "/rest/v1/rpc/save_attendance_with_evidence",
+    );
+    assert.deepEqual(
+      [
+        JSON.parse(rpc.init.body).lat,
+        JSON.parse(rpc.init.body).lng,
+        JSON.parse(rpc.init.body).acc,
+      ],
+      [26.123456, 87.654321, 5000],
+    );
+    for (const patch of [
+      { latitude: 26 },
+      { latitude: "26", longitude: 87, accuracy: 100 },
+      { latitude: 91, longitude: 87, accuracy: 100 },
+      { latitude: 26, longitude: 87, accuracy: 0 },
+      {
+        action: "complete",
+        photo_upload_path: null,
+        latitude: 26,
+        longitude: 87,
+        accuracy: 100,
+      },
+    ]) {
+      assert.equal((await POST(request(patch))).status, 400);
+    }
   } finally {
     globalThis.fetch = original;
   }

@@ -72,7 +72,7 @@ export async function sanitizeWorkplacePhoto(bytes: Uint8Array) {
   const { default: sharp } = await import("sharp");
   validateWorkplacePhotoBytes(bytes);
   try {
-    // A standard photo, with no EXIF GPS retained and no GPS watermark added.
+    // Strip EXIF metadata; visible camera stamps are ordinary image pixels.
     const result = await sharp(bytes, {
       limitInputPixels: 20000000,
       failOn: "warning",

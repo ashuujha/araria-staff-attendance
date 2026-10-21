@@ -154,7 +154,7 @@ test("admin loading validates JWT through Supabase then starts attendance and di
     if (url.pathname === "/rest/v1/profiles" && url.searchParams.has("id"))
       return Response.json([{ id: admin, role: "super_admin", active: true }]);
     if (url.pathname === "/rest/v1/attendance") {
-      assert.ok(!url.searchParams.get("select").includes("latitude"));
+      assert.ok(url.searchParams.get("select").includes("latitude"));
       await new Promise((r) => setTimeout(r, 0));
       assert.ok(
         directoryStarted,
