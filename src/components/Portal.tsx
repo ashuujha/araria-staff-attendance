@@ -17,8 +17,8 @@ import { officeClosure, type OfficeFeed } from "../lib/office-types";
 import { prepareWorkplacePhoto } from "../lib/photo-upload";
 import { openStreetMapUrl, type CameraLocation } from "../lib/osm-camera";
 import ReportDownload from "./ReportDownload";
+import StaffEditor from "./StaffEditor";
 
-const StaffEditor = dynamic(() => import("./StaffEditor"));
 const AdminCaptcha = dynamic(() => import("./AdminCaptcha"));
 const WorkplaceCamera = dynamic(() => import("./WorkplaceCamera"));
 
@@ -1452,8 +1452,8 @@ function Admin({
   useEffect(() => {
     fileRequest.current++;
     setFileBusy(false);
-    if (detail) dialog.current?.showModal();
-    else dialog.current?.close();
+    if (detail && !dialog.current?.open) dialog.current?.showModal();
+    else if (!detail && dialog.current?.open) dialog.current.close();
     setFile(null);
   }, [detail]);
   const normalized = useMemo(() => {
@@ -1985,6 +1985,7 @@ function Admin({
                             <div className="sp-cell-value">
                               <div className="sp-actions">
                                 <button
+                                  type="button"
                                   className="sp-button sp-secondary"
                                   onClick={() => setDetail(person)}
                                   aria-label={`${person.name} का विवरण`}
@@ -1995,6 +1996,7 @@ function Admin({
                                   <>
                                     {person.deleted_at ? (
                                       <button
+                                        type="button"
                                         className="sp-button sp-secondary"
                                         disabled={busy}
                                         onClick={() =>
@@ -2006,12 +2008,14 @@ function Admin({
                                     ) : (
                                       <>
                                         <button
+                                          type="button"
                                           className="sp-button sp-secondary"
                                           onClick={() => editStaff(person)}
                                         >
                                           बदलें / Edit
                                         </button>
                                         <button
+                                          type="button"
                                           className="sp-button sp-secondary"
                                           onClick={() =>
                                             editStaff(person, true)
