@@ -1357,7 +1357,7 @@ function Admin({
             </button>
           </div>
         </div>
-        <ReportDownload selectedDate={date} search={search} filters={filters} />
+        <ReportDownload selectedDate={date} staff={staff} />
         <section className="sp-card">
           <div className="sp-tabs" role="tablist" aria-label="Dashboard view">
             <button
