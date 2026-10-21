@@ -10,6 +10,7 @@ import DepartmentBrand from "./DepartmentBrand";
 import { useOfficeFeed, NoticeBoard, OfficeSettings } from "./OfficeBoard";
 import { officeClosure, type OfficeFeed } from "../lib/office-types";
 import { prepareWorkplacePhoto } from "../lib/photo-upload";
+import ReportDownload from "./ReportDownload";
 
 const StaffEditor = dynamic(() => import("./StaffEditor"));
 const AdminCaptcha = dynamic(() => import("./AdminCaptcha"));
@@ -45,6 +46,15 @@ type Bootstrap = {
   records: RecordRow[];
   staff: Profile[];
   office: OfficeFeed;
+  revisions?: Revisions;
+};
+type Revisions = {
+  profile: number;
+  directory: number;
+  attendance: number;
+  holidays: number;
+  notices: number;
+  today: string;
 };
 class RequestError extends Error {
   constructor(
@@ -74,6 +84,16 @@ async function api(url: string, body?: object) {
       data.error || "अनुरोध विफल हुआ। फिर कोशिश करें।",
       response.status,
     );
+  if (
+    body &&
+    [
+      "/api/attendance-workflow",
+      "/api/admin",
+      "/api/staff",
+      "/api/office",
+    ].includes(url)
+  )
+    window.dispatchEvent(new Event("araria:changed"));
   return data;
 }
 function dateToday() {
@@ -200,6 +220,8 @@ export default function Portal({
 }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [bootstrap, setBootstrap] = useState<Bootstrap | null>(null);
+  const [revisions, setRevisions] = useState<Revisions | null>(null);
+  const revisionRef = useRef<Revisions | null>(null);
   const [activeDepartment, setActiveDepartment] = useState("");
   useEffect(() => {
     setActiveDepartment("");
@@ -213,12 +235,16 @@ export default function Portal({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [syncError, setSyncError] = useState("");
+  const lastSyncRef = useRef<Date | null>(null);
   const sessionGeneration = useRef(0);
   const fail = useCallback((err: unknown) => {
     if (err instanceof RequestError && err.status === 401) {
       sessionGeneration.current++;
       setProfile(null);
       setBootstrap(null);
+      setRevisions(null);
+      revisionRef.current = null;
       setPassword("");
       setShowPassword(false);
     }
@@ -237,6 +263,8 @@ export default function Portal({
             return;
           }
           setBootstrap(data.bootstrap || null);
+          setRevisions(data.bootstrap?.revisions || null);
+          revisionRef.current = data.bootstrap?.revisions || null;
           setProfile(data.profile);
         }
       })
@@ -268,6 +296,8 @@ export default function Portal({
       });
       setPassword("");
       setBootstrap(data.bootstrap || null);
+      setRevisions(data.bootstrap?.revisions || null);
+      revisionRef.current = data.bootstrap?.revisions || null;
       setProfile(data.profile);
     } catch (err) {
       fail(err);
@@ -287,6 +317,8 @@ export default function Portal({
       sessionGeneration.current++;
       setProfile(null);
       setBootstrap(null);
+      setRevisions(null);
+      revisionRef.current = null;
       setIdentifier("");
       setPassword("");
       setShowPassword(false);
@@ -297,6 +329,78 @@ export default function Portal({
       setBusy(false);
     }
   }
+  useEffect(() => {
+    if (!profile || !revisions) return;
+    let active = true;
+    let pending = false;
+    const generation = sessionGeneration.current;
+    const probe = async () => {
+      if (pending || document.visibilityState !== "visible") return;
+      pending = true;
+      try {
+        const next = (await api("/api/changes")) as Revisions;
+        if (!active || generation !== sessionGeneration.current) return;
+        lastSyncRef.current = new Date();
+        setSyncError("");
+        const prior = revisionRef.current;
+        if (
+          !prior ||
+          Object.keys(next).some(
+            (key) =>
+              next[key as keyof Revisions] !== prior[key as keyof Revisions],
+          )
+        ) {
+          if (prior && next.profile !== prior.profile) {
+            const data = await api("/api/session");
+            if (!active || generation !== sessionGeneration.current) return;
+            if ((data.profile.role !== "staff") !== adminLogin) {
+              window.location.replace(
+                data.profile.role === "staff" ? "/" : "/admin",
+              );
+              return;
+            }
+            setProfile(data.profile);
+            setBootstrap(data.bootstrap || null);
+          }
+          revisionRef.current = next;
+          setRevisions(next);
+        }
+      } catch (err) {
+        if (!active || generation !== sessionGeneration.current) return;
+        if (
+          err instanceof RequestError &&
+          [401, 403, 409].includes(err.status)
+        ) {
+          setProfile(null);
+          setBootstrap(null);
+          setRevisions(null);
+          revisionRef.current = null;
+          setError("सत्र समाप्त हो गया या खाता निष्क्रिय है। फिर लॉगिन करें।");
+        } else
+          setSyncError(
+            `Live updates paused. Last checked ${lastSyncRef.current?.toLocaleTimeString("en-IN") || "at login"}. Retrying automatically.`,
+          );
+      } finally {
+        pending = false;
+      }
+    };
+    const visible = () => {
+      if (document.visibilityState === "visible") void probe();
+    };
+    const timer = setInterval(visible, 5000);
+    window.addEventListener("focus", visible);
+    window.addEventListener("online", visible);
+    window.addEventListener("araria:changed", visible);
+    document.addEventListener("visibilitychange", visible);
+    return () => {
+      active = false;
+      clearInterval(timer);
+      window.removeEventListener("focus", visible);
+      window.removeEventListener("online", visible);
+      window.removeEventListener("araria:changed", visible);
+      document.removeEventListener("visibilitychange", visible);
+    };
+  }, [profile?.id, !!revisions, adminLogin]);
   return (
     <Localized>
       <div className="simple-portal">
@@ -334,6 +438,11 @@ export default function Portal({
             <div role="status" className="sp-alert sp-success">
               {message}
             </div>
+          )}
+          {profile && syncError && (
+            <p className="sp-muted" role="status">
+              {syncError}
+            </p>
           )}
           {!profile ? (
             <section className="sp-card sp-login">
@@ -406,6 +515,7 @@ export default function Portal({
               key={profile.id}
               profile={profile}
               initial={bootstrap?.profile.id === profile.id ? bootstrap : null}
+              revisions={revisions}
               onDepartmentChange={setActiveDepartment}
               fail={fail}
               notify={(value) => {
@@ -418,6 +528,7 @@ export default function Portal({
               key={profile.id}
               fail={fail}
               initial={bootstrap?.profile.id === profile.id ? bootstrap : null}
+              revisions={revisions}
               canManage={profile.role !== "district_viewer"}
               adminBlock={profile.block}
             />
@@ -444,17 +555,19 @@ export default function Portal({
 function Staff({
   profile,
   initial,
+  revisions,
   onDepartmentChange,
   fail,
   notify,
 }: {
   profile: Profile;
   initial?: Bootstrap | null;
+  revisions: Revisions | null;
   onDepartmentChange: (department: string) => void;
   fail: (err: unknown) => void;
   notify: (message: string) => void;
 }) {
-  const office = useOfficeFeed(initial?.office);
+  const office = useOfficeFeed(initial?.office, revisions);
   const closure = office.feed
     ? officeClosure(office.feed.today, office.feed.holidays)
     : null;
@@ -468,8 +581,8 @@ function Staff({
     [panchayat, setPanchayat] = useState(""),
     [position, setPosition] = useState("");
   useEffect(() => {
-    onDepartmentChange(record?.department || department);
-  }, [record?.department, department, onDepartmentChange]);
+    onDepartmentChange(department || profile.assignments[0]?.department || "");
+  }, [department, profile.assignments, onDepartmentChange]);
   const [status, setStatus] = useState("present"),
     [deputation, setDeputation] = useState(""),
     [leaveType, setLeaveType] = useState("CL");
@@ -488,6 +601,8 @@ function Staff({
   const [leave, setLeave] = useState<File | null>(null),
     [consent, setConsent] = useState(false);
   const alive = useRef(true);
+  const staffRequestId = useRef(0);
+  const retryLoad = useRef<ReturnType<typeof setTimeout> | null>(null);
   const assignments = (profile.assignments || []).filter(
     (a) => a.department?.trim() && a.panchayat?.trim() && a.position?.trim(),
   );
@@ -503,10 +618,12 @@ function Staff({
       .map((a) => a.position),
   );
   const load = useCallback(async () => {
+    const requestId = ++staffRequestId.current;
     setLoading(true);
     try {
       const data = await api("/api/attendance-workflow");
-      if (alive.current) {
+      if (alive.current && requestId === staffRequestId.current) {
+        if (retryLoad.current) clearTimeout(retryLoad.current);
         setRecord(
           (data.records || []).find(
             (row: RecordRow) => row.date === dateToday(),
@@ -515,12 +632,18 @@ function Staff({
         setLoadError(false);
       }
     } catch (err) {
-      if (alive.current) {
+      if (alive.current && requestId === staffRequestId.current) {
         setLoadError(true);
         fail(err);
+        if (retryLoad.current) clearTimeout(retryLoad.current);
+        retryLoad.current = setTimeout(() => {
+          if (alive.current && document.visibilityState === "visible")
+            void load();
+        }, 5000);
       }
     } finally {
-      if (alive.current) setLoading(false);
+      if (alive.current && requestId === staffRequestId.current)
+        setLoading(false);
     }
   }, [fail]);
   useEffect(() => {
@@ -528,8 +651,47 @@ function Staff({
     if (!initial) void load();
     return () => {
       alive.current = false;
+      staffRequestId.current++;
+      if (retryLoad.current) clearTimeout(retryLoad.current);
     };
   }, [load, initial]);
+  const lastAttendanceRevision = useRef({
+    attendance: revisions?.attendance,
+    today: revisions?.today,
+  });
+  useEffect(() => {
+    const prior = lastAttendanceRevision.current;
+    if (
+      prior.attendance !== revisions?.attendance ||
+      prior.today !== revisions?.today
+    ) {
+      lastAttendanceRevision.current = {
+        attendance: revisions?.attendance,
+        today: revisions?.today,
+      };
+      void load();
+    }
+  }, [revisions?.attendance, revisions?.today, load]);
+  useEffect(() => {
+    if (department && !departments.includes(department)) {
+      setDepartment("");
+      setPanchayat("");
+      setPosition("");
+      notify("Your assignment changed. Please choose your current workplace.");
+    } else if (panchayat && !panchayats.includes(panchayat)) {
+      setPanchayat("");
+      setPosition("");
+    } else if (position && !positions.includes(position)) setPosition("");
+  }, [
+    profile.assignments,
+    departments,
+    panchayats,
+    positions,
+    department,
+    panchayat,
+    position,
+    notify,
+  ]);
   useEffect(() => {
     if (departments.length === 1) setDepartment(departments[0]);
   }, [departments.join("|")]); // Only workbook-backed options are selected.
@@ -633,7 +795,9 @@ function Staff({
         throw new Error(
           "सहेजी गई उपस्थिति नहीं मिली। रीफ़्रेश करें। / Saved attendance not returned. Refresh to confirm.",
         );
+      staffRequestId.current++;
       setRecord(saved.record);
+      setLoading(false);
       setLoadError(false);
       setLeave(null);
       setWorkplacePhoto(null);
@@ -932,15 +1096,17 @@ function Staff({
 function Admin({
   fail,
   initial,
+  revisions,
   canManage,
   adminBlock,
 }: {
   initial?: Bootstrap | null;
+  revisions: Revisions | null;
   fail: (err: unknown) => void;
   canManage: boolean;
   adminBlock: string;
 }) {
-  const office = useOfficeFeed(initial?.office);
+  const office = useOfficeFeed(initial?.office, revisions);
   const [editor, setEditor] = useState<{
     person: Profile | null;
     remove?: boolean;
@@ -967,6 +1133,7 @@ function Admin({
   const fileRequest = useRef(0);
   const requestId = useRef(0),
     alive = useRef(true);
+  const retryAdmin = useRef<ReturnType<typeof setTimeout> | null>(null);
   const directoryLoaded = useRef(initial ? Date.now() : 0);
   const skipInitial = useRef(!!initial);
   const load = useCallback(
@@ -975,11 +1142,14 @@ function Admin({
       setBusy(true);
       try {
         const includeDirectory =
-          forceDirectory || Date.now() - directoryLoaded.current > 300000;
+          forceDirectory ||
+          !directoryLoaded.current ||
+          (!revisions && Date.now() - directoryLoaded.current > 300000);
         const data = await api(
           `/api/admin?date=${encodeURIComponent(date)}${includeDirectory ? "" : "&directory=0"}`,
         );
         if (alive.current && id === requestId.current) {
+          if (retryAdmin.current) clearTimeout(retryAdmin.current);
           setRecords(data.records || []);
           if (Array.isArray(data.staff)) {
             setStaff(data.staff);
@@ -987,7 +1157,14 @@ function Admin({
           }
         }
       } catch (err) {
-        if (alive.current && id === requestId.current) fail(err);
+        if (alive.current && id === requestId.current) {
+          fail(err);
+          if (retryAdmin.current) clearTimeout(retryAdmin.current);
+          retryAdmin.current = setTimeout(() => {
+            if (alive.current && document.visibilityState === "visible")
+              void load(forceDirectory);
+          }, 5000);
+        }
       } finally {
         if (alive.current && id === requestId.current) {
           setLoading(false);
@@ -995,21 +1172,63 @@ function Admin({
         }
       }
     },
-    [date, fail],
+    [date, fail, !!revisions],
   );
   useEffect(() => {
     alive.current = true;
     if (skipInitial.current) skipInitial.current = false;
     else void load();
-    const interval = setInterval(() => {
-      if (document.visibilityState === "visible") void load();
-    }, 30000);
+    const timer = !revisions
+      ? setInterval(() => {
+          if (document.visibilityState === "visible") void load();
+        }, 30000)
+      : null;
     return () => {
-      clearInterval(interval);
       alive.current = false;
       requestId.current++;
+      if (timer) clearInterval(timer);
+      if (retryAdmin.current) clearTimeout(retryAdmin.current);
     };
   }, [load]);
+  const lastAdminRevisions = useRef({
+    directory: revisions?.directory,
+    attendance: revisions?.attendance,
+    profile: revisions?.profile,
+    today: revisions?.today,
+  });
+  useEffect(() => {
+    const prior = lastAdminRevisions.current;
+    const directoryChanged =
+      prior.directory !== revisions?.directory ||
+      prior.profile !== revisions?.profile;
+    const attendanceChanged =
+      prior.attendance !== revisions?.attendance ||
+      prior.profile !== revisions?.profile;
+    lastAdminRevisions.current = {
+      directory: revisions?.directory,
+      attendance: revisions?.attendance,
+      profile: revisions?.profile,
+      today: revisions?.today,
+    };
+    if (
+      prior.today &&
+      revisions?.today &&
+      prior.today !== revisions.today &&
+      date === prior.today
+    ) {
+      setDate(revisions.today);
+      setRecords([]);
+      return;
+    }
+    if (directoryChanged || attendanceChanged) void load(directoryChanged);
+  }, [
+    revisions?.directory,
+    revisions?.attendance,
+    revisions?.profile,
+    revisions?.today,
+    date,
+    load,
+  ]);
   useEffect(() => {
     fileRequest.current++;
     setFileBusy(false);
@@ -1020,18 +1239,26 @@ function Admin({
   const normalized = useMemo(() => {
     const people = new Map(staff.map((person) => [person.id, person]));
     return records.map((row) => {
-      const livePerson = row.profiles || people.get(row.staff_id);
+      const livePerson = people.get(row.staff_id) || row.profiles;
       const person =
-        livePerson && row.staff_name
+        livePerson && row.staff_name && row.date !== dateToday()
           ? { ...livePerson, name: row.staff_name }
           : livePerson;
-      const a = row.working_places?.find((a) => a.panchayat === row.panchayat);
+      const current = row.date === dateToday();
+      const a = (current ? person?.assignments : row.working_places)?.find(
+        (assignment) => assignment.panchayat === row.panchayat,
+      );
       return {
         ...row,
         profiles: person,
-        block: row.block || person?.block,
-        department: row.department || a?.department,
-        position: row.position || a?.position,
+        block:
+          (current ? person?.block : row.block) || row.block || person?.block,
+        department:
+          (current ? a?.department : row.department) ||
+          row.department ||
+          a?.department,
+        position:
+          (current ? a?.position : row.position) || row.position || a?.position,
       };
     });
   }, [records, staff]);
@@ -1130,6 +1357,7 @@ function Admin({
             </button>
           </div>
         </div>
+        <ReportDownload selectedDate={date} search={search} filters={filters} />
         <section className="sp-card">
           <div className="sp-tabs" role="tablist" aria-label="Dashboard view">
             <button

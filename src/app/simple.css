@@ -1154,3 +1154,21 @@ img.sp-map {
   font-size: 13px;
   color: #54677b;
 }
+.sp-report-download {
+  margin-bottom: 18px;
+}
+.sp-report-download summary {
+  cursor: pointer;
+  color: #173b63;
+  font-weight: 700;
+  padding: 2px 0;
+}
+.sp-report-download[open] summary {
+  margin-bottom: 12px;
+}
+.sp-report-download .sp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}

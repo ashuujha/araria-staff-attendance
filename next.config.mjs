@@ -3,6 +3,10 @@ const devScriptPolicy =
 const csp = `default-src 'self'; script-src 'self' 'unsafe-inline'${devScriptPolicy} https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://upload.wikimedia.org; font-src 'self'; connect-src 'self' https://vkflommzumlrrzvwbdub.supabase.co https://challenges.cloudflare.com; frame-src https://www.google.com https://challenges.cloudflare.com; media-src 'self' blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`;
 export default {
   poweredByHeader: false,
+  serverExternalPackages: ["exceljs", "pdfkit"],
+  outputFileTracingIncludes: {
+    "/api/admin/reports": ["./assets/report-fonts/**/*"],
+  },
   // TypeScript 5 supports the compiler API without spawning a second CLI.
   experimental: { useTypeScriptCli: false },
   async redirects() {

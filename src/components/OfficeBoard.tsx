@@ -3,11 +3,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Localized } from "../lib/portal-language";
 import type { OfficeFeed, OfficeNotice } from "../lib/office-types";
 
-export function useOfficeFeed(initial?: OfficeFeed) {
+export function useOfficeFeed(
+  initial?: OfficeFeed,
+  revisions?: { holidays: number; notices: number; today: string } | null,
+) {
   const [feed, setFeed] = useState<OfficeFeed | null>(initial || null);
   const [error, setError] = useState("");
   const alive = useRef(false);
   const generation = useRef(0);
+  const retry = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reload = useCallback(async () => {
     const current = ++generation.current;
     try {
@@ -18,21 +22,36 @@ export function useOfficeFeed(initial?: OfficeFeed) {
       const data = await response.json();
       if (!response.ok) throw Error(data.error || "Office board unavailable");
       if (alive.current && current === generation.current) {
+        if (retry.current) clearTimeout(retry.current);
         setFeed(data);
         setError("");
       }
       return true;
     } catch (err) {
-      if (alive.current && current === generation.current)
+      if (alive.current && current === generation.current) {
         setError(
           err instanceof Error ? err.message : "Office board unavailable",
         );
+        if (retry.current) clearTimeout(retry.current);
+        retry.current = setTimeout(() => {
+          if (alive.current && document.visibilityState === "visible")
+            void reload();
+        }, 5000);
+      }
       return false;
     }
   }, []);
   useEffect(() => {
     alive.current = true;
     if (!initial) void reload();
+    return () => {
+      alive.current = false;
+      generation.current++;
+      if (retry.current) clearTimeout(retry.current);
+    };
+  }, [reload]);
+  useEffect(() => {
+    if (revisions) return;
     const update = () => {
       if (document.visibilityState === "visible") void reload();
     };
@@ -40,13 +59,31 @@ export function useOfficeFeed(initial?: OfficeFeed) {
     window.addEventListener("focus", update);
     document.addEventListener("visibilitychange", update);
     return () => {
-      alive.current = false;
-      generation.current++;
       clearInterval(timer);
       window.removeEventListener("focus", update);
       document.removeEventListener("visibilitychange", update);
     };
-  }, [reload, initial]);
+  }, [!!revisions, reload]);
+  const last = useRef({
+    holidays: revisions?.holidays,
+    notices: revisions?.notices,
+    today: revisions?.today,
+  });
+  useEffect(() => {
+    const prior = last.current;
+    if (
+      prior.holidays !== revisions?.holidays ||
+      prior.notices !== revisions?.notices ||
+      prior.today !== revisions?.today
+    ) {
+      last.current = {
+        holidays: revisions?.holidays,
+        notices: revisions?.notices,
+        today: revisions?.today,
+      };
+      void reload();
+    }
+  }, [revisions?.holidays, revisions?.notices, revisions?.today, reload]);
   return { feed, error, reload };
 }
 
