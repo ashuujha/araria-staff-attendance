@@ -600,9 +600,7 @@ function Staff({
   const [department, setDepartment] = useState(""),
     [panchayat, setPanchayat] = useState(""),
     [position, setPosition] = useState("");
-  useEffect(() => {
-    onDepartmentChange(department || profile.assignments[0]?.department || "");
-  }, [department, profile.assignments, onDepartmentChange]);
+  const [selectedWorkspaceKey, setSelectedWorkspaceKey] = useState("");
   const [status, setStatus] = useState("present"),
     [deputation, setDeputation] = useState(""),
     [leaveType, setLeaveType] = useState("CL");
@@ -629,6 +627,32 @@ function Staff({
   const assignments = (profile.assignments || []).filter(
     (a) => a.department?.trim() && a.panchayat?.trim() && a.position?.trim(),
   );
+  const workspaceKey = (a: Assignment) =>
+    JSON.stringify([a.department, a.panchayat, a.position]);
+  const workspaceOptions = assignments.filter(
+    (a, index) =>
+      assignments.findIndex(
+        (other) => workspaceKey(other) === workspaceKey(a),
+      ) === index,
+  );
+  const hasMultipleWorkspaces =
+    new Set(workspaceOptions.map((a) => a.panchayat)).size > 1;
+  const selectedWorkspace = hasMultipleWorkspaces
+    ? workspaceOptions.find((a) => workspaceKey(a) === selectedWorkspaceKey)
+    : undefined;
+  useEffect(() => {
+    onDepartmentChange(
+      selectedWorkspace?.department ||
+        department ||
+        profile.assignments[0]?.department ||
+        "",
+    );
+  }, [
+    selectedWorkspace?.department,
+    department,
+    profile.assignments,
+    onDepartmentChange,
+  ]);
   const departments = unique(assignments.map((a) => a.department));
   const panchayats = unique(
     assignments
@@ -755,6 +779,10 @@ function Staff({
             ? `Holiday (${closure}). Attendance is closed.`
             : "अवकाश कैलेंडर रीफ़्रेश करें। / Refresh the holiday calendar.",
         );
+      if (!complete && hasMultipleWorkspaces && !selectedWorkspace)
+        throw new Error(
+          "आज की उपस्थिति के लिए एक कार्यस्थल चुनें। / Select one assigned workspace for today’s attendance.",
+        );
 
       const body: { [key: string]: unknown } = {
         action: complete
@@ -762,9 +790,9 @@ function Staff({
           : status === "present" || status === "deputation"
             ? "save_draft"
             : "save_status",
-        panchayat,
-        department,
-        position,
+        panchayat: selectedWorkspace?.panchayat || panchayat,
+        department: selectedWorkspace?.department || department,
+        position: selectedWorkspace?.position || position,
         status,
         deputation_workplace:
           status === "deputation" ? deputation.trim() : null,
@@ -938,34 +966,81 @@ function Staff({
             <form onSubmit={(event) => save(event)}>
               <fieldset className="sp-form-controls" disabled={busy}>
                 <div className="sp-grid">
-                  <SelectField
-                    label="विभाग / Department"
-                    value={department}
-                    required
-                    options={departments}
-                    onChange={(value) => {
-                      setDepartment(value);
-                      setPanchayat("");
-                      setPosition("");
-                    }}
-                  />
-                  <SelectField
-                    label="पंचायत / Panchayat"
-                    value={panchayat}
-                    required
-                    options={panchayats}
-                    onChange={(value) => {
-                      setPanchayat(value);
-                      setPosition("");
-                    }}
-                  />
-                  <SelectField
-                    label="पद / Position"
-                    value={position}
-                    required
-                    options={positions}
-                    onChange={setPosition}
-                  />
+                  {hasMultipleWorkspaces ? (
+                    <div
+                      className="sp-field sp-workspace-picker"
+                      role="group"
+                      aria-labelledby="workspace-label"
+                      aria-required="true"
+                    >
+                      <strong id="workspace-label">
+                        आज का कार्यस्थल / Today’s workspace
+                      </strong>
+                      <small>
+                        केवल एक कार्यस्थल पर टिक करें। दोबारा दबाकर चयन हटा सकते
+                        हैं। / Tick one workspace for this attendance. Tap it
+                        again to untick.
+                      </small>
+                      <div className="sp-workspace-options">
+                        {workspaceOptions.map((assignment) => {
+                          const key = workspaceKey(assignment);
+                          return (
+                            <label className="sp-workspace-option" key={key}>
+                              <input
+                                type="checkbox"
+                                checked={selectedWorkspaceKey === key}
+                                onChange={(event) =>
+                                  setSelectedWorkspaceKey(
+                                    event.target.checked ? key : "",
+                                  )
+                                }
+                              />
+                              <span>
+                                <strong translate="no">
+                                  {assignment.panchayat}
+                                </strong>
+                                <small translate="no">
+                                  {assignment.department} •{" "}
+                                  {assignment.position}
+                                </small>
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <SelectField
+                        label="विभाग / Department"
+                        value={department}
+                        required
+                        options={departments}
+                        onChange={(value) => {
+                          setDepartment(value);
+                          setPanchayat("");
+                          setPosition("");
+                        }}
+                      />
+                      <SelectField
+                        label="पंचायत / Panchayat"
+                        value={panchayat}
+                        required
+                        options={panchayats}
+                        onChange={(value) => {
+                          setPanchayat(value);
+                          setPosition("");
+                        }}
+                      />
+                      <SelectField
+                        label="पद / Position"
+                        value={position}
+                        required
+                        options={positions}
+                        onChange={setPosition}
+                      />
+                    </>
+                  )}
                   <label className="sp-field">
                     कार्य स्थिति / Work status
                     <select

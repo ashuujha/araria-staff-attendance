@@ -365,6 +365,48 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0 24px;
 }
+.sp-workspace-picker {
+  grid-column: 1 / -1;
+}
+.sp-workspace-picker > strong,
+.sp-workspace-picker > small {
+  display: block;
+}
+.sp-workspace-picker > small {
+  margin: 6px 0 12px;
+}
+.sp-workspace-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.sp-workspace-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #c8d6e4;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.sp-workspace-option:has(input:checked) {
+  border-color: #28618b;
+  background: #eef6fc;
+}
+.sp-workspace-option input {
+  margin-top: 4px;
+  flex: none;
+}
+.sp-workspace-option span,
+.sp-workspace-option small {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.sp-workspace-option small {
+  margin-top: 4px;
+}
 .sp-capture {
   border: 1px dashed #b8cada;
   background: #f8fafc;
@@ -916,6 +958,9 @@ img.sp-map {
     padding: 24px;
   }
   .sp-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .sp-workspace-options {
     grid-template-columns: minmax(0, 1fr);
   }
   .sp-main {
