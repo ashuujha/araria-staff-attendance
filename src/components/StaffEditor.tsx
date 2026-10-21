@@ -10,6 +10,7 @@ export default function StaffEditor({
   staff,
   onClose,
   onSaved,
+  onFound,
 }: {
   person: Profile | null;
   block: string;
@@ -17,6 +18,7 @@ export default function StaffEditor({
   staff: Profile[];
   onClose: () => void;
   onSaved: (profile?: Profile, removedId?: string) => void;
+  onFound: (phone: string, removed: boolean) => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [name, setName] = useState(person?.name || "");
@@ -32,6 +34,11 @@ export default function StaffEditor({
   const [placesError, setPlacesError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [duplicate, setDuplicate] = useState<{
+    name: string;
+    phone: string;
+    removed: boolean;
+  } | null>(null);
   const [done, setDone] = useState(false);
   const [credentials, setCredentials] = useState<{
     login: string;
@@ -78,6 +85,7 @@ export default function StaffEditor({
     if (busy) return;
     setBusy(true);
     setError("");
+    setDuplicate(null);
     try {
       const response = await fetch("/api/staff", {
         method: "POST",
@@ -108,10 +116,13 @@ export default function StaffEditor({
         ),
       });
       const data = await response.json();
-      if (!response.ok)
+      if (!response.ok) {
+        if (response.status === 409 && data.existing)
+          setDuplicate(data.existing);
         throw Error(
           data.error || "कर्मी सहेजा नहीं गया। / Could not save staff.",
         );
+      }
       onSaved(data.profile, remove ? person!.id : undefined);
       if (data.password) {
         setCredentials({ login: phone, password: data.password });
@@ -156,9 +167,20 @@ export default function StaffEditor({
           </button>
         </div>
         {error && (
-          <p role="alert" className="sp-alert sp-error">
-            {error}
-          </p>
+          <div role="alert" className="sp-alert sp-error">
+            <p>{error}</p>
+            {duplicate && (
+              <button
+                type="button"
+                className="sp-button sp-secondary"
+                onClick={() => onFound(duplicate.phone, duplicate.removed)}
+              >
+                {duplicate.name} —{" "}
+                {duplicate.removed ? "Removed staff" : "Staff directory"} में
+                देखें / View
+              </button>
+            )}
+          </div>
         )}
         {done && credentials ? (
           <div role="status" className="sp-alert sp-success">

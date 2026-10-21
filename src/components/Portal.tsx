@@ -1113,6 +1113,9 @@ function Admin({
   } | null>(null);
   const [records, setRecords] = useState<RecordRow[]>(initial?.records || []),
     [staff, setStaff] = useState<Profile[]>(initial?.staff || []);
+  const [removedStaff, setRemovedStaff] = useState<Profile[]>([]);
+  const [showRemoved, setShowRemoved] = useState(false);
+  const [restoreNotice, setRestoreNotice] = useState("");
   const [date, setDate] = useState(initial?.date || dateToday()),
     [search, setSearch] = useState("");
   const [tab, setTab] = useState("attendance"),
@@ -1153,6 +1156,7 @@ function Admin({
           setRecords(data.records || []);
           if (Array.isArray(data.staff)) {
             setStaff(data.staff);
+            setRemovedStaff(data.removedStaff || []);
             directoryLoaded.current = Date.now();
           }
         }
@@ -1283,17 +1287,18 @@ function Admin({
             value,
       ),
   );
-  const visibleStaff = staff.filter(
+  const visibleStaff = (showRemoved ? removedStaff : staff).filter(
     (person) =>
       searchMatches(person) &&
-      (!filters.block || person.block === filters.block) &&
-      ((!filters.department && !filters.panchayat && !filters.position) ||
-        person.assignments.some(
-          (a) =>
-            (!filters.department || a.department === filters.department) &&
-            (!filters.panchayat || a.panchayat === filters.panchayat) &&
-            (!filters.position || a.position === filters.position),
-        )),
+      (person.phone === search.trim() ||
+        ((!filters.block || person.block === filters.block) &&
+          ((!filters.department && !filters.panchayat && !filters.position) ||
+            person.assignments.some(
+              (a) =>
+                (!filters.department || a.department === filters.department) &&
+                (!filters.panchayat || a.panchayat === filters.panchayat) &&
+                (!filters.position || a.position === filters.position),
+            )))),
   );
   const [page, setPage] = useState(1);
   const totalRows =
@@ -1324,6 +1329,22 @@ function Admin({
   function editStaff(person: Profile | null, remove = false) {
     setDetail(null);
     setEditor({ person, remove });
+  }
+  async function restoreStaff(person: Profile) {
+    setBusy(true);
+    setRestoreNotice("");
+    try {
+      await api("/api/staff", { action: "restore", id: person.id });
+      setRestoreNotice(
+        `${person.name} का खाता बहाल हुआ। / Staff account restored.`,
+      );
+      setShowRemoved(false);
+      await load(true);
+    } catch (err) {
+      fail(err);
+    } finally {
+      if (alive.current) setBusy(false);
+    }
   }
   function filter(key: string, value: string) {
     setFilters((previous) => ({ ...previous, [key]: value }));
@@ -1370,7 +1391,10 @@ function Admin({
             <button
               role="tab"
               aria-selected={tab === "staff"}
-              onClick={() => setTab("staff")}
+              onClick={() => {
+                setTab("staff");
+                void load(true);
+              }}
             >
               सभी कर्मी / Staff directory
             </button>
@@ -1391,6 +1415,35 @@ function Admin({
             />
           ) : (
             <>
+              {tab === "staff" && canManage && (
+                <div
+                  className="sp-actions"
+                  role="group"
+                  aria-label="Staff directory status"
+                >
+                  <button
+                    type="button"
+                    className={`sp-button ${showRemoved ? "sp-secondary" : ""}`}
+                    aria-pressed={!showRemoved}
+                    onClick={() => setShowRemoved(false)}
+                  >
+                    Current staff ({staff.length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`sp-button ${showRemoved ? "" : "sp-secondary"}`}
+                    aria-pressed={showRemoved}
+                    onClick={() => setShowRemoved(true)}
+                  >
+                    Removed staff ({removedStaff.length})
+                  </button>
+                </div>
+              )}
+              {restoreNotice && (
+                <p role="status" className="sp-alert sp-success">
+                  {restoreNotice}
+                </p>
+              )}
               {office.feed && officeClosure(date, office.feed.holidays) && (
                 <p className="sp-alert sp-holiday">
                   अवकाश / Holiday ({officeClosure(date, office.feed.holidays)})
@@ -1490,7 +1543,7 @@ function Admin({
                 <p>
                   {tab === "attendance"
                     ? `${visibleRecords.length} उपस्थिति रिकॉर्ड`
-                    : `${visibleStaff.length} कर्मी`}
+                    : `${visibleStaff.length} ${showRemoved ? "हटाए गए कर्मी / Removed staff" : "कर्मी"}`}
                 </p>
                 <button
                   className="sp-text-button"
@@ -1654,7 +1707,11 @@ function Admin({
                               <strong translate="no">{person.name}</strong>
                               <small>{person.phone}</small>
                               {!person.active && (
-                                <small>निष्क्रिय / Inactive</small>
+                                <small>
+                                  {person.deleted_at
+                                    ? "हटाया गया / Removed"
+                                    : "निष्क्रिय / Inactive"}
+                                </small>
                               )}
                             </div>
                           </td>
@@ -1706,18 +1763,34 @@ function Admin({
                                 </button>
                                 {canManage && (
                                   <>
-                                    <button
-                                      className="sp-button sp-secondary"
-                                      onClick={() => editStaff(person)}
-                                    >
-                                      बदलें / Edit
-                                    </button>
-                                    <button
-                                      className="sp-button sp-secondary"
-                                      onClick={() => editStaff(person, true)}
-                                    >
-                                      हटाएँ / Remove
-                                    </button>
+                                    {person.deleted_at ? (
+                                      <button
+                                        className="sp-button sp-secondary"
+                                        disabled={busy}
+                                        onClick={() =>
+                                          void restoreStaff(person)
+                                        }
+                                      >
+                                        बहाल करें / Restore
+                                      </button>
+                                    ) : (
+                                      <>
+                                        <button
+                                          className="sp-button sp-secondary"
+                                          onClick={() => editStaff(person)}
+                                        >
+                                          बदलें / Edit
+                                        </button>
+                                        <button
+                                          className="sp-button sp-secondary"
+                                          onClick={() =>
+                                            editStaff(person, true)
+                                          }
+                                        >
+                                          हटाएँ / Remove
+                                        </button>
+                                      </>
+                                    )}
                                   </>
                                 )}
                               </div>
@@ -1731,6 +1804,9 @@ function Admin({
               ) : (
                 <p className="sp-empty">
                   कोई कर्मी नहीं मिला। खोज या फ़िल्टर बदलें।
+                  {!showRemoved &&
+                    canManage &&
+                    " हटाए गए कर्मी देखने के लिए Removed staff चुनें।"}
                 </p>
               )}
               {pages > 1 && (
@@ -1875,6 +1951,21 @@ function Admin({
             remove={editor.remove}
             staff={staff}
             onClose={() => setEditor(null)}
+            onFound={(phone, removed) => {
+              setEditor(null);
+              setTab("staff");
+              setShowRemoved(removed);
+              setSearch(phone);
+              setFilters({
+                department: "",
+                block: "",
+                panchayat: "",
+                position: "",
+                status: "",
+                phase: "",
+              });
+              void load(true);
+            }}
             onSaved={(saved, removedId) => {
               if (removedId)
                 setStaff((previous) =>
@@ -1887,7 +1978,7 @@ function Admin({
                     saved,
                   ].sort((a, b) => a.name.localeCompare(b.name)),
                 );
-              void load();
+              void load(true);
             }}
           />
         )}

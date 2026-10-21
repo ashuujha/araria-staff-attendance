@@ -173,7 +173,78 @@ test("admin loading validates JWT through Supabase then starts attendance and di
       new Request(process.env.APP_URL + "/api/admin", { headers }),
     );
     assert.equal(response.status, 200);
-    assert.equal(calls.length, 3);
+    assert.equal(calls.length, 4);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("removed staff stays discoverable and can be restored in scope", async () => {
+  const original = globalThis.fetch;
+  const calls = [];
+  let role = "super_admin";
+  globalThis.fetch = async (input, init = {}) => {
+    const url = new URL(input);
+    const body = init.body ? JSON.parse(init.body) : null;
+    calls.push({ url, init, body });
+    if (url.pathname === "/rest/v1/profiles") {
+      if (url.searchParams.has("phone"))
+        return Response.json([
+          {
+            id: staff,
+            name: "Existing Staff",
+            phone: "9000000002",
+            role: "staff",
+            block: "Araria",
+            deleted_at: "2026-10-20T00:00:00Z",
+          },
+        ]);
+      if (url.searchParams.get("id") === "eq." + staff) {
+        if (init.method === "PATCH")
+          return Response.json([
+            { id: staff, name: "Existing Staff", active: true },
+          ]);
+        return Response.json([
+          {
+            id: staff,
+            role: "staff",
+            block: "Araria",
+            deleted_at: "2026-10-20T00:00:00Z",
+          },
+        ]);
+      }
+      return Response.json([
+        { id: admin, role, active: true, block: "Araria" },
+      ]);
+    }
+    if (url.pathname === "/rest/v1/audit_logs")
+      return new Response(null, { status: 204 });
+    throw Error("Unexpected endpoint " + url.pathname);
+  };
+  try {
+    const duplicate = await POST(
+      request({
+        action: "create",
+        name: "New Staff",
+        phone: "9000000002",
+        assignments: [],
+      }),
+    );
+    assert.equal(duplicate.status, 409);
+    assert.deepEqual((await duplicate.json()).existing, {
+      id: staff,
+      name: "Existing Staff",
+      phone: "9000000002",
+      removed: true,
+    });
+    const restored = await POST(request({ action: "restore", id: staff }));
+    assert.equal(restored.status, 200);
+    assert.ok(calls.some((c) => c.init.method === "PATCH" && c.body.active));
+    role = "district_viewer";
+    assert.equal(
+      (await POST(request({ action: "restore", id: staff }))).status,
+      403,
+    );
   } finally {
     globalThis.fetch = original;
   }

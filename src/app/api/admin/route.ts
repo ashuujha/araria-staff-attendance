@@ -17,7 +17,7 @@ export async function GET(req: Request) {
     const includeStaff = url.searchParams.get("directory") !== "0";
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
       throw new HttpError(400, "तिथि अमान्य।");
-    const [records, staff] = await Promise.all([
+    const [records, staff, removedStaff] = await Promise.all([
       sb(
         "/rest/v1/attendance?date=eq." +
           date +
@@ -32,8 +32,15 @@ export async function GET(req: Request) {
             token,
           )
         : Promise.resolve(undefined),
+      includeStaff
+        ? sb(
+            "/rest/v1/profiles?deleted_at=not.is.null&role=eq.staff&select=id,name,phone,email,assignments,block,role,active,deleted_at&order=name",
+            {},
+            token,
+          )
+        : Promise.resolve(undefined),
     ]);
-    return json({ records, ...(includeStaff ? { staff } : {}) });
+    return json({ records, ...(includeStaff ? { staff, removedStaff } : {}) });
   } catch (e) {
     return failure(e);
   }

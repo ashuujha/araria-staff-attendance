@@ -32,7 +32,9 @@ export async function POST(req: Request) {
       !b ||
       typeof b !== "object" ||
       Array.isArray(b) ||
-      !["create", "update", "delete", "reset_password"].includes(b.action)
+      !["create", "update", "delete", "restore", "reset_password"].includes(
+        b.action,
+      )
     )
       throw new HttpError(400, "कार्रवाई अमान्य।");
     // Audit the authenticated actor and operation without asking for a reason.
@@ -40,8 +42,11 @@ export async function POST(req: Request) {
       create: "Administrator added a staff account",
       update: "Administrator updated staff details",
       delete: "Administrator removed a staff account",
+      restore: "Administrator restored a staff account",
       reset_password: "Administrator reset the staff password",
-    }[b.action as "create" | "update" | "delete" | "reset_password"];
+    }[
+      b.action as "create" | "update" | "delete" | "restore" | "reset_password"
+    ];
     if (b.action === "create") {
       const name = String(b.name || "").trim(),
         phone = String(b.phone || "").trim(),
@@ -57,10 +62,36 @@ export async function POST(req: Request) {
       )
         throw new HttpError(400, "कर्मी विवरण अमान्य है।");
       const existing = await sb(
-        "/rest/v1/profiles?phone=eq." + phone + "&select=id",
+        "/rest/v1/profiles?phone=eq." +
+          phone +
+          "&select=id,name,phone,role,block,deleted_at",
       );
-      if (existing.length)
-        throw new HttpError(409, "यह मोबाइल पहले से दर्ज है।");
+      if (existing.length) {
+        const match = existing[0];
+        const inScope =
+          profile.role === "super_admin" || profile.block === match.block;
+        return json(
+          {
+            error:
+              match.role === "staff" && inScope
+                ? match.deleted_at
+                  ? "यह मोबाइल हटाए गए कर्मी के खाते में है। Staff directory में Removed staff देखें और खाता बहाल करें।"
+                  : "यह मोबाइल पहले से दर्ज है। Staff directory में इस नंबर को देखें।"
+                : "यह मोबाइल किसी अन्य खाते में पहले से दर्ज है। जिला प्रशासक से संपर्क करें।",
+            ...(match.role === "staff" && inScope
+              ? {
+                  existing: {
+                    id: match.id,
+                    name: match.name,
+                    phone: match.phone,
+                    removed: !!match.deleted_at,
+                  },
+                }
+              : {}),
+          },
+          409,
+        );
+      }
       const loginEmail = email || `${phone}@staff.araria.invalid`;
       const password = `Araria@${phone.slice(-4)}#26`;
       const user = await sb("/auth/v1/admin/users", {
@@ -98,13 +129,45 @@ export async function POST(req: Request) {
     if (typeof b.id !== "string" || !/^[0-9a-f-]{36}$/.test(b.id))
       throw new HttpError(400, "मान्य कर्मी चुनें।");
     const targets = await sb(
-      "/rest/v1/profiles?id=eq." + b.id + "&select=id,role,phone",
+      "/rest/v1/profiles?id=eq." +
+        b.id +
+        "&select=id,role,phone,block,deleted_at",
       {},
       token,
     );
     const target = targets[0];
     if (!target || target.role !== "staff")
       throw new HttpError(403, "कर्मी प्रबंधन की अनुमति नहीं।");
+    if (profile.role === "block_admin" && target.block !== profile.block)
+      throw new HttpError(403, "कर्मी प्रबंधन की अनुमति नहीं।");
+    if (b.action === "restore") {
+      if (!target.deleted_at)
+        throw new HttpError(409, "यह कर्मी पहले से सक्रिय सूची में है।");
+      const restored = await sb(
+        "/rest/v1/profiles?id=eq." +
+          b.id +
+          "&deleted_at=not.is.null&select=id,name,phone,email,assignments,role,block,active",
+        {
+          method: "PATCH",
+          headers: { Prefer: "return=representation" },
+          body: JSON.stringify({ deleted_at: null, active: true }),
+        },
+      );
+      if (!restored.length)
+        throw new HttpError(
+          409,
+          "खाता पहले ही बहाल हो चुका है। रीफ़्रेश करें।",
+        );
+      try {
+        await audit(profile.id, "restore_staff", target.id, reason, {
+          prior_deleted_at: target.deleted_at,
+        });
+      } catch {
+        // Restoration has already committed; never report it as failed.
+        console.error("Staff restore audit write failed");
+      }
+      return json({ profile: restored[0] });
+    }
     if (b.action === "reset_password") {
       if (profile.role !== "super_admin")
         throw new HttpError(403, "Super Admin आवश्यक।");
