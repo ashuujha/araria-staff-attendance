@@ -9,6 +9,7 @@ export function useOfficeFeed(
 ) {
   const [feed, setFeed] = useState<OfficeFeed | null>(initial || null);
   const [error, setError] = useState("");
+  const hasFeed = useRef(!!initial);
   const alive = useRef(false);
   const generation = useRef(0);
   const retry = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -23,15 +24,17 @@ export function useOfficeFeed(
       if (!response.ok) throw Error(data.error || "Office board unavailable");
       if (alive.current && current === generation.current) {
         if (retry.current) clearTimeout(retry.current);
+        hasFeed.current = true;
         setFeed(data);
         setError("");
       }
       return true;
     } catch (err) {
       if (alive.current && current === generation.current) {
-        setError(
-          err instanceof Error ? err.message : "Office board unavailable",
-        );
+        if (!hasFeed.current)
+          setError(
+            err instanceof Error ? err.message : "Office board unavailable",
+          );
         if (retry.current) clearTimeout(retry.current);
         retry.current = setTimeout(() => {
           if (alive.current && document.visibilityState === "visible")
