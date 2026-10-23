@@ -47,6 +47,7 @@ test("reports reject staff and invalid date ranges before reading attendance", a
       "format=pdf&period=day&start=2026-02-30",
       "format=xlsx&period=range&start=2025-01-01&end=2026-10-21",
       "format=xlsx&period=day&start=2026-10-21&status=unknown",
+      "kind=leave&format=xlsx&year=2026&month=13",
     ])
       assert.equal((await GET(req(query))).status, 400);
     assert.ok(
@@ -111,13 +112,13 @@ test("admin can download a year-specific leave balance report", async () => {
     };
     const response = await GET(
       req(
-        "kind=leave&format=xlsx&year=2026&leave_only=1&department=Agriculture",
+        "kind=leave&format=xlsx&year=2026&month=10&leave_only=1&department=Agriculture",
       ),
     );
     assert.equal(response.status, 200);
     assert.match(
       response.headers.get("content-disposition"),
-      /araria-leave-report-2026\.xlsx/,
+      /araria-leave-report-2026-10\.xlsx/,
     );
     const bytes = Buffer.from(await response.arrayBuffer());
     assert.equal(bytes.subarray(0, 2).toString(), "PK");

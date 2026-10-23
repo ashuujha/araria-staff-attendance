@@ -6,22 +6,26 @@ const safe = (value) => {
   const text = String(value ?? "");
   return /^\s*[=+@-]/.test(text) ? "'" + text : text;
 };
+const monthName = (month) =>
+  new Date(Date.UTC(2026, Number(month) - 1, 1)).toLocaleString("en-IN", {
+    month: "long",
+  });
 
 export async function renderLeaveReportXlsx(report) {
   const ExcelJS = (await import("exceljs")).default;
   const book = new ExcelJS.Workbook();
   book.creator = "Araria Staff Attendance";
   book.created = new Date();
-  const sheet = book.addWorksheet(`Leave ${report.year}`);
-  [8, 28, 18, 16, 28, 43, 13, 12, 13, 13, 12, 13, 15].forEach(
+  const sheet = book.addWorksheet(`Leave ${report.year}-${report.month}`);
+  [8, 28, 18, 16, 28, 43, 13, 12, 13, 13, 13, 13, 13, 15].forEach(
     (width, index) => (sheet.getColumn(index + 1).width = width),
   );
-  for (const line of [1, 2, 3, 4]) sheet.mergeCells(line, 1, line, 13);
+  for (const line of [1, 2, 3, 4]) sheet.mergeCells(line, 1, line, 14);
   const headings = [
     `GOVERNMENT OF BIHAR • ${report.officeLabel || "DISTRICT ARARIA"}`,
     `STAFF LEAVE DETAILS REPORT ${report.year}`,
-    "Casual leave: 16/year • Special leave: 24/year for female staff, maximum 2/month",
-    `Leave year: ${report.year}`,
+    `Casual leave: 16/year • Special leave: 2 in ${monthName(report.month)}, 24/year for female staff`,
+    `SL month: ${monthName(report.month)} ${report.year} • Year balance: ${report.year}`,
   ];
   headings.forEach((value, index) => {
     const cell = sheet.getCell(index + 1, 1);
@@ -51,8 +55,8 @@ export async function renderLeaveReportXlsx(report) {
   sheet.mergeCells("E7:E8");
   sheet.mergeCells("F7:F8");
   sheet.mergeCells("G7:I7");
-  sheet.mergeCells("J7:L7");
-  sheet.mergeCells("M7:M8");
+  sheet.mergeCells("J7:M7");
+  sheet.mergeCells("N7:N8");
   [
     "Sr. No.",
     "Name",
@@ -65,13 +69,19 @@ export async function renderLeaveReportXlsx(report) {
     "Other / untyped",
   ].forEach((label, index) => {
     const column =
-      index < 6 ? index + 1 : index === 6 ? 7 : index === 7 ? 10 : 13;
+      index < 6 ? index + 1 : index === 6 ? 7 : index === 7 ? 10 : 14;
     group.getCell(column).value = label;
   });
   const sub = sheet.getRow(8);
-  ["Granted", "Taken", "Balance", "Granted", "Taken", "Balance"].forEach(
-    (label, index) => (sub.getCell(index + 7).value = label),
-  );
+  [
+    "Granted",
+    "Taken",
+    "Balance",
+    `${monthName(report.month).slice(0, 3)} taken`,
+    `${monthName(report.month).slice(0, 3)} left`,
+    "Year taken",
+    "Year left",
+  ].forEach((label, index) => (sub.getCell(index + 7).value = label));
   for (const row of [group, sub]) {
     row.height = row === group ? 31 : 25;
     row.eachCell({ includeEmpty: true }, (cell) => {
@@ -106,8 +116,9 @@ export async function renderLeaveReportXlsx(report) {
       person.clGranted,
       person.clTaken,
       person.clBalance,
+      person.slMonthTaken,
       person.gender === "female"
-        ? person.slGranted
+        ? person.slMonthBalance
         : person.gender === "male"
           ? "N/A"
           : "Gender not set",
@@ -146,7 +157,7 @@ export async function renderLeaveReportXlsx(report) {
     });
   });
   const note = sheet.getRow(report.rows.length + 10);
-  sheet.mergeCells(note.number, 1, note.number, 13);
+  sheet.mergeCells(note.number, 1, note.number, 14);
   note.getCell(1).value =
     "Other counts recorded leave without a CL/SL type. Medical, maternity and earned leave balances are not tracked.";
   note.getCell(1).font = { name: "Noto Sans", size: 9, color: { argb: BLUE } };

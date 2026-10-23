@@ -65,6 +65,14 @@ const records = [
     version: 1,
   },
   {
+    id: "sl-later-month",
+    staff_id: "female",
+    date: "2026-04-03",
+    status: "leave",
+    leave_type: "SL",
+    version: 1,
+  },
+  {
     id: "legacy",
     staff_id: "male",
     date: "2026-04-04",
@@ -89,15 +97,23 @@ const records = [
 ];
 
 test("annual leave report counts current-year saved leave once per date", () => {
-  const report = makeLeaveReport({ profiles, records, year: 2026 });
+  const report = makeLeaveReport({
+    profiles,
+    records,
+    year: 2026,
+    month: "02",
+  });
   assert.equal(report.rows.length, 2);
   const female = report.rows.find((row) => row.id === "female");
   assert.equal(female.clGranted, 16);
   assert.equal(female.clTaken, 1);
   assert.equal(female.clBalance, 15);
   assert.equal(female.slGranted, 24);
-  assert.equal(female.slTaken, 1);
-  assert.equal(female.slBalance, 23);
+  assert.equal(female.slMonthGranted, 2);
+  assert.equal(female.slMonthTaken, 1);
+  assert.equal(female.slMonthBalance, 1);
+  assert.equal(female.slTaken, 2);
+  assert.equal(female.slBalance, 22);
   const male = report.rows.find((row) => row.id === "male");
   assert.equal(male.slGranted, null);
   assert.equal(male.otherTaken, 1);
@@ -106,6 +122,7 @@ test("annual leave report counts current-year saved leave once per date", () => 
       profiles,
       records,
       year: 2026,
+      month: "02",
       filters: { department: "Agriculture", search: "9000000002" },
       onlyWithLeave: true,
     }).rows.map((row) => row.id),
@@ -116,6 +133,7 @@ test("annual leave report counts current-year saved leave once per date", () => 
       profiles,
       records: [],
       year: 2026,
+      month: "02",
       onlyWithLeave: true,
     }).rows.length,
     0,
@@ -124,7 +142,7 @@ test("annual leave report counts current-year saved leave once per date", () => 
 
 test("leave exports retain separate staff columns and leave balance numbers", async () => {
   const report = {
-    ...makeLeaveReport({ profiles, records, year: 2026 }),
+    ...makeLeaveReport({ profiles, records, year: 2026, month: "02" }),
     officeLabel: "District Araria",
   };
   const pdf = await renderLeaveReportPdf(report);
@@ -133,15 +151,23 @@ test("leave exports retain separate staff columns and leave balance numbers", as
   const bytes = await renderLeaveReportXlsx(report);
   const book = new ExcelJS.Workbook();
   await book.xlsx.load(bytes);
-  const sheet = book.getWorksheet("Leave 2026");
+  const sheet = book.getWorksheet("Leave 2026-02");
   assert.equal(sheet.getCell("B7").value, "Name");
   assert.equal(sheet.getCell("C7").value, "Mobile number");
   assert.equal(sheet.getCell("E7").value, "Designation");
   assert.equal(sheet.getCell("F7").value, "Workplace");
+  assert.equal(sheet.getCell("J7").value, "Special leave");
+  assert.equal(sheet.getCell("K7").master.address, "J7");
+  assert.equal(sheet.getCell("J8").value, "Feb taken");
+  assert.equal(sheet.getCell("K8").value, "Feb left");
+  assert.equal(sheet.getCell("L8").value, "Year taken");
+  assert.equal(sheet.getCell("M8").value, "Year left");
   const femaleRow = sheet
     .getRows(9, 2)
     .find((row) => row.getCell(2).value === "कविता कुमारी");
   assert.equal(femaleRow.getCell(8).value, 1);
+  assert.equal(femaleRow.getCell(10).value, 1);
   assert.equal(femaleRow.getCell(11).value, 1);
-  assert.equal(femaleRow.getCell(12).value, 23);
+  assert.equal(femaleRow.getCell(12).value, 2);
+  assert.equal(femaleRow.getCell(13).value, 22);
 });

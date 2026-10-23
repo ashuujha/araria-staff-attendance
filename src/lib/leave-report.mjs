@@ -8,6 +8,7 @@ export function makeLeaveReport({
   profiles,
   records,
   year,
+  month,
   filters = {},
   onlyWithLeave = false,
 }) {
@@ -80,6 +81,11 @@ export function makeLeaveReport({
       const slTaken = leaves.filter(
         (record) => record.leave_type === "SL",
       ).length;
+      const slMonthTaken = leaves.filter(
+        (record) =>
+          record.leave_type === "SL" &&
+          String(record.date).slice(5, 7) === String(month).padStart(2, "0"),
+      ).length;
       const otherTaken = leaves.length - clTaken - slTaken;
       const gender = person?.gender || null;
       const selected = assignments.find(sameAssignment) || assignments[0];
@@ -106,10 +112,14 @@ export function makeLeaveReport({
           slGranted: gender === "female" ? 24 : null,
           slTaken,
           slBalance: gender === "female" ? Math.max(0, 24 - slTaken) : null,
+          slMonthGranted: gender === "female" ? 2 : null,
+          slMonthTaken,
+          slMonthBalance:
+            gender === "female" ? Math.max(0, 2 - slMonthTaken) : null,
           otherTaken,
         },
       ];
     })
     .sort((a, b) => a.name.localeCompare(b.name, "hi"));
-  return { year, rows };
+  return { year, month, rows };
 }

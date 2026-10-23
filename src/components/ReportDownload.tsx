@@ -32,6 +32,7 @@ export default function ReportDownload({
     "attendance",
   );
   const [leaveYear, setLeaveYear] = useState(selectedDate.slice(0, 4));
+  const [leaveMonth, setLeaveMonth] = useState(selectedDate.slice(5, 7));
   const [onlyWithLeave, setOnlyWithLeave] = useState(true);
   const [start, setStart] = useState(selectedDate);
   const [end, setEnd] = useState(selectedDate);
@@ -43,6 +44,7 @@ export default function ReportDownload({
     setStart(selectedDate);
     setEnd(selectedDate);
     setLeaveYear(selectedDate.slice(0, 4));
+    setLeaveMonth(selectedDate.slice(5, 7));
   }, [selectedDate]);
 
   const assignments = staff.flatMap((person) =>
@@ -89,6 +91,8 @@ export default function ReportDownload({
         throw Error("Enter at least one report filter, or choose all staff.");
       if (reportKind === "leave" && !/^(20\d\d|2100)$/.test(leaveYear))
         throw Error("Choose a valid leave report year.");
+      if (reportKind === "leave" && !/^(0[1-9]|1[0-2])$/.test(leaveMonth))
+        throw Error("Choose a valid leave report month.");
       if (reportKind === "attendance" && period !== "day" && !start)
         throw Error("Choose a start date.");
       if (
@@ -107,6 +111,7 @@ export default function ReportDownload({
       });
       if (reportKind === "leave") {
         params.set("year", leaveYear);
+        params.set("month", leaveMonth);
         if (onlyWithLeave) params.set("leave_only", "1");
       }
       if (scope === "filtered")
@@ -170,16 +175,38 @@ export default function ReportDownload({
           </select>
         </label>
         {reportKind === "leave" && (
-          <label className="sp-field">
-            Leave year / अवकाश वर्ष
-            <input
-              type="number"
-              min={2000}
-              max={2100}
-              value={leaveYear}
-              onChange={(event) => setLeaveYear(event.target.value)}
-            />
-          </label>
+          <>
+            <label className="sp-field">
+              Leave year / अवकाश वर्ष
+              <input
+                type="number"
+                min={2000}
+                max={2100}
+                value={leaveYear}
+                onChange={(event) => setLeaveYear(event.target.value)}
+              />
+            </label>
+            <label className="sp-field">
+              SL month / विशेष अवकाश माह
+              <select
+                value={leaveMonth}
+                onChange={(event) => setLeaveMonth(event.target.value)}
+              >
+                {Array.from({ length: 12 }, (_, index) => {
+                  const value = String(index + 1).padStart(2, "0");
+                  const name = new Date(2026, index, 1).toLocaleString(
+                    "en-IN",
+                    { month: "long" },
+                  );
+                  return (
+                    <option key={value} value={value}>
+                      {name}
+                    </option>
+                  );
+                })}
+              </select>
+            </label>
+          </>
         )}
       </div>
       <fieldset className="sp-report-choice">

@@ -6,13 +6,18 @@ const WIDTH = 1190.55;
 const HEIGHT = 841.89;
 const MARGIN = 30;
 const BLUE = "#173b63";
-const WIDTHS = [32, 145, 95, 70, 148, 208, 60, 60, 60, 60, 60, 60, 72];
+const WIDTHS = [32, 145, 95, 70, 148, 208, 52, 52, 52, 52, 52, 52, 52, 68];
 const HEADERS = ["No.", "Name", "Mobile", "Block", "Designation", "Workplace"];
 const TOTAL = WIDTHS.reduce((sum, width) => sum + width, 0);
+const STAFF_WIDTH = WIDTHS.slice(0, 6).reduce((sum, width) => sum + width, 0);
 const fonts = join(process.cwd(), "assets", "report-fonts");
 const isHindi = (value) => /[\u0900-\u097f]/.test(String(value || ""));
+const monthName = (month) =>
+  new Date(Date.UTC(2026, Number(month) - 1, 1)).toLocaleString("en-IN", {
+    month: "long",
+  });
 
-function page(doc, year, office, emblem) {
+function page(doc, report, emblem) {
   doc.addPage();
   doc.rect(0, 0, WIDTH, 8).fill(BLUE);
   if (emblem) doc.image(emblem, MARGIN + 5, 22, { fit: [48, 66] });
@@ -26,7 +31,7 @@ function page(doc, year, office, emblem) {
   }
   write(
     doc,
-    `GOVERNMENT OF BIHAR • ${office || "DISTRICT ARARIA"}`,
+    `GOVERNMENT OF BIHAR • ${report.officeLabel || "DISTRICT ARARIA"}`,
     100,
     27,
     WIDTH - 200,
@@ -36,7 +41,7 @@ function page(doc, year, office, emblem) {
   );
   write(
     doc,
-    `STAFF LEAVE DETAILS REPORT ${year}`,
+    `STAFF LEAVE DETAILS REPORT ${report.year}`,
     100,
     48,
     WIDTH - 200,
@@ -46,7 +51,7 @@ function page(doc, year, office, emblem) {
   );
   write(
     doc,
-    "Casual leave: 16/year • Special leave: 24/year for female staff, maximum 2/month",
+    `Casual leave: 16/year • Special leave: 2 in ${monthName(report.month)}, 24/year for female staff`,
     100,
     76,
     WIDTH - 200,
@@ -60,7 +65,14 @@ function page(doc, year, office, emblem) {
     .moveTo(MARGIN, 103)
     .lineTo(WIDTH - MARGIN, 103)
     .stroke();
-  write(doc, `Leave year: ${year}`, MARGIN, 111, 300, 8);
+  write(
+    doc,
+    `SL month: ${monthName(report.month)} ${report.year} • Year balance: ${report.year}`,
+    MARGIN,
+    111,
+    400,
+    8,
+  );
   write(
     doc,
     `Report date: ${new Date().toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}`,
@@ -71,7 +83,7 @@ function page(doc, year, office, emblem) {
     false,
     "right",
   );
-  tableHeader(doc, 131);
+  tableHeader(doc, 131, report.month);
   doc
     .strokeColor("#b9c8d7")
     .moveTo(MARGIN, HEIGHT - 49)
@@ -87,56 +99,79 @@ function page(doc, year, office, emblem) {
   );
 }
 
-function tableHeader(doc, y) {
-  doc.rect(MARGIN, y, TOTAL, 28).fill(BLUE);
-  doc.rect(MARGIN, y + 28, TOTAL, 24).fill("#eaf1f8");
+function tableHeader(doc, y, month) {
+  doc.rect(MARGIN, y, TOTAL, 52).fill(BLUE);
+  doc
+    .rect(MARGIN + STAFF_WIDTH, y + 28, TOTAL - STAFF_WIDTH, 24)
+    .fill("#eaf1f8");
   let x = MARGIN;
   HEADERS.forEach((label, index) => {
     doc
       .fillColor("#ffffff")
       .font("LatinBold")
       .fontSize(8)
-      .text(label, x + 4, y + 10, {
+      .text(label, x + 4, y + 21, {
         width: WIDTHS[index] - 8,
         align: index === 0 ? "center" : "left",
       });
     x += WIDTHS[index];
   });
-  for (const group of ["CASUAL LEAVE", "SPECIAL LEAVE"]) {
+  const groups = [
+    { title: "CASUAL LEAVE · YEAR", labels: ["GRANTED", "TAKEN", "LEFT"] },
+    {
+      title: "SPECIAL LEAVE · MONTH / YEAR",
+      labels: [
+        `${monthName(month).slice(0, 3).toUpperCase()} TAKEN`,
+        `${monthName(month).slice(0, 3).toUpperCase()} LEFT`,
+        "YEAR TAKEN",
+        "YEAR LEFT",
+      ],
+    },
+  ];
+  for (const group of groups) {
+    const groupWidth = group.labels.length * 52;
     doc
       .fillColor("#ffffff")
       .font("LatinBold")
-      .fontSize(9)
-      .text(group, x, y + 9, { width: 180, align: "center" });
-    for (const label of ["GRANTED", "TAKEN", "BALANCE"]) {
+      .fontSize(8)
+      .text(group.title, x + 2, y + 9, {
+        width: groupWidth - 4,
+        align: "center",
+      });
+    for (const label of group.labels) {
       doc
         .fillColor(BLUE)
         .font("LatinBold")
-        .fontSize(7)
-        .text(label, x, y + 35, { width: 60, align: "center" });
-      x += 60;
+        .fontSize(6.4)
+        .text(label, x + 1, y + 35, { width: 50, align: "center" });
+      x += 52;
     }
   }
   doc
     .fillColor("#ffffff")
     .font("LatinBold")
     .fontSize(9)
-    .text("OTHER", x, y + 9, { width: 72, align: "center" });
+    .text("OTHER", x, y + 9, { width: 68, align: "center" });
   doc
     .fillColor(BLUE)
     .font("LatinBold")
     .fontSize(7)
-    .text("UNTYPED", x, y + 35, { width: 72, align: "center" });
+    .text("UNTYPED", x, y + 35, { width: 68, align: "center" });
   x = MARGIN;
-  WIDTHS.slice(0, -1).forEach((width) => {
+  WIDTHS.slice(0, -1).forEach((width, index) => {
     x += width;
+    const isGroupEdge = [5, 8, 12].includes(index);
     doc
       .strokeColor("#c9d4e1")
       .lineWidth(0.45)
-      .moveTo(x, y)
+      .moveTo(x, isGroupEdge || index < 5 ? y : y + 28)
       .lineTo(x, y + 52)
       .stroke();
   });
+  doc
+    .moveTo(MARGIN + STAFF_WIDTH, y + 28)
+    .lineTo(MARGIN + TOTAL, y + 28)
+    .stroke();
   doc.strokeColor("#c9d4e1").rect(MARGIN, y, TOTAL, 52).stroke();
 }
 
@@ -160,15 +195,15 @@ function tableRow(doc, row, index, y) {
     .lineWidth(0.4)
     .rect(MARGIN, y, TOTAL, height)
     .stroke();
-  const slGrant =
-    row.gender === "female"
-      ? row.slGranted
-      : row.gender === "male"
-        ? "N/A"
-        : "—";
   const slBalance =
     row.gender === "female"
       ? row.slBalance
+      : row.gender === "male"
+        ? "N/A"
+        : "—";
+  const slMonthBalance =
+    row.gender === "female"
+      ? row.slMonthBalance
       : row.gender === "male"
         ? "N/A"
         : "—";
@@ -182,7 +217,8 @@ function tableRow(doc, row, index, y) {
     row.clGranted,
     row.clTaken,
     row.clBalance,
-    slGrant,
+    row.slMonthTaken,
+    slMonthBalance,
     row.slTaken,
     slBalance,
     row.otherTaken,
@@ -241,18 +277,18 @@ export async function renderLeaveReportPdf(report) {
   let y = 0;
   for (let index = 0; index < report.rows.length; index++) {
     if (!y) {
-      page(doc, report.year, report.officeLabel, emblem);
+      page(doc, report, emblem);
       y = 183;
     }
     const height = rowHeight(doc, report.rows[index]);
     if (y + height > HEIGHT - 55) {
-      page(doc, report.year, report.officeLabel, emblem);
+      page(doc, report, emblem);
       y = 183;
     }
     y += tableRow(doc, report.rows[index], index, y);
   }
   if (!report.rows.length) {
-    page(doc, report.year, report.officeLabel, emblem);
+    page(doc, report, emblem);
     write(
       doc,
       "No staff match the selected leave report filters.",

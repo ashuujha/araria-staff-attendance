@@ -100,6 +100,9 @@ export async function GET(req: Request) {
       const year = Number(yearText);
       if (!/^(20\d\d|2100)$/.test(yearText))
         throw new HttpError(400, "Choose a valid leave report year.");
+      const month = query.get("month") || istDate().slice(5, 7);
+      if (!/^(0[1-9]|1[0-2])$/.test(month))
+        throw new HttpError(400, "Choose a valid leave report month.");
       if (filters.status || filters.phase)
         throw new HttpError(
           400,
@@ -122,6 +125,7 @@ export async function GET(req: Request) {
         profiles,
         records,
         year,
+        month,
         filters,
         onlyWithLeave,
       });
@@ -154,7 +158,7 @@ export async function GET(req: Request) {
             format === "xlsx"
               ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               : "application/pdf",
-          "Content-Disposition": `attachment; filename="araria-leave-report-${year}.${format}"`,
+          "Content-Disposition": `attachment; filename="araria-leave-report-${year}-${month}.${format}"`,
           "Cache-Control": "private, no-store, max-age=0",
           "X-Content-Type-Options": "nosniff",
         },
