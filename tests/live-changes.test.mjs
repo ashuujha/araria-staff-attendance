@@ -245,3 +245,42 @@ test("admin gender management and typed manual leave use the same quota checks",
     );
   }
 });
+
+test("camera repair replaces an old GPS rejection without changing leave balances", async () => {
+  const bootstrapBefore = (
+    await db.query(
+      "select pg_get_functiondef('portal_bootstrap()'::regprocedure) body",
+    )
+  ).rows[0].body;
+  await db.exec(
+    await readFile(
+      "supabase/migrations/20261015_workplace_evidence.sql",
+      "utf8",
+    ),
+  );
+  const stale = (
+    await db.query(
+      "select pg_get_functiondef(oid) body from pg_proc where proname='save_attendance_with_evidence' and pronamespace='public'::regnamespace",
+    )
+  ).rows[0].body;
+  assert.match(stale, /इस चरण में GPS या फोटो स्वीकार नहीं हैं/);
+  await db.exec(
+    await readFile(
+      "supabase/migrations/20261023_camera_location_repair.sql",
+      "utf8",
+    ),
+  );
+  const repaired = (
+    await db.query(
+      "select pg_get_functiondef(oid) body from pg_proc where proname='save_attendance_with_evidence' and pronamespace='public'::regnamespace",
+    )
+  ).rows[0].body;
+  assert.doesNotMatch(repaired, /इस चरण में GPS या फोटो स्वीकार नहीं हैं/);
+  assert.match(repaired, /acc>1000000/);
+  const bootstrapAfter = (
+    await db.query(
+      "select pg_get_functiondef('portal_bootstrap()'::regprocedure) body",
+    )
+  ).rows[0].body;
+  assert.equal(bootstrapAfter, bootstrapBefore);
+});

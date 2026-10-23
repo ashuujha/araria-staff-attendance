@@ -55,6 +55,8 @@ For an **existing database**, apply any unapplied migrations in order:
 7. `supabase/migrations/20261015_z_fast_start.sql` (combines login/session dashboard loading into one authenticated database call)
 8. `supabase/migrations/20261021_live_changes.sql` (scoped live-update counters for profiles, attendance, holidays and notices)
 
+For camera location and leave balances, apply `20261021_optional_camera_location.sql` before `20261022_leave_balances.sql` on a database that has neither. If leave balances are already installed and saving a camera photo says “GPS or photo is not accepted in this phase,” run only `supabase/migrations/20261023_camera_location_repair.sql` in Supabase SQL Editor. Paste the SQL contents, not the filename. This repair replaces the attendance function without changing `portal_bootstrap` or leave balances.
+
 For a **new database**, first apply `supabase/schema.sql`, then `supabase/panchayats.sql`, then all migrations above. Do not rerun the initial schema on an existing installation. Deployment alone does not apply SQL migrations. Disable public Supabase sign-ups.
 
 ## Import the supplied staff workbook
