@@ -583,7 +583,11 @@ export default function Portal({
   return (
     <Localized>
       <div className="simple-portal">
-        <header className="sp-header">
+        <header
+          className={
+            profile ? "sp-header sp-header-authenticated" : "sp-header"
+          }
+        >
           <DepartmentBrand
             key={profile?.id || "public"}
             profile={profile}
