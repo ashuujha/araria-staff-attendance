@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { STATUS_LEGEND } from "./attendance-report.mjs";
 import { reportEmblem } from "./report-emblem.mjs";
+import { reportStaffDisplay } from "./report-display.mjs";
 
 const WIDTH = 841.89,
   HEIGHT = 595.28,
@@ -25,6 +26,46 @@ function write(
   const runs =
     text.match(/[\u0900-\u097f\u200c\u200d]+|[^\u0900-\u097f\u200c\u200d]+/g) ||
     [];
+  if (runs.length > 1 && lines > 1) {
+    let cursor = x;
+    let line = 0;
+    const lineHeight = size * 1.5;
+    for (const token of text.match(/\s+|[^\s]+/g) || []) {
+      const pieces =
+        token.match(
+          /[\u0900-\u097f\u200c\u200d]+|[^\u0900-\u097f\u200c\u200d]+/g,
+        ) || [];
+      const widths = pieces.map((piece) => {
+        doc.font(font(isHindi(piece))).fontSize(size);
+        return doc.widthOfString(piece);
+      });
+      const tokenWidth = widths.reduce((sum, value) => sum + value, 0);
+      if (cursor > x && cursor + tokenWidth > x + width) {
+        line++;
+        cursor = x;
+      }
+      if (line >= lines) break;
+      if (/^\s+$/.test(token)) {
+        if (cursor !== x) cursor += tokenWidth;
+        continue;
+      }
+      pieces.forEach((piece, index) => {
+        const available = x + width - cursor;
+        if (available <= 0) return;
+        doc
+          .font(font(isHindi(piece)))
+          .fontSize(size)
+          .fillColor("#20344d")
+          .text(piece, cursor, y + line * lineHeight, {
+            width: available,
+            height: lineHeight,
+            ellipsis: true,
+          });
+        cursor += widths[index];
+      });
+    }
+    return;
+  }
   if (runs.length < 2 || lines > 1) {
     doc
       .font(font(isHindi(text)))
@@ -133,104 +174,176 @@ function page(doc, title, period, office, emblem) {
 }
 function gridHeader(doc, dates, y) {
   const width = WIDTH - MARGIN * 2,
-    nameWidth = 145,
-    phoneWidth = 82,
-    blockWidth = 78,
-    dayWidth = (width - nameWidth - phoneWidth - blockWidth) / dates.length;
+    fixed = [28, 113, 72, 95, 151],
+    dayWidth = (width - fixed.reduce((sum, n) => sum + n, 0)) / dates.length;
   doc.rect(MARGIN, y, width, 25).fill(BLUE);
-  doc
-    .fillColor("#ffffff")
-    .font("LatinBold")
-    .fontSize(8)
-    .text("Staff name", MARGIN + 5, y + 7, { width: nameWidth - 10 });
-  doc.text("Mobile", MARGIN + nameWidth, y + 7, {
-    width: phoneWidth,
-    align: "center",
-  });
-  doc.text("Block", MARGIN + nameWidth + phoneWidth, y + 7, {
-    width: blockWidth,
-    align: "center",
-  });
-  dates.forEach((date, index) =>
-    doc.text(
-      String(Number(date.slice(-2))),
-      MARGIN + nameWidth + phoneWidth + blockWidth + index * dayWidth,
-      y + 7,
-      { width: dayWidth, align: "center" },
-    ),
+  let x = MARGIN;
+  ["No.", "Name", "Mobile", "Designation", "Workplace"].forEach(
+    (label, index) => {
+      doc
+        .fillColor("#ffffff")
+        .font("LatinBold")
+        .fontSize(index === 0 ? 7 : 8)
+        .text(label, x + 3, y + 7, {
+          width: fixed[index] - 6,
+          align: index === 0 ? "center" : "left",
+        });
+      x += fixed[index];
+    },
   );
-  return { nameWidth, phoneWidth, blockWidth, dayWidth };
+  dates.forEach((date, index) =>
+    doc
+      .fillColor("#ffffff")
+      .font("LatinBold")
+      .fontSize(7)
+      .text(String(Number(date.slice(-2))), x + index * dayWidth, y + 7, {
+        width: dayWidth,
+        align: "center",
+      }),
+  );
+  return { fixed, dayWidth };
 }
 function gridRow(doc, row, index, dates, y, columns) {
   const width = WIDTH - MARGIN * 2,
-    height = 26;
+    height = 32,
+    display = reportStaffDisplay(row);
   if (index % 2) doc.rect(MARGIN, y, width, height).fill("#f1f5f9");
   doc
     .strokeColor("#d7e1ea")
     .lineWidth(0.35)
     .rect(MARGIN, y, width, height)
     .stroke();
-  write(
-    doc,
-    row.name,
-    MARGIN + 5,
-    y + 3,
-    columns.nameWidth - 10,
-    8.1,
-    false,
-    "left",
-    2,
-  );
-  const phoneX = MARGIN + columns.nameWidth;
-  doc
-    .strokeColor("#d7e1ea")
-    .moveTo(phoneX, y)
-    .lineTo(phoneX, y + height)
-    .stroke();
-  write(
-    doc,
-    row.phone,
-    phoneX + 2,
-    y + 8,
-    columns.phoneWidth - 4,
-    7,
-    false,
-    "center",
-  );
-  const blockX = phoneX + columns.phoneWidth;
-  doc
-    .strokeColor("#d7e1ea")
-    .moveTo(blockX, y)
-    .lineTo(blockX, y + height)
-    .stroke();
-  write(
-    doc,
-    row.block,
-    blockX + 2,
-    y + 8,
-    columns.blockWidth - 4,
-    7,
-    false,
-    "center",
-  );
+  let x = MARGIN;
+  [
+    String(index + 1),
+    display.name,
+    display.phone,
+    display.designation,
+    display.workplace,
+  ].forEach((value, column) => {
+    if (column)
+      doc
+        .strokeColor("#d7e1ea")
+        .moveTo(x, y)
+        .lineTo(x, y + height)
+        .stroke();
+    write(
+      doc,
+      value,
+      x + 3,
+      y + (column === 0 || column === 2 ? 10 : 4),
+      columns.fixed[column] - 6,
+      column === 0 ? 7 : 7.3,
+      false,
+      column === 0 ? "center" : "left",
+      column === 0 || column === 2 ? 1 : 2,
+    );
+    x += columns.fixed[column];
+  });
   row.cells.forEach((cell, column) => {
-    const x = blockX + columns.blockWidth + column * columns.dayWidth;
+    const dayX = x + column * columns.dayWidth;
     doc
       .strokeColor("#d7e1ea")
-      .moveTo(x, y)
-      .lineTo(x, y + height)
+      .moveTo(dayX, y)
+      .lineTo(dayX, y + height)
       .stroke();
     write(
       doc,
       cell.code,
-      x,
-      y + 8,
+      dayX,
+      y + 10,
       columns.dayWidth,
-      8,
+      Math.min(7, Math.max(5.4, columns.dayWidth * 0.55)),
       cell.code === "A" || cell.code === "PP",
       "center",
     );
   });
+}
+const DAILY_WIDTHS = [32, 135, 80, 123, 185, 107, 60, 60];
+const DAILY_HEADERS = [
+  "No.",
+  "Name",
+  "Mobile",
+  "Designation",
+  "Workplace",
+  "Attendance",
+  "In",
+  "Out",
+];
+function dailyHeader(doc, y) {
+  doc.rect(MARGIN, y, WIDTH - MARGIN * 2, 28).fill(BLUE);
+  let x = MARGIN;
+  DAILY_HEADERS.forEach((label, index) => {
+    doc
+      .fillColor("#ffffff")
+      .font("LatinBold")
+      .fontSize(8)
+      .text(label, x + 4, y + 8, {
+        width: DAILY_WIDTHS[index] - 8,
+        align: index === 0 || index > 5 ? "center" : "left",
+      });
+    x += DAILY_WIDTHS[index];
+  });
+}
+function dailyRow(doc, row, index, date, y) {
+  const fields = reportStaffDisplay(row, date);
+  const values = [
+    String(index + 1),
+    fields.name,
+    fields.phone,
+    fields.designation,
+    fields.workplace,
+    fields.status,
+    fields.inTime,
+    fields.outTime,
+  ];
+  const height = dailyRowHeight(doc, row, date);
+  if (index % 2)
+    doc.rect(MARGIN, y, WIDTH - MARGIN * 2, height).fill("#f1f5f9");
+  doc
+    .strokeColor("#d7e1ea")
+    .lineWidth(0.4)
+    .rect(MARGIN, y, WIDTH - MARGIN * 2, height)
+    .stroke();
+  let x = MARGIN;
+  values.forEach((value, column) => {
+    if (column)
+      doc
+        .strokeColor("#d7e1ea")
+        .moveTo(x, y)
+        .lineTo(x, y + height)
+        .stroke();
+    const centered = column === 0 || column === 2 || column > 5;
+    write(
+      doc,
+      value,
+      x + 4,
+      y + (centered ? (height - 10) / 2 : 6),
+      DAILY_WIDTHS[column] - 8,
+      column === 1 ? 8.2 : 7.7,
+      column === 1,
+      centered ? "center" : "left",
+      centered ? 1 : Math.max(2, Math.floor((height - 8) / 11)),
+    );
+    x += DAILY_WIDTHS[column];
+  });
+  return height;
+}
+function dailyRowHeight(doc, row, date) {
+  const fields = reportStaffDisplay(row, date);
+  const values = [
+    fields.name,
+    fields.designation,
+    fields.workplace,
+    fields.status,
+  ];
+  const columns = [1, 3, 4, 5];
+  const measured = columns.map((column, index) => {
+    const value = values[index];
+    doc.font(isHindi(value) ? "Hindi" : "Latin").fontSize(7.7);
+    return doc.heightOfString(value, { width: DAILY_WIDTHS[column] - 10 });
+  });
+  return Math.max(36, Math.min(60, Math.ceil(Math.max(...measured) + 12)));
 }
 export async function renderReportPdf(report) {
   const emblem = await reportEmblem();
@@ -257,12 +370,63 @@ export async function renderReportPdf(report) {
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
   });
+  const daily = report.start === report.end;
   for (const section of report.sections) {
     const period = `${section.dates[0]} to ${section.dates.at(-1)}`;
+    if (daily) {
+      const date = section.dates[0];
+      let y = 0;
+      for (let index = 0; index < section.rows.length; index++) {
+        const row = section.rows[index];
+        if (!y) {
+          page(
+            doc,
+            `Daily attendance • ${date}`,
+            date,
+            report.officeLabel,
+            emblem,
+          );
+          dailyHeader(doc, 123);
+          y = 151;
+        }
+        const height = dailyRowHeight(doc, row, date);
+        if (y + height > HEIGHT - 55) {
+          page(
+            doc,
+            `Daily attendance • ${date}`,
+            date,
+            report.officeLabel,
+            emblem,
+          );
+          dailyHeader(doc, 123);
+          y = 151;
+        }
+        y += dailyRow(doc, row, index, date, y);
+      }
+      if (!section.rows.length) {
+        page(
+          doc,
+          `Daily attendance • ${date}`,
+          date,
+          report.officeLabel,
+          emblem,
+        );
+        dailyHeader(doc, 123);
+        write(
+          doc,
+          "No staff match the selected filters.",
+          MARGIN + 5,
+          161,
+          WIDTH - MARGIN * 2 - 10,
+          10,
+        );
+      }
+      continue;
+    }
     let y = 0,
       columns;
     for (let index = 0; index < section.rows.length; index++) {
-      if (!y || y + 26 > HEIGHT - 55) {
+      if (!y || y + 32 > HEIGHT - 55) {
         page(
           doc,
           `Attendance report • ${section.month}`,
@@ -275,7 +439,7 @@ export async function renderReportPdf(report) {
         y += 25;
       }
       gridRow(doc, section.rows[index], index, section.dates, y, columns);
-      y += 26;
+      y += 32;
     }
     if (!section.rows.length) {
       page(

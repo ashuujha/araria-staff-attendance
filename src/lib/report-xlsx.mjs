@@ -1,8 +1,8 @@
 import { STATUS_LEGEND } from "./attendance-report.mjs";
 import { reportEmblem } from "./report-emblem.mjs";
+import { reportStaffDisplay } from "./report-display.mjs";
 
 const BLUE = "173B63";
-const PALE = "EAF1F8";
 const EDGE = "C9D4E1";
 const safe = (value) => {
   const text = String(value ?? "");
@@ -82,7 +82,7 @@ function styleHeader(row) {
     cell.border = { bottom: { style: "thin", color: { argb: EDGE } } };
   });
 }
-function styleData(row, index) {
+function styleData(row, index, leftColumns = [1]) {
   row.height = 27;
   row.eachCell({ includeEmpty: true }, (cell) => {
     cell.font = {
@@ -92,7 +92,7 @@ function styleData(row, index) {
     };
     cell.alignment = {
       vertical: "middle",
-      horizontal: cell.col === 1 ? "left" : "center",
+      horizontal: leftColumns.includes(cell.col) ? "left" : "center",
       wrapText: true,
     };
     cell.border = {
@@ -118,49 +118,119 @@ export async function renderReportXlsx(report) {
     : null;
   book.creator = "Araria Staff Attendance";
   book.created = new Date();
+  const daily = report.start === report.end;
   for (const section of report.sections) {
     const sheet = book.addWorksheet(section.month.replace("-", "_"));
-    sheet.getColumn(1).width = 29;
-    sheet.getColumn(2).width = 17;
-    sheet.getColumn(3).width = 16;
+    if (daily) {
+      const date = section.dates[0];
+      const headers = [
+        "Sr. No.",
+        "Name",
+        "Mobile number",
+        "Designation",
+        "Workplace",
+        "Attendance position",
+        "In time (IST)",
+        "Out time (IST)",
+      ];
+      [9, 28, 18, 28, 46, 25, 17, 17].forEach(
+        (width, index) => (sheet.getColumn(index + 1).width = width),
+      );
+      heading(
+        sheet,
+        headers.length,
+        "Daily attendance report",
+        `Date: ${date}`,
+        date,
+        report.officeLabel,
+      );
+      sheet.views = [{ state: "frozen", xSplit: 2, ySplit: 7 }];
+      if (image !== null)
+        sheet.addImage(image, {
+          tl: { col: 0.15, row: 0.1 },
+          ext: { width: 45, height: 57 },
+        });
+      sheet.getRow(7).values = headers;
+      styleHeader(sheet.getRow(7));
+      section.rows.forEach((row, index) => {
+        const display = reportStaffDisplay(row, date);
+        const out = sheet.getRow(8 + index);
+        out.values = [
+          index + 1,
+          safe(display.name),
+          safe(display.phone),
+          safe(display.designation),
+          safe(display.workplace),
+          display.status,
+          display.inTime,
+          display.outTime,
+        ];
+        styleData(out, index, [2, 4, 5, 6]);
+        out.height = 38;
+      });
+      const note = sheet.getRow(9 + section.rows.length);
+      sheet.mergeCells(note.number, 1, note.number, headers.length);
+      note.getCell(1).value =
+        "Times are in IST. At workplace means arrival was saved; out time is still pending.";
+      note.getCell(1).font = {
+        name: "Noto Sans",
+        size: 9,
+        color: { argb: BLUE },
+      };
+      sheet.autoFilter = {
+        from: { row: 7, column: 1 },
+        to: { row: 7 + section.rows.length, column: headers.length },
+      };
+      continue;
+    }
+    [9, 26, 17, 25, 39].forEach(
+      (width, index) => (sheet.getColumn(index + 1).width = width),
+    );
     for (let i = 0; i < section.dates.length; i++)
-      sheet.getColumn(i + 4).width = 7;
+      sheet.getColumn(i + 6).width = 7;
     heading(
       sheet,
-      section.dates.length + 3,
+      section.dates.length + 5,
       "Attendance report",
       `Month: ${section.month}`,
       `${section.dates[0]} to ${section.dates.at(-1)}`,
       report.officeLabel,
     );
+    sheet.views = [{ state: "frozen", xSplit: 5, ySplit: 7 }];
     if (image !== null)
       sheet.addImage(image, {
         tl: { col: 0.15, row: 0.1 },
         ext: { width: 45, height: 57 },
       });
     sheet.getRow(7).values = [
+      "Sr. No.",
       "Staff name",
       "Mobile",
-      "Block",
+      "Designation",
+      "Workplace",
       ...section.dates.map((d) => Number(d.slice(-2))),
     ];
     styleHeader(sheet.getRow(7));
     section.rows.forEach((row, index) => {
+      const display = reportStaffDisplay(row);
       const out = sheet.getRow(8 + index);
       out.values = [
-        safe(row.name),
-        safe(row.phone),
-        safe(row.block),
+        index + 1,
+        safe(display.name),
+        safe(display.phone),
+        safe(display.designation),
+        safe(display.workplace),
         ...row.cells.map((cell) => cell.code),
       ];
-      styleData(out, index);
+      styleData(out, index, [2, 4, 5]);
+      out.height = 34;
     });
     const legendRow = sheet.getRow(9 + section.rows.length);
     sheet.mergeCells(
       legendRow.number,
       1,
       legendRow.number,
-      section.dates.length + 3,
+      section.dates.length + 5,
     );
     legendRow.getCell(1).value = STATUS_LEGEND.map(
       ([code, label]) => `${code} ${label}`,
@@ -172,7 +242,7 @@ export async function renderReportXlsx(report) {
     };
     sheet.autoFilter = {
       from: { row: 7, column: 1 },
-      to: { row: 7 + section.rows.length, column: section.dates.length + 3 },
+      to: { row: 7 + section.rows.length, column: section.dates.length + 5 },
     };
   }
   return Buffer.from(await book.xlsx.writeBuffer());
