@@ -16,8 +16,8 @@ import { useOfficeFeed, NoticeBoard, OfficeSettings } from "./OfficeBoard";
 import { officeClosure, type OfficeFeed } from "../lib/office-types";
 import { prepareWorkplacePhoto } from "../lib/photo-upload";
 import {
+  googleMapsUrl,
   openStreetMapEmbedUrl,
-  openStreetMapUrl,
   type CameraLocation,
 } from "../lib/osm-camera";
 import ReportDownload from "./ReportDownload";
@@ -260,14 +260,14 @@ function RecordDetails({
               {Number.isFinite(row.accuracy) &&
                 ` • ±${Math.round(row.accuracy!)} m`}{" "}
               <a
-                href={openStreetMapUrl({
+                href={googleMapsUrl({
                   latitude: row.latitude!,
                   longitude: row.longitude!,
                 })}
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                Open in OpenStreetMap
+                Google Maps में स्थान देखें / View location on Google Maps
               </a>
             </p>
           )}
@@ -367,12 +367,12 @@ function SavedAttendanceEvidence({ row }: { row: RecordRow }) {
           </p>
           <div className="sp-actions">
             <a
-              href={openStreetMapUrl(coordinates)}
+              href={googleMapsUrl(coordinates)}
               target="_blank"
               rel="noopener noreferrer"
               className="sp-button sp-secondary"
             >
-              मानचित्र में खोलें / Open location in map
+              Google Maps में स्थान देखें / View location on Google Maps
             </a>
             <button
               type="button"

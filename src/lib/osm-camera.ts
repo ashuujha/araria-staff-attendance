@@ -41,6 +41,14 @@ export function openStreetMapUrl(
   return `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=17/${lat}/${lon}`;
 }
 
+export function googleMapsUrl(
+  location: Pick<CameraLocation, "latitude" | "longitude">,
+) {
+  const coordinates = `${location.latitude.toFixed(6)},${location.longitude.toFixed(6)}`;
+  const params = new URLSearchParams({ api: "1", query: coordinates });
+  return `https://www.google.com/maps/search/?${params}`;
+}
+
 export function openStreetMapEmbedUrl(
   location: Pick<CameraLocation, "latitude" | "longitude">,
 ) {

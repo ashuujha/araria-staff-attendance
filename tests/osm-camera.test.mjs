@@ -13,8 +13,12 @@ await build({
   format: "esm",
   outfile: ".preview/osm-camera-test.mjs",
 });
-const { cameraLocation, openStreetMapUrl, openStreetMapEmbedUrl } =
-  await import(pathToFileURL(resolve(".preview/osm-camera-test.mjs")));
+const {
+  cameraLocation,
+  openStreetMapUrl,
+  openStreetMapEmbedUrl,
+  googleMapsUrl,
+} = await import(pathToFileURL(resolve(".preview/osm-camera-test.mjs")));
 
 test("fresh device location is accepted without a 50 metre cutoff and maps to OSM", () => {
   const now = Date.now();
@@ -30,6 +34,11 @@ test("fresh device location is accepted without a 50 metre cutoff and maps to OS
   const embed = new URL(openStreetMapEmbedUrl(location));
   assert.equal(embed.hostname, "www.openstreetmap.org");
   assert.equal(embed.searchParams.get("marker"), "22.5643,88.3693");
+  const google = new URL(googleMapsUrl(location));
+  assert.equal(google.origin, "https://www.google.com");
+  assert.equal(google.pathname, "/maps/search/");
+  assert.equal(google.searchParams.get("api"), "1");
+  assert.equal(google.searchParams.get("query"), "22.564300,88.369300");
 });
 
 test("stale or invalid device positions cannot be stamped", () => {
