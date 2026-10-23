@@ -123,7 +123,7 @@ export default function WorkplaceCamera({
     void navigator.mediaDevices
       .getUserMedia({
         audio: false,
-        video: { facingMode: { ideal: "environment" } },
+        video: { facingMode: { ideal: "user" } },
       })
       .then((media) => {
         if (cancelled) {
