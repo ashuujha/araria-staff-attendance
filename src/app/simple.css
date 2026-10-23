@@ -625,6 +625,21 @@
 }
 .sp-saved-gps {
   margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid #dfe6ee;
+  display: grid;
+  gap: 12px;
+}
+.sp-saved-gps h3,
+.sp-saved-gps p {
+  margin: 0;
+}
+.sp-saved-location {
+  display: grid;
+  gap: 10px;
+}
+.sp-saved-location .sp-actions {
+  margin-top: 0;
 }
 .sp-editor-assignment {
   border: 1px solid #dfe6ee;
@@ -643,6 +658,9 @@
   display: block;
   width: 100%;
   height: auto;
+  max-height: 460px;
+  object-fit: contain;
+  background: #f2f6fa;
   border-radius: 8px;
 }
 .sp-dialog .sp-alert small {

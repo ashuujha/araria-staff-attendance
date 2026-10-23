@@ -15,7 +15,11 @@ import DepartmentBrand from "./DepartmentBrand";
 import { useOfficeFeed, NoticeBoard, OfficeSettings } from "./OfficeBoard";
 import { officeClosure, type OfficeFeed } from "../lib/office-types";
 import { prepareWorkplacePhoto } from "../lib/photo-upload";
-import { openStreetMapUrl, type CameraLocation } from "../lib/osm-camera";
+import {
+  openStreetMapEmbedUrl,
+  openStreetMapUrl,
+  type CameraLocation,
+} from "../lib/osm-camera";
 import ReportDownload from "./ReportDownload";
 import StaffEditor from "./StaffEditor";
 
@@ -198,7 +202,13 @@ function SelectField({
     </Localized>
   );
 }
-function RecordDetails({ row }: { row: RecordRow }) {
+function RecordDetails({
+  row,
+  showCameraLocation = true,
+}: {
+  row: RecordRow;
+  showCameraLocation?: boolean;
+}) {
   const assignment = row.working_places?.find(
     (a) => a.panchayat === row.panchayat,
   );
@@ -241,26 +251,151 @@ function RecordDetails({ row }: { row: RecordRow }) {
               </div>
             ))}
         </dl>
-        {Number.isFinite(row.latitude) && Number.isFinite(row.longitude) && (
-          <p className="sp-note">
-            कैमरे द्वारा दिया गया स्थान / Camera-reported location:{" "}
-            {row.latitude?.toFixed(6)}, {row.longitude?.toFixed(6)}
-            {Number.isFinite(row.accuracy) &&
-              ` • ±${Math.round(row.accuracy!)} m`}{" "}
-            <a
-              href={openStreetMapUrl({
-                latitude: row.latitude!,
-                longitude: row.longitude!,
-              })}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Open in OpenStreetMap
-            </a>
-          </p>
-        )}
+        {showCameraLocation &&
+          Number.isFinite(row.latitude) &&
+          Number.isFinite(row.longitude) && (
+            <p className="sp-note">
+              कैमरे द्वारा दिया गया स्थान / Camera-reported location:{" "}
+              {row.latitude?.toFixed(6)}, {row.longitude?.toFixed(6)}
+              {Number.isFinite(row.accuracy) &&
+                ` • ±${Math.round(row.accuracy!)} m`}{" "}
+              <a
+                href={openStreetMapUrl({
+                  latitude: row.latitude!,
+                  longitude: row.longitude!,
+                })}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Open in OpenStreetMap
+              </a>
+            </p>
+          )}
       </>
     </Localized>
+  );
+}
+
+function SavedAttendanceEvidence({ row }: { row: RecordRow }) {
+  const [photoUrl, setPhotoUrl] = useState("");
+  const [photoError, setPhotoError] = useState("");
+  const [refresh, setRefresh] = useState(0);
+  const [showMap, setShowMap] = useState(false);
+  const hasLocation =
+    Number.isFinite(row.latitude) && Number.isFinite(row.longitude);
+  useEffect(() => {
+    if (!row.photo_path) return;
+    let cancelled = false;
+    setPhotoUrl("");
+    setPhotoError("");
+    void api(`/api/files?id=${encodeURIComponent(row.id)}&kind=photo_path`)
+      .then((result) => {
+        if (!cancelled) setPhotoUrl(result.url);
+      })
+      .catch((error) => {
+        if (!cancelled)
+          setPhotoError(
+            error instanceof Error
+              ? error.message
+              : "फोटो नहीं खुली। / Could not load photo.",
+          );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [row.id, row.photo_path, refresh]);
+  if (!row.photo_path && !hasLocation) return null;
+  const coordinates = {
+    latitude: row.latitude!,
+    longitude: row.longitude!,
+  };
+  return (
+    <section
+      className="sp-saved-gps"
+      aria-label="Attendance photo and location"
+    >
+      <h3>
+        {row.photo_path && hasLocation
+          ? "कैमरे से ली गई GPS फोटो / Geotagged camera photo"
+          : row.photo_path
+            ? "कार्यस्थल फोटो / Workplace photo"
+            : "कैमरा स्थान / Camera location"}
+      </h3>
+      {row.photo_path && (
+        <>
+          {photoUrl ? (
+            <a href={photoUrl} target="_blank" rel="noopener noreferrer">
+              <img
+                className="sp-saved-photo"
+                src={photoUrl}
+                alt={
+                  hasLocation
+                    ? "Staff camera photo with location and time stamp"
+                    : "Staff workplace photo"
+                }
+                onError={() => {
+                  setPhotoUrl("");
+                  setPhotoError(
+                    "फोटो लिंक समाप्त हो गया। फिर से लोड करें। / Photo link expired. Reload it.",
+                  );
+                }}
+              />
+            </a>
+          ) : photoError ? (
+            <p role="alert" className="sp-alert sp-error">
+              {photoError}
+            </p>
+          ) : (
+            <p role="status">फोटो लोड हो रही है… / Loading photo…</p>
+          )}
+          <button
+            type="button"
+            className="sp-button sp-secondary"
+            onClick={() => setRefresh((value) => value + 1)}
+          >
+            फोटो फिर से लोड करें / Reload photo
+          </button>
+        </>
+      )}
+      {hasLocation && (
+        <div className="sp-saved-location">
+          <p>
+            सहेजा गया स्थान / Saved location: {row.latitude!.toFixed(6)},{" "}
+            {row.longitude!.toFixed(6)}
+            {Number.isFinite(row.accuracy) &&
+              ` • ±${Math.round(row.accuracy!)} m`}
+          </p>
+          <div className="sp-actions">
+            <a
+              href={openStreetMapUrl(coordinates)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="sp-button sp-secondary"
+            >
+              मानचित्र में खोलें / Open location in map
+            </a>
+            <button
+              type="button"
+              className="sp-button sp-secondary"
+              onClick={() => setShowMap((value) => !value)}
+            >
+              {showMap
+                ? "मानचित्र बंद करें / Hide map"
+                : "मानचित्र देखें / View map"}
+            </button>
+          </div>
+          {showMap && (
+            <iframe
+              title="Map of saved staff location"
+              src={openStreetMapEmbedUrl(coordinates)}
+              className="sp-camera-map"
+              loading="lazy"
+              referrerPolicy="strict-origin-when-cross-origin"
+            />
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -2115,17 +2250,9 @@ function Admin({
                 <p>
                   {detail.date} • {phaseLabel(detail)}
                 </p>
-                <RecordDetails row={detail} />
+                <RecordDetails row={detail} showCameraLocation={false} />
+                <SavedAttendanceEvidence key={detail.id} row={detail} />
                 <div className="sp-actions">
-                  {detail.photo_path && (
-                    <button
-                      className="sp-button sp-secondary"
-                      disabled={fileBusy}
-                      onClick={() => openFile(detail, "photo_path")}
-                    >
-                      कार्यस्थल फोटो देखें / View workplace photo
-                    </button>
-                  )}
                   {detail.leave_path && (
                     <button
                       className="sp-button sp-secondary"
