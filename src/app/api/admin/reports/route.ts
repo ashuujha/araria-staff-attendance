@@ -12,6 +12,9 @@ import {
 } from "../../../../lib/attendance-report.mjs";
 import { renderReportXlsx } from "../../../../lib/report-xlsx.mjs";
 import { renderReportPdf } from "../../../../lib/report-pdf.mjs";
+import { makeLeaveReport } from "../../../../lib/leave-report.mjs";
+import { renderLeaveReportPdf } from "../../../../lib/leave-report-pdf.mjs";
+import { renderLeaveReportXlsx } from "../../../../lib/leave-report-xlsx.mjs";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -41,10 +44,12 @@ export async function GET(req: Request) {
     admin(profile);
     const query = new URL(req.url).searchParams;
     const format = query.get("format");
+    const kind = query.get("kind") || "attendance";
     const period = query.get("period") || "day";
     if (
       !format ||
       !["xlsx", "pdf"].includes(format) ||
+      !["attendance", "leave"].includes(kind) ||
       !["day", "month", "range"].includes(period)
     )
       throw new HttpError(400, "Choose a valid report format and period.");
@@ -90,6 +95,71 @@ export async function GET(req: Request) {
       throw new HttpError(400, "Invalid status filter.");
     if (filters.phase && !["draft", "submitted"].includes(filters.phase))
       throw new HttpError(400, "Invalid phase filter.");
+    if (kind === "leave") {
+      const yearText = query.get("year") || istDate().slice(0, 4);
+      const year = Number(yearText);
+      if (!/^(20\d\d|2100)$/.test(yearText))
+        throw new HttpError(400, "Choose a valid leave report year.");
+      if (filters.status || filters.phase)
+        throw new HttpError(
+          400,
+          "Attendance status filters do not apply to leave reports.",
+        );
+      const onlyWithLeave = query.get("leave_only") === "1";
+      const first = `${year}-01-01`;
+      const last = `${year}-12-31`;
+      const [records, profiles] = await Promise.all([
+        allPages(
+          `/rest/v1/attendance?date=gte.${first}&date=lte.${last}&status=eq.leave&deleted_at=is.null&select=id,staff_id,date,staff_name,block,department,panchayat,position,status,leave_type,version&order=date.asc,staff_id.asc,id.asc`,
+          token,
+        ),
+        allPages(
+          "/rest/v1/profiles?role=eq.staff&select=id,name,phone,block,assignments,gender,role,active,deleted_at&order=id.asc",
+          token,
+        ),
+      ]);
+      const summary = makeLeaveReport({
+        profiles,
+        records,
+        year,
+        filters,
+        onlyWithLeave,
+      });
+      const report = {
+        ...summary,
+        officeLabel:
+          profile.role === "block_admin"
+            ? `Block office ${profile.block}, Araria`
+            : filters.block
+              ? `Block office ${filters.block}, Araria`
+              : "District Araria",
+      };
+      if (format === "pdf" && report.rows.length > 3500)
+        throw new HttpError(
+          413,
+          "Leave report is too large. Add staff filters.",
+        );
+      const output: Buffer =
+        format === "xlsx"
+          ? await renderLeaveReportXlsx(report)
+          : await renderLeaveReportPdf(report);
+      if (output.byteLength > MAX_BYTES)
+        throw new HttpError(
+          413,
+          "Leave report exceeds 4 MB. Add staff filters.",
+        );
+      return new Response(new Uint8Array(output), {
+        headers: {
+          "Content-Type":
+            format === "xlsx"
+              ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              : "application/pdf",
+          "Content-Disposition": `attachment; filename="araria-leave-report-${year}.${format}"`,
+          "Cache-Control": "private, no-store, max-age=0",
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
+    }
     const recordsPath = `/rest/v1/attendance?date=gte.${start}&date=lte.${end}&deleted_at=is.null&select=id,staff_id,date,staff_name,block,department,panchayat,position,working_places,status,phase,leave_type,deputation_workplace,absence_reason,time_in,time_out,created_at,version&order=date.asc,staff_id.asc,id.asc`;
     const profilesPath =
       "/rest/v1/profiles?role=eq.staff&select=id,name,phone,secondary_phones,email,block,assignments,role,active,created_at,deleted_at&order=id.asc";

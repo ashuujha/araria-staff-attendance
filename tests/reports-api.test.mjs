@@ -56,3 +56,80 @@ test("reports reject staff and invalid date ranges before reading attendance", a
     globalThis.fetch = original;
   }
 });
+
+test("admin can download a year-specific leave balance report", async () => {
+  const original = globalThis.fetch;
+  const calls = [];
+  try {
+    globalThis.fetch = async (input, init = {}) => {
+      const url = new URL(String(input));
+      calls.push({ url, init });
+      if (url.pathname === "/auth/v1/user") return Response.json({ id });
+      if (url.pathname === "/rest/v1/profiles" && url.searchParams.has("id"))
+        return Response.json([
+          { id, role: "super_admin", active: true, assignments: [] },
+        ]);
+      const firstPage = url.searchParams.get("offset") === "0";
+      if (url.pathname === "/rest/v1/profiles")
+        return Response.json(
+          firstPage
+            ? [
+                {
+                  id: "staff-1",
+                  name: "Sample Staff",
+                  phone: "9000000000",
+                  block: "Araria",
+                  gender: "female",
+                  role: "staff",
+                  active: true,
+                  assignments: [
+                    {
+                      department: "Agriculture",
+                      panchayat: "Bairgachhi",
+                      position: "Assistant",
+                    },
+                  ],
+                },
+              ]
+            : [],
+        );
+      if (url.pathname === "/rest/v1/attendance")
+        return Response.json(
+          firstPage
+            ? [
+                {
+                  id: "leave-1",
+                  staff_id: "staff-1",
+                  date: "2026-10-21",
+                  status: "leave",
+                  leave_type: "CL",
+                },
+              ]
+            : [],
+        );
+      throw Error(`Unexpected URL: ${url}`);
+    };
+    const response = await GET(
+      req(
+        "kind=leave&format=xlsx&year=2026&leave_only=1&department=Agriculture",
+      ),
+    );
+    assert.equal(response.status, 200);
+    assert.match(
+      response.headers.get("content-disposition"),
+      /araria-leave-report-2026\.xlsx/,
+    );
+    const bytes = Buffer.from(await response.arrayBuffer());
+    assert.equal(bytes.subarray(0, 2).toString(), "PK");
+    assert.ok(
+      calls.some(
+        (call) =>
+          call.url.pathname === "/rest/v1/attendance" &&
+          call.url.searchParams.get("status") === "eq.leave" &&
+          call.url.searchParams.get("date") === "gte.2026-01-01",
+      ),
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+});

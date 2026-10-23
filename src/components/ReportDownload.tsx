@@ -28,6 +28,11 @@ export default function ReportDownload({
   staff: Profile[];
 }) {
   const [period, setPeriod] = useState<"day" | "month" | "range">("day");
+  const [reportKind, setReportKind] = useState<"attendance" | "leave">(
+    "attendance",
+  );
+  const [leaveYear, setLeaveYear] = useState(selectedDate.slice(0, 4));
+  const [onlyWithLeave, setOnlyWithLeave] = useState(true);
   const [start, setStart] = useState(selectedDate);
   const [end, setEnd] = useState(selectedDate);
   const [scope, setScope] = useState<"all" | "filtered" | null>(null);
@@ -37,6 +42,7 @@ export default function ReportDownload({
   useEffect(() => {
     setStart(selectedDate);
     setEnd(selectedDate);
+    setLeaveYear(selectedDate.slice(0, 4));
   }, [selectedDate]);
 
   const assignments = staff.flatMap((person) =>
@@ -81,16 +87,28 @@ export default function ReportDownload({
         !Object.values(filters).some((value) => value.trim())
       )
         throw Error("Enter at least one report filter, or choose all staff.");
-      if (period !== "day" && !start) throw Error("Choose a start date.");
-      if (period === "range" && (!end || end < start))
+      if (reportKind === "leave" && !/^(20\d\d|2100)$/.test(leaveYear))
+        throw Error("Choose a valid leave report year.");
+      if (reportKind === "attendance" && period !== "day" && !start)
+        throw Error("Choose a start date.");
+      if (
+        reportKind === "attendance" &&
+        period === "range" &&
+        (!end || end < start)
+      )
         throw Error("Choose an end date on or after the start date.");
       setBusy(format);
       const params = new URLSearchParams({
+        kind: reportKind,
         format,
         period,
         start: period === "day" ? selectedDate : start,
         end,
       });
+      if (reportKind === "leave") {
+        params.set("year", leaveYear);
+        if (onlyWithLeave) params.set("leave_only", "1");
+      }
       if (scope === "filtered")
         for (const [key, value] of Object.entries(filters))
           if (value.trim()) params.set(key, value.trim());
@@ -134,8 +152,36 @@ export default function ReportDownload({
       }}
     >
       <summary>
-        Download attendance report / उपस्थिति रिपोर्ट डाउनलोड करें
+        Download attendance or leave report / उपस्थिति या अवकाश रिपोर्ट डाउनलोड
+        करें
       </summary>
+      <div className="sp-filters sp-report-filters">
+        <label className="sp-field">
+          Report type / रिपोर्ट प्रकार
+          <select
+            value={reportKind}
+            onChange={(event) => {
+              setReportKind(event.target.value as typeof reportKind);
+              setError("");
+            }}
+          >
+            <option value="attendance">Attendance / उपस्थिति</option>
+            <option value="leave">Leave balances / अवकाश शेष</option>
+          </select>
+        </label>
+        {reportKind === "leave" && (
+          <label className="sp-field">
+            Leave year / अवकाश वर्ष
+            <input
+              type="number"
+              min={2000}
+              max={2100}
+              value={leaveYear}
+              onChange={(event) => setLeaveYear(event.target.value)}
+            />
+          </label>
+        )}
+      </div>
       <fieldset className="sp-report-choice">
         <legend>
           Do you want to filter this report? / रिपोर्ट में फ़िल्टर लगाएँ?
@@ -250,44 +296,57 @@ export default function ReportDownload({
               ? "The report includes all staff available to your administrator account."
               : "The report includes every matching staff member, across all dashboard pages."}
           </p>
-          <div className="sp-filters">
-            <label className="sp-field">
-              Period / अवधि
-              <select
-                value={period}
-                onChange={(event) =>
-                  setPeriod(event.target.value as typeof period)
-                }
-              >
-                <option value="day">Selected day</option>
-                <option value="month">Month</option>
-                <option value="range">Date range</option>
-              </select>
+          {reportKind === "leave" && (
+            <label className="sp-report-leave-only">
+              <input
+                type="checkbox"
+                checked={onlyWithLeave}
+                onChange={(event) => setOnlyWithLeave(event.target.checked)}
+              />
+              Only staff with recorded leave this year / केवल अवकाश लेने वाले
+              कर्मी
             </label>
-            {period !== "day" && (
+          )}
+          {reportKind === "attendance" && (
+            <div className="sp-filters">
               <label className="sp-field">
-                Start date / शुरू
-                <input
-                  type="date"
-                  value={start}
-                  onChange={(event) => setStart(event.target.value)}
-                  required
-                />
+                Period / अवधि
+                <select
+                  value={period}
+                  onChange={(event) =>
+                    setPeriod(event.target.value as typeof period)
+                  }
+                >
+                  <option value="day">Selected day</option>
+                  <option value="month">Month</option>
+                  <option value="range">Date range</option>
+                </select>
               </label>
-            )}
-            {period === "range" && (
-              <label className="sp-field">
-                End date / अंत
-                <input
-                  type="date"
-                  value={end}
-                  min={start}
-                  onChange={(event) => setEnd(event.target.value)}
-                  required
-                />
-              </label>
-            )}
-          </div>
+              {period !== "day" && (
+                <label className="sp-field">
+                  Start date / शुरू
+                  <input
+                    type="date"
+                    value={start}
+                    onChange={(event) => setStart(event.target.value)}
+                    required
+                  />
+                </label>
+              )}
+              {period === "range" && (
+                <label className="sp-field">
+                  End date / अंत
+                  <input
+                    type="date"
+                    value={end}
+                    min={start}
+                    onChange={(event) => setEnd(event.target.value)}
+                    required
+                  />
+                </label>
+              )}
+            </div>
+          )}
           <div className="sp-actions">
             <button
               type="button"
@@ -295,7 +354,9 @@ export default function ReportDownload({
               disabled={!!busy}
               onClick={() => void download("xlsx")}
             >
-              {busy === "xlsx" ? "Preparing…" : "Download Excel (.xlsx)"}
+              {busy === "xlsx"
+                ? "Preparing…"
+                : `Download ${reportKind === "leave" ? "leave " : ""}Excel (.xlsx)`}
             </button>
             <button
               type="button"
@@ -303,7 +364,9 @@ export default function ReportDownload({
               disabled={!!busy}
               onClick={() => void download("pdf")}
             >
-              {busy === "pdf" ? "Preparing…" : "Download PDF"}
+              {busy === "pdf"
+                ? "Preparing…"
+                : `Download ${reportKind === "leave" ? "leave " : ""}PDF`}
             </button>
           </div>
         </>

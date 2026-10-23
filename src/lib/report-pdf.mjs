@@ -106,6 +106,7 @@ function write(
     cursor += measured[index];
   });
 }
+export { write as reportPdfWrite };
 function header(doc, title, period, office, emblem) {
   doc.rect(0, 0, WIDTH, 8).fill(BLUE);
   if (emblem) doc.image(emblem, MARGIN + 7, 24, { fit: [42, 61] });

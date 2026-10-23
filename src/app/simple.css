@@ -1281,6 +1281,20 @@ img.sp-map {
   grid-column: 1 / -1;
   margin: 0 0 8px;
 }
+.sp-report-leave-only {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 4px 0 8px;
+  color: #173b63;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.sp-report-leave-only input {
+  flex: none;
+  margin-top: 4px;
+  accent-color: #245d88;
+}
 .sp-report-download .sp-actions {
   display: flex;
   flex-wrap: wrap;
