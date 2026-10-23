@@ -70,30 +70,40 @@ test("Excel and PDF downloads contain a Hindi staff member's saved attendance", 
   );
   assert.equal(workbook.getWorksheet("2026_10").getCell("C8").value, "Araria");
   assert.equal(workbook.getWorksheet("2026_10").getCell("D8").value, "P");
-  assert.equal(
-    workbook.getWorksheet("Staff Details").getCell("F8").value,
-    "staff@example.org",
-  );
-  assert.equal(
-    workbook.getWorksheet("Staff Details").getCell("E8").value,
-    "0000000001",
-  );
-  assert.equal(
-    workbook.getWorksheet("Staff Details").getCell("H8").value,
-    "Agriculture",
-  );
-  assert.equal(
-    workbook.getWorksheet("Staff Details").getCell("H9").value,
-    "Welfare",
-  );
-  assert.equal(
-    workbook.getWorksheet("Details").getCell("O8").value,
-    "20 Oct 2026, 09:30 am",
-  );
-  assert.equal(
-    workbook.getWorksheet("Details").getCell("F8").value,
-    "staff@example.org",
+  assert.deepEqual(
+    workbook.worksheets.map((sheet) => sheet.name),
+    ["2026_10"],
   );
   assert.equal(pdf.subarray(0, 5).toString(), "%PDF-");
   assert.ok(pdf.length > 1000);
+  assert.equal(
+    (pdf.toString("latin1").match(/\/Type\s*\/Page\b/g) || []).length,
+    1,
+  );
+});
+
+test("two-page attendance grid does not append staff or in/out detail pages", async () => {
+  const profiles = Array.from({ length: 20 }, (_, index) => ({
+    id: `staff-${index}`,
+    name: `Staff ${index + 1}`,
+    phone: String(9000000000 + index),
+    role: "staff",
+    active: true,
+    block: "Araria",
+    assignments: [],
+    created_at: "2026-01-01T00:00:00Z",
+  }));
+  const report = makeAttendanceReport({
+    profiles,
+    records: [],
+    holidays: [],
+    start: "2026-10-20",
+    end: "2026-10-20",
+    today: "2026-10-21",
+  });
+  const pdf = await renderReportPdf(report);
+  assert.equal(
+    (pdf.toString("latin1").match(/\/Type\s*\/Page\b/g) || []).length,
+    2,
+  );
 });
