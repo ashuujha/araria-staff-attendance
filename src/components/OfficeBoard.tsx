@@ -156,7 +156,8 @@ export function OfficeSettings({
       const result = await response.json();
       if (!response.ok) throw Error(result.error || "Unable to save");
       done?.();
-      if (await reload()) setMessage("सहेज दिया गया। / Saved.");
+      setMessage("सहेज दिया गया। / Saved.");
+      void reload();
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Unable to save");
     } finally {

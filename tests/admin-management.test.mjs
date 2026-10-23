@@ -96,6 +96,15 @@ test("admin add/edit/remove uses scoped RPCs, returns only new account password 
     assert.equal((await updated.json()).password, undefined);
     const removed = await POST(request({ action: "delete", id: staff }));
     assert.equal(removed.status, 200);
+    assert.equal(
+      calls.filter(
+        (c) =>
+          c.url.pathname === "/rest/v1/profiles" &&
+          c.url.searchParams.get("id") === "eq." + staff,
+      ).length,
+      0,
+      "The scoped update and delete RPCs should not require a second profile read",
+    );
     for (const name of [
       "create_master_staff_with_gender",
       "manage_staff_with_gender",

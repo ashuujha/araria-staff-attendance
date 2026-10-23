@@ -5,6 +5,7 @@ import {
   json,
   failure,
   HttpError,
+  cookies,
 } from "../../../lib/server";
 import { istDate } from "../../../lib/security.mjs";
 import {
@@ -46,9 +47,6 @@ export async function POST(req: Request) {
   let releaseEvidence: (() => void) | undefined;
   try {
     csrf(req);
-    const { profile, token } = await identity(req);
-    if (profile.role !== "staff")
-      throw new HttpError(403, "केवल कर्मी उपस्थिति दर्ज कर सकते हैं।");
     if (!req.headers.get("content-type")?.includes("application/json"))
       throw new HttpError(400, "अनुरोध अमान्य।");
     if (Number(req.headers.get("content-length") || 0) > 8192)
@@ -63,7 +61,14 @@ export async function POST(req: Request) {
       throw new HttpError(400, "अनुरोध अमान्य।");
     if (!["save_draft", "complete", "save_status"].includes(body.action))
       throw new HttpError(400, "कार्रवाई अमान्य।");
-    await requireWorkingDay();
+    if (!cookies(req).araria_session)
+      throw new HttpError(401, "कृपया लॉगिन करें।");
+    const [{ profile, token }] = await Promise.all([
+      identity(req),
+      requireWorkingDay(),
+    ]);
+    if (profile.role !== "staff")
+      throw new HttpError(403, "केवल कर्मी उपस्थिति दर्ज कर सकते हैं।");
     const draft = body.action === "save_draft";
     if (body.action !== "complete") {
       for (const key of ["panchayat", "department", "position"]) {
@@ -215,6 +220,8 @@ export async function POST(req: Request) {
         }
       }
     }
+    releaseEvidence?.();
+    releaseEvidence = undefined;
     const record = await sb("/rest/v1/rpc/save_attendance_with_evidence", {
       method: "POST",
       body: JSON.stringify({
@@ -256,6 +263,8 @@ export async function POST(req: Request) {
         : undefined;
     return json({ record, ...(leaveBalances ? { leaveBalances } : {}) });
   } catch (e) {
+    releaseEvidence?.();
+    releaseEvidence = undefined;
     for (const path of cleanup) {
       const pending = await sb(
         `/rest/v1/pending_uploads?path=eq.${encodeURIComponent(path)}&select=consumed`,

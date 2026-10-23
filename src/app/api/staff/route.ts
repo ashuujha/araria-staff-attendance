@@ -133,6 +133,53 @@ export async function POST(req: Request) {
     }
     if (typeof b.id !== "string" || !/^[0-9a-f-]{36}$/.test(b.id))
       throw new HttpError(400, "मान्य कर्मी चुनें।");
+    if (b.action === "delete") {
+      // The RPC validates the actor, target role and block in one transaction.
+      await sb("/rest/v1/rpc/delete_master_staff", {
+        method: "POST",
+        body: JSON.stringify({
+          actor_id: profile.id,
+          target_id: b.id,
+          reason_text: reason,
+        }),
+      });
+      return json({ success: true });
+    }
+    if (b.action === "update") {
+      const changes = b.changes;
+      if (
+        !changes ||
+        typeof changes !== "object" ||
+        Array.isArray(changes) ||
+        ("name" in changes &&
+          (typeof changes.name !== "string" ||
+            changes.name.trim().length < 2 ||
+            changes.name.length > 150)) ||
+        ("phone" in changes &&
+          (typeof changes.phone !== "string" ||
+            !/^[6-9]\d{9}$/.test(changes.phone))) ||
+        ("email" in changes &&
+          changes.email !== null &&
+          (typeof changes.email !== "string" ||
+            changes.email.length > 254 ||
+            (changes.email &&
+              !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(changes.email)))) ||
+        ("active" in changes && typeof changes.active !== "boolean") ||
+        ("gender" in changes && !["female", "male"].includes(changes.gender))
+      )
+        throw new HttpError(400, "कर्मी विवरण अमान्य है।");
+      // The RPC performs the same scope checks while locking the staff row.
+      const record = await sb("/rest/v1/rpc/manage_staff_with_gender", {
+        method: "POST",
+        body: JSON.stringify({
+          actor_id: profile.id,
+          target_id: b.id,
+          changes,
+          reason_text: reason,
+        }),
+      });
+      return json({ profile: record });
+    }
     const targets = await sb(
       "/rest/v1/profiles?id=eq." +
         b.id +
@@ -194,50 +241,7 @@ export async function POST(req: Request) {
       });
       return json({ password });
     }
-    if (b.action === "delete") {
-      await sb("/rest/v1/rpc/delete_master_staff", {
-        method: "POST",
-        body: JSON.stringify({
-          actor_id: profile.id,
-          target_id: target.id,
-          reason_text: reason,
-        }),
-      });
-      return json({ success: true });
-    }
-    if (b.action !== "update") throw new HttpError(400, "कार्रवाई अमान्य।");
-    const changes = b.changes;
-    if (
-      !changes ||
-      typeof changes !== "object" ||
-      Array.isArray(changes) ||
-      ("name" in changes &&
-        (typeof changes.name !== "string" ||
-          changes.name.trim().length < 2 ||
-          changes.name.length > 150)) ||
-      ("phone" in changes &&
-        (typeof changes.phone !== "string" ||
-          !/^[6-9]\d{9}$/.test(changes.phone))) ||
-      ("email" in changes &&
-        changes.email !== null &&
-        (typeof changes.email !== "string" ||
-          changes.email.length > 254 ||
-          (changes.email &&
-            !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(changes.email)))) ||
-      ("active" in changes && typeof changes.active !== "boolean") ||
-      ("gender" in changes && !["female", "male"].includes(changes.gender))
-    )
-      throw new HttpError(400, "कर्मी विवरण अमान्य है।");
-    const record = await sb("/rest/v1/rpc/manage_staff_with_gender", {
-      method: "POST",
-      body: JSON.stringify({
-        actor_id: profile.id,
-        target_id: target.id,
-        changes: b.changes,
-        reason_text: reason,
-      }),
-    });
-    return json({ profile: record });
+    throw new HttpError(400, "कार्रवाई अमान्य।");
   } catch (e) {
     return failure(e);
   }

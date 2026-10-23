@@ -286,6 +286,33 @@ test("admin cannot submit staff attendance", async () => {
   }
 });
 
+test("working-day lookup runs while the staff profile is loading", async () => {
+  const original = globalThis.fetch;
+  const calls = [];
+  const base = fixture(calls);
+  let profileFinished = false;
+  let holidayStartedBeforeProfileFinished = false;
+  globalThis.fetch = async (input, init) => {
+    const pathname = new URL(String(input)).pathname;
+    if (pathname === "/rest/v1/profiles") {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      profileFinished = true;
+    }
+    if (pathname === "/rest/v1/office_holidays")
+      holidayStartedBeforeProfileFinished = !profileFinished;
+    return base(input, init);
+  };
+  try {
+    const response = await POST(
+      request({ action: "complete", photo_upload_path: null }),
+    );
+    assert.equal(response.status, 200);
+    assert.equal(holidayStartedBeforeProfileFinished, true);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
 test("absence cannot save without a meaningful reason and is returned to the trusted RPC", async () => {
   const original = globalThis.fetch,
     calls = [];
