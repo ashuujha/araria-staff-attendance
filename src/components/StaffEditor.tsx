@@ -2,10 +2,14 @@
 import { useEffect, useRef, useState } from "react";
 import type { Profile, Assignment } from "../lib/types";
 import { Localized } from "../lib/portal-language";
+import { PANCHAYATI_RAJ_DEPARTMENT } from "../lib/district";
 
 export default function StaffEditor({
   person,
   block,
+  blockId,
+  role,
+  blocks,
   remove = false,
   staff,
   onClose,
@@ -14,6 +18,9 @@ export default function StaffEditor({
 }: {
   person: Profile | null;
   block: string;
+  blockId: string;
+  role: "bpro" | "dpro";
+  blocks: { id: string; name_en: string }[];
   remove?: boolean;
   staff: Profile[];
   onClose: () => void;
@@ -26,13 +33,23 @@ export default function StaffEditor({
   const [email, setEmail] = useState(person?.email || "");
   const [gender, setGender] = useState(person?.gender || "");
   const [active, setActive] = useState(person?.active ?? true);
+  const [selectedBlockId, setSelectedBlockId] = useState(
+    person?.block_id || blockId || "",
+  );
   const [assignments, setAssignments] = useState<Assignment[]>(
     person?.assignments.length
       ? person.assignments.map((a) => ({ ...a }))
-      : [{ department: "", panchayat: "", position: "" }],
+      : [
+          {
+            department: PANCHAYATI_RAJ_DEPARTMENT,
+            panchayat: "",
+            position: "",
+          },
+        ],
   );
   const [places, setPlaces] = useState<{ name: string; block: string }[]>([]);
   const [placesError, setPlacesError] = useState(false);
+  const [newPlace, setNewPlace] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [duplicate, setDuplicate] = useState<{
@@ -66,12 +83,15 @@ export default function StaffEditor({
     return () => controller.abort();
   }, [remove]);
   const existing = staff.flatMap((p) => p.assignments);
-  const departments = [...new Set(existing.map((a) => a.department))].sort();
   const positions = [...new Set(existing.map((a) => a.position))].sort();
   const panchayats = [
     ...new Set([
       ...places
-        .filter((p) => p.block === (person?.block || block))
+        .filter(
+          (p) =>
+            p.block ===
+            (blocks.find((b) => b.id === selectedBlockId)?.name_en || block),
+        )
         .map((p) => p.name),
       ...assignments.map((a) => a.panchayat).filter(Boolean),
     ]),
@@ -80,6 +100,29 @@ export default function StaffEditor({
     setAssignments((old) =>
       old.map((item, i) => (i === index ? { ...item, [key]: value } : item)),
     );
+  }
+  async function addWorkspace() {
+    if (!newPlace.trim() || !selectedBlockId) return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/panchayats", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newPlace.trim(),
+          block_id: selectedBlockId,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw Error(data.error || "Could not add workspace.");
+      setPlaces((old) => [...old, data.workspace]);
+      setNewPlace("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not add workspace.");
+    } finally {
+      setBusy(false);
+    }
   }
   async function save(event: React.FormEvent) {
     event.preventDefault();
@@ -100,6 +143,7 @@ export default function StaffEditor({
                   action: "update",
                   id: person.id,
                   changes: {
+                    block_id: selectedBlockId,
                     name: name.trim(),
                     phone,
                     email: email.trim(),
@@ -114,6 +158,7 @@ export default function StaffEditor({
                   phone,
                   email: email.trim(),
                   gender,
+                  block_id: selectedBlockId,
                   assignments,
                 },
         ),
@@ -219,6 +264,28 @@ export default function StaffEditor({
               ) : (
                 <>
                   <div className="sp-grid">
+                    {role === "dpro" && (
+                      <label className="sp-field">
+                        प्रखंड / Block
+                        <select
+                          required
+                          value={selectedBlockId}
+                          onChange={(e) => {
+                            setSelectedBlockId(e.target.value);
+                            setAssignments((old) =>
+                              old.map((a) => ({ ...a, panchayat: "" })),
+                            );
+                          }}
+                        >
+                          <option value="">Choose block</option>
+                          {blocks.map((b) => (
+                            <option key={b.id} value={b.id}>
+                              {b.name_en}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
                     <label className="sp-field">
                       नाम / Name
                       <input
@@ -281,6 +348,26 @@ export default function StaffEditor({
                     )}
                   </div>
                   <h3>आवंटन / Assignments</h3>
+                  <div className="sp-actions">
+                    <label className="sp-field">
+                      New workspace / नया कार्यस्थल
+                      <input
+                        value={newPlace}
+                        maxLength={200}
+                        onChange={(event) => setNewPlace(event.target.value)}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="sp-button sp-secondary"
+                      disabled={
+                        busy || !selectedBlockId || newPlace.trim().length < 2
+                      }
+                      onClick={() => void addWorkspace()}
+                    >
+                      Add workspace
+                    </button>
+                  </div>
                   {placesError && (
                     <p role="status">
                       पंचायत सूची लोड नहीं हुई। फिर से फॉर्म खोलें। / Panchayat
@@ -289,19 +376,6 @@ export default function StaffEditor({
                   )}
                   {assignments.map((a, index) => (
                     <div className="sp-editor-assignment" key={index}>
-                      <label className="sp-field">
-                        विभाग / Department
-                        <input
-                          required
-                          minLength={2}
-                          maxLength={200}
-                          list="staff-departments"
-                          value={a.department}
-                          onChange={(e) =>
-                            assignment(index, "department", e.target.value)
-                          }
-                        />
-                      </label>
                       <label className="sp-field">
                         पंचायत / Panchayat
                         <select
@@ -347,11 +421,6 @@ export default function StaffEditor({
                       )}
                     </div>
                   ))}
-                  <datalist id="staff-departments">
-                    {departments.map((value) => (
-                      <option key={value} value={value} translate="no" />
-                    ))}
-                  </datalist>
                   <datalist id="staff-positions">
                     {positions.map((value) => (
                       <option key={value} value={value} translate="no" />
@@ -364,7 +433,11 @@ export default function StaffEditor({
                     onClick={() =>
                       setAssignments((old) => [
                         ...old,
-                        { department: "", panchayat: "", position: "" },
+                        {
+                          department: PANCHAYATI_RAJ_DEPARTMENT,
+                          panchayat: "",
+                          position: "",
+                        },
                       ])
                     }
                   >

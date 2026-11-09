@@ -22,6 +22,7 @@ import {
 } from "../lib/osm-camera";
 import ReportDownload from "./ReportDownload";
 import StaffEditor from "./StaffEditor";
+import { PANCHAYATI_RAJ_DEPARTMENT } from "../lib/district";
 
 const AdminCaptcha = dynamic(() => import("./AdminCaptcha"));
 const WorkplaceCamera = dynamic(() => import("./WorkplaceCamera"));
@@ -213,7 +214,6 @@ function RecordDetails({
     (a) => a.panchayat === row.panchayat,
   );
   const items = [
-    ["विभाग / Department", row.department || assignment?.department],
     ["प्रखंड / Block", row.block || row.profiles?.block],
     ["पंचायत / Panchayat", row.panchayat],
     ["पद / Position", row.position || assignment?.position],
@@ -236,7 +236,6 @@ function RecordDetails({
                 <dd
                   translate={
                     [
-                      "विभाग / Department",
                       "प्रखंड / Block",
                       "पंचायत / Panchayat",
                       "पद / Position",
@@ -592,7 +591,7 @@ export default function Portal({
             key={profile?.id || "public"}
             profile={profile}
             selected={activeDepartment}
-            adminLogin={adminLogin}
+            loginRole={loginRole}
           />
           <div className="sp-header-controls">
             <LanguageSwitcher />
@@ -627,7 +626,9 @@ export default function Portal({
               <span className="sp-eyebrow">सुरक्षित प्रवेश / SECURE LOGIN</span>
               <h1>
                 {adminLogin
-                  ? loginRole === "bpro" ? "प्रखंड पंचायती राज पदाधिकारी / BPRO login" : "जिला पंचायती राज पदाधिकारी / DPRO login"
+                  ? loginRole === "bpro"
+                    ? "प्रखंड पंचायती राज पदाधिकारी / BPRO login"
+                    : "जिला पंचायती राज पदाधिकारी / DPRO login"
                   : "कर्मी लॉगिन / Staff login"}
               </h1>
               <p className="sp-muted">अपना लॉगिन विवरण और पासवर्ड डालें।</p>
@@ -709,6 +710,8 @@ export default function Portal({
               revisions={revisions}
               canManage
               adminBlock={profile.block}
+              role={profile.role as "bpro" | "dpro"}
+              adminBlockId={profile.block_id}
             />
           )}
         </main>
@@ -760,8 +763,8 @@ function Staff({
   const [loading, setLoading] = useState(!initial),
     [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState(false);
-  const [department, setDepartment] = useState(""),
-    [panchayat, setPanchayat] = useState(""),
+  const department = PANCHAYATI_RAJ_DEPARTMENT;
+  const [panchayat, setPanchayat] = useState(""),
     [position, setPosition] = useState("");
   const [selectedWorkspaceKey, setSelectedWorkspaceKey] = useState("");
   const [status, setStatus] = useState("present"),
@@ -791,10 +794,10 @@ function Staff({
   const staffRequestId = useRef(0);
   const retryLoad = useRef<ReturnType<typeof setTimeout> | null>(null);
   const assignments = (profile.assignments || []).filter(
-    (a) => a.department?.trim() && a.panchayat?.trim() && a.position?.trim(),
+    (a) => a.panchayat?.trim() && a.position?.trim(),
   );
   const workspaceKey = (a: Assignment) =>
-    JSON.stringify([a.department, a.panchayat, a.position]);
+    JSON.stringify([a.panchayat, a.position]);
   const workspaceOptions = assignments.filter(
     (a, index) =>
       assignments.findIndex(
@@ -806,29 +809,13 @@ function Staff({
   const selectedWorkspace = hasMultipleWorkspaces
     ? workspaceOptions.find((a) => workspaceKey(a) === selectedWorkspaceKey)
     : undefined;
-  useEffect(() => {
-    onDepartmentChange(
-      selectedWorkspace?.department ||
-        department ||
-        profile.assignments[0]?.department ||
-        "",
-    );
-  }, [
-    selectedWorkspace?.department,
-    department,
-    profile.assignments,
-    onDepartmentChange,
-  ]);
-  const departments = unique(assignments.map((a) => a.department));
-  const panchayats = unique(
-    assignments
-      .filter((a) => a.department === department)
-      .map((a) => a.panchayat),
+  useEffect(
+    () => onDepartmentChange(department),
+    [onDepartmentChange, department],
   );
+  const panchayats = unique(assignments.map((a) => a.panchayat));
   const positions = unique(
-    assignments
-      .filter((a) => a.department === department && a.panchayat === panchayat)
-      .map((a) => a.position),
+    assignments.filter((a) => a.panchayat === panchayat).map((a) => a.position),
   );
   const load = useCallback(
     async (background = false) => {
@@ -899,28 +886,11 @@ function Staff({
     }
   }, [revisions?.attendance, revisions?.today, load]);
   useEffect(() => {
-    if (department && !departments.includes(department)) {
-      setDepartment("");
-      setPanchayat("");
-      setPosition("");
-      notify("Your assignment changed. Please choose your current workplace.");
-    } else if (panchayat && !panchayats.includes(panchayat)) {
+    if (panchayat && !panchayats.includes(panchayat)) {
       setPanchayat("");
       setPosition("");
     } else if (position && !positions.includes(position)) setPosition("");
-  }, [
-    profile.assignments,
-    departments,
-    panchayats,
-    positions,
-    department,
-    panchayat,
-    position,
-    notify,
-  ]);
-  useEffect(() => {
-    if (departments.length === 1) setDepartment(departments[0]);
-  }, [departments.join("|")]); // Only workbook-backed options are selected.
+  }, [profile.assignments, panchayats, positions, panchayat, position, notify]);
   useEffect(() => {
     if (panchayats.length === 1) setPanchayat(panchayats[0]);
   }, [panchayats.join("|")]);
@@ -1194,7 +1164,6 @@ function Staff({
                                   {assignment.panchayat}
                                 </strong>
                                 <small translate="no">
-                                  {assignment.department} •{" "}
                                   {assignment.position}
                                 </small>
                               </span>
@@ -1205,17 +1174,6 @@ function Staff({
                     </div>
                   ) : (
                     <>
-                      <SelectField
-                        label="विभाग / Department"
-                        value={department}
-                        required
-                        options={departments}
-                        onChange={(value) => {
-                          setDepartment(value);
-                          setPanchayat("");
-                          setPosition("");
-                        }}
-                      />
                       <SelectField
                         label="पंचायत / Panchayat"
                         value={panchayat}
@@ -1443,13 +1401,34 @@ function Admin({
   revisions,
   canManage,
   adminBlock,
+  adminBlockId,
+  role,
 }: {
   initial?: Bootstrap | null;
   revisions: Revisions | null;
   fail: (err: unknown) => void;
   canManage: boolean;
   adminBlock: string;
+  adminBlockId: string;
+  role: "bpro" | "dpro";
 }) {
+  const [blocks, setBlocks] = useState<{ id: string; name_en: string }[]>([]);
+  const [districtSummary, setDistrictSummary] = useState<
+    {
+      block: string;
+      staff: number;
+      present: number;
+      absent: number;
+      leave: number;
+      deputation: number;
+      not_marked: number;
+    }[]
+  >([]);
+  useEffect(() => {
+    void api("/api/blocks")
+      .then((data) => setBlocks(data.blocks || []))
+      .catch(fail);
+  }, [fail]);
   const office = useOfficeFeed(initial?.office, revisions);
   const [editor, setEditor] = useState<{
     person: Profile | null;
@@ -1467,11 +1446,16 @@ function Admin({
   const [restoreNotice, setRestoreNotice] = useState("");
   const [date, setDate] = useState(initial?.date || dateToday()),
     [search, setSearch] = useState("");
+  useEffect(() => {
+    if (role !== "dpro") return;
+    void api(`/api/admin/district-summary?date=${encodeURIComponent(date)}`)
+      .then((data) => setDistrictSummary(data.summary || []))
+      .catch(fail);
+  }, [role, date, revisions?.attendance, fail]);
   const [tab, setTab] = useState("attendance"),
     [loading, setLoading] = useState(!initial),
     [busy, setBusy] = useState(false);
   const [filters, setFilters] = useState<Record<string, string>>({
-    department: "",
     block: "",
     panchayat: "",
     position: "",
@@ -1487,18 +1471,24 @@ function Admin({
     alive = useRef(true);
   const retryAdmin = useRef<ReturnType<typeof setTimeout> | null>(null);
   const directoryLoaded = useRef(initial ? Date.now() : 0);
+  const directoryBlockLoaded = useRef<string | null>(null);
   const skipInitial = useRef(!!initial);
   const load = useCallback(
     async (forceDirectory = false, background = false) => {
       const id = ++requestId.current;
       if (!background) setBusy(true);
       try {
+        const filterBlockId =
+          role === "dpro" && filters.block
+            ? blocks.find((block) => block.name_en === filters.block)?.id || ""
+            : "";
         const includeDirectory =
           forceDirectory ||
           !directoryLoaded.current ||
+          directoryBlockLoaded.current !== filterBlockId ||
           (!revisions && Date.now() - directoryLoaded.current > 300000);
         const data = await api(
-          `/api/admin?date=${encodeURIComponent(date)}${includeDirectory ? "" : "&directory=0"}`,
+          `/api/admin?date=${encodeURIComponent(date)}${filterBlockId ? `&block_id=${encodeURIComponent(filterBlockId)}` : ""}${includeDirectory ? "" : "&directory=0"}`,
         );
         if (alive.current && id === requestId.current) {
           if (retryAdmin.current) clearTimeout(retryAdmin.current);
@@ -1508,6 +1498,7 @@ function Admin({
             setStaff(data.staff);
             setRemovedStaff(data.removedStaff || []);
             directoryLoaded.current = Date.now();
+            directoryBlockLoaded.current = filterBlockId;
           }
         }
       } catch (err) {
@@ -1530,7 +1521,7 @@ function Admin({
         }
       }
     },
-    [date, fail, !!revisions],
+    [date, fail, !!revisions, role, filters.block, blocks],
   );
   useEffect(() => {
     alive.current = true;
@@ -1647,10 +1638,9 @@ function Admin({
       searchMatches(person) &&
       (person.phone === search.trim() ||
         ((!filters.block || person.block === filters.block) &&
-          ((!filters.department && !filters.panchayat && !filters.position) ||
+          ((!filters.panchayat && !filters.position) ||
             person.assignments.some(
               (a) =>
-                (!filters.department || a.department === filters.department) &&
                 (!filters.panchayat || a.panchayat === filters.panchayat) &&
                 (!filters.position || a.position === filters.position),
             )))),
@@ -1733,7 +1723,45 @@ function Admin({
             </button>
           </div>
         </div>
-        <ReportDownload selectedDate={date} staff={staff} />
+        <ReportDownload
+          selectedDate={date}
+          staff={staff}
+          role={role}
+          blocks={blocks}
+        />
+        {role === "dpro" && (
+          <section className="sp-card sp-summary">
+            <h2>जिला सारांश / District summary ({date})</h2>
+            <div className="sp-table-scroll">
+              <table className="sp-table">
+                <thead>
+                  <tr>
+                    <th>Block</th>
+                    <th>Staff</th>
+                    <th>Present</th>
+                    <th>Absent</th>
+                    <th>Leave</th>
+                    <th>Deputation</th>
+                    <th>Not marked</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {districtSummary.map((row) => (
+                    <tr key={row.block}>
+                      <td>{row.block}</td>
+                      <td>{row.staff}</td>
+                      <td>{row.present}</td>
+                      <td>{row.absent}</td>
+                      <td>{row.leave}</td>
+                      <td>{row.deputation}</td>
+                      <td>{row.not_marked}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
         <section className="sp-card">
           <div className="sp-tabs" role="tablist" aria-label="Dashboard view">
             <button
@@ -1767,6 +1795,8 @@ function Admin({
               error={office.error}
               reload={office.reload}
               canManage={canManage}
+              role={role}
+              blocks={blocks}
             />
           ) : (
             <>
@@ -1831,21 +1861,14 @@ function Admin({
                     />
                   </label>
                 )}
-                <SelectField
-                  label="विभाग / Department"
-                  value={filters.department}
-                  onChange={(v) => filter("department", v)}
-                  options={unique([
-                    ...allAssignments.map((a) => a.department),
-                    ...normalized.map((r) => r.department),
-                  ])}
-                />
-                <SelectField
-                  label="प्रखंड / Block"
-                  value={filters.block}
-                  onChange={(v) => filter("block", v)}
-                  options={unique(staff.map((p) => p.block))}
-                />
+                {role === "dpro" && (
+                  <SelectField
+                    label="प्रखंड / Block"
+                    value={filters.block}
+                    onChange={(v) => filter("block", v)}
+                    options={unique(staff.map((p) => p.block))}
+                  />
+                )}
                 <SelectField
                   label="पंचायत / Panchayat"
                   value={filters.panchayat}
@@ -1905,7 +1928,6 @@ function Admin({
                   onClick={() => {
                     setSearch("");
                     setFilters({
-                      department: "",
                       block: "",
                       panchayat: "",
                       position: "",
@@ -1964,9 +1986,7 @@ function Admin({
                               </span>
                               <div className="sp-cell-value">
                                 {row.panchayat}
-                                <small>
-                                  {row.department || ""} • {row.block || ""}
-                                </small>
+                                <small>{row.block || ""}</small>
                               </div>
                             </td>
                             <td>
@@ -2046,7 +2066,7 @@ function Admin({
                       <tr>
                         <th scope="col">कर्मी / Staff</th>
                         <th scope="col">प्रखंड / Block</th>
-                        <th scope="col">विभाग, पंचायत और पद / Assignment</th>
+                        <th scope="col">पंचायत और पद / Assignment</th>
                         <th scope="col">उपस्थिति / Attendance ({date})</th>
                         <th scope="col">अवकाश शेष / Leave left</th>
                         <th scope="col">विवरण / Details</th>
@@ -2079,12 +2099,12 @@ function Admin({
                           </td>
                           <td>
                             <span className="sp-cell-label" aria-hidden="true">
-                              विभाग, पंचायत और पद / Assignment
+                              पंचायत और पद / Assignment
                             </span>
                             <div className="sp-cell-value">
                               {person.assignments.map((a, i) => (
                                 <small key={i}>
-                                  {a.department} • {a.panchayat} • {a.position}
+                                  {a.panchayat} • {a.position}
                                 </small>
                               ))}
                             </div>
@@ -2326,7 +2346,7 @@ function Admin({
                 <h3>आवंटन / Assignments</h3>
                 {detail.assignments.map((a, i) => (
                   <p key={i}>
-                    {a.department} • {a.panchayat} • {a.position}
+                    {a.panchayat} • {a.position}
                   </p>
                 ))}
               </>
@@ -2335,6 +2355,9 @@ function Admin({
         {editor && (
           <StaffEditor
             block={adminBlock}
+            blockId={adminBlockId}
+            role={role}
+            blocks={blocks}
             person={editor.person}
             remove={editor.remove}
             staff={staff}
@@ -2345,7 +2368,6 @@ function Admin({
               setShowRemoved(removed);
               setSearch(phone);
               setFilters({
-                department: "",
                 block: "",
                 panchayat: "",
                 position: "",

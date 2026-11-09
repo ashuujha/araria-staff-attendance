@@ -128,12 +128,17 @@ export function OfficeSettings({
   error,
   reload,
   canManage,
+  role,
+  blocks,
 }: {
   feed: OfficeFeed | null;
   error: string;
   reload: () => Promise<boolean>;
   canManage: boolean;
+  role: "bpro" | "dpro";
+  blocks: { id: string; name_en: string }[];
 }) {
+  const [scopeBlockId, setScopeBlockId] = useState("");
   const [date, setDate] = useState("");
   const [reason, setReason] = useState("");
   const [title, setTitle] = useState("");
@@ -178,6 +183,22 @@ export function OfficeSettings({
           </p>
         )}
         {!feed && !error && <p role="status">लोड हो रहा है / Loading…</p>}
+        {role === "dpro" && (
+          <label className="sp-field">
+            Notice and holiday scope / सूचना और अवकाश क्षेत्र
+            <select
+              value={scopeBlockId}
+              onChange={(event) => setScopeBlockId(event.target.value)}
+            >
+              <option value="">Araria District / पूरा जिला</option>
+              {blocks.map((block) => (
+                <option key={block.id} value={block.id}>
+                  {block.name_en}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <div className="sp-office-columns">
           <section aria-labelledby="holiday-title">
             <h2 id="holiday-title">अवकाश कैलेंडर / Holiday calendar</h2>
@@ -190,10 +211,18 @@ export function OfficeSettings({
               <form
                 onSubmit={(event) => {
                   event.preventDefault();
-                  void save({ action: "set_holiday", date, reason }, () => {
-                    setDate("");
-                    setReason("");
-                  });
+                  void save(
+                    {
+                      action: "set_holiday",
+                      date,
+                      reason,
+                      block_id: scopeBlockId || null,
+                    },
+                    () => {
+                      setDate("");
+                      setReason("");
+                    },
+                  );
                 }}
               >
                 <fieldset className="sp-form-controls" disabled={busy}>
@@ -207,7 +236,11 @@ export function OfficeSettings({
                         setDate(event.target.value);
                         setReason(
                           feed?.holidays.find(
-                            (day) => day.date === event.target.value,
+                            (day) =>
+                              day.date === event.target.value &&
+                              (role === "bpro"
+                                ? !!day.block_id
+                                : (day.block_id || "") === scopeBlockId),
                           )?.reason || "",
                         );
                       }}
@@ -231,12 +264,18 @@ export function OfficeSettings({
             )}
             <ul className="sp-office-list">
               {feed?.holidays.map((day) => (
-                <li key={day.date}>
+                <li key={`${day.date}:${day.block_id || "district"}`}>
                   <div>
                     <time dateTime={day.date}>{day.date}</time>
+                    <small>
+                      {day.block_id
+                        ? blocks.find((b) => b.id === day.block_id)?.name_en ||
+                          "Block"
+                        : "Araria District"}
+                    </small>
                     <p translate="no">{day.reason}</p>
                   </div>
-                  {canManage && (
+                  {canManage && (role === "dpro" || !!day.block_id) && (
                     <div className="sp-actions">
                       <button
                         type="button"
@@ -245,6 +284,7 @@ export function OfficeSettings({
                         onClick={() => {
                           setDate(day.date);
                           setReason(day.reason);
+                          setScopeBlockId(day.block_id || "");
                         }}
                       >
                         बदलें / Edit
@@ -257,6 +297,7 @@ export function OfficeSettings({
                           void save({
                             action: "remove_holiday",
                             date: day.date,
+                            block_id: day.block_id || null,
                           })
                         }
                       >
@@ -278,17 +319,26 @@ export function OfficeSettings({
               सूचना प्रकाशित करें / Publish notice
             </h2>
             <p className="sp-muted">
-              यह सूचना लॉगिन के बाद सभी कर्मियों को दिखाई देगी। / All staff will
-              see this notice after login.
+              जिला सूचना सभी कर्मियों को, प्रखंड सूचना केवल उस प्रखंड के
+              कर्मियों को दिखाई देगी। / District notices reach all staff; block
+              notices reach that block.
             </p>
             {canManage && (
               <form
                 onSubmit={(event) => {
                   event.preventDefault();
-                  void save({ action: "publish_notice", title, body }, () => {
-                    setTitle("");
-                    setBody("");
-                  });
+                  void save(
+                    {
+                      action: "publish_notice",
+                      title,
+                      body,
+                      block_id: scopeBlockId || null,
+                    },
+                    () => {
+                      setTitle("");
+                      setBody("");
+                    },
+                  );
                 }}
               >
                 <fieldset className="sp-form-controls" disabled={busy}>
@@ -324,11 +374,17 @@ export function OfficeSettings({
                 <li key={notice.id}>
                   <div>
                     <strong translate="no">{notice.title}</strong>
+                    <small>
+                      {notice.block_id
+                        ? blocks.find((b) => b.id === notice.block_id)
+                            ?.name_en || "Block"
+                        : "Araria District"}
+                    </small>
                     <p translate="no" className="sp-notice-body">
                       {notice.body}
                     </p>
                   </div>
-                  {canManage && (
+                  {canManage && (role === "dpro" || !!notice.block_id) && (
                     <button
                       type="button"
                       className="sp-button sp-secondary"

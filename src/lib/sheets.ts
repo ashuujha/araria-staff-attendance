@@ -9,7 +9,7 @@ const columns = [
   "Panchayat",
   "कर्मी का नाम",
   "Position",
-  "Department",
+  "Block",
   "Phone",
   "GPS Photograph (link)",
   "Latitude",
@@ -141,6 +141,18 @@ export async function syncOne() {
           },
         ],
       });
+    } else {
+      const heading = await google(
+        "/values/" + encodeURIComponent(`'${tab}'!F1`),
+      );
+      if (heading.values?.[0]?.[0] !== "Block")
+        await google(
+          "/values/" +
+            encodeURIComponent(`'${tab}'!F1`) +
+            "?valueInputOption=RAW",
+          "PUT",
+          { values: [["Block"]] },
+        );
     }
     const ids = await google("/values/" + encodeURIComponent(`'${tab}'!Q2:Q`));
     const plan = planSheetRows(a, p, ids.values || []);
@@ -162,7 +174,7 @@ export async function syncOne() {
       }: {
         row: number;
         key: string;
-        assignment: { panchayat: string; position: string; department: string };
+        assignment: { panchayat: string; position: string };
       }) => ({
         range: `'${tab}'!A${row}:Q${row}`,
         values: [
@@ -172,7 +184,7 @@ export async function syncOne() {
             assignment.panchayat,
             p.name,
             assignment.position,
-            assignment.department,
+            a.block,
             p.phone,
             a.photo_path ? fileUrl("photo_path") : "",
             a.latitude,

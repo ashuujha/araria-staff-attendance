@@ -171,7 +171,7 @@ test("days before staff joined and after removal stay blank", () => {
   );
 });
 
-test("department and panchayat filters must match one assignment", () => {
+test("panchayat and position filters must match one assignment", () => {
   const report = makeAttendanceReport({
     profiles: [
       {
@@ -181,8 +181,8 @@ test("department and panchayat filters must match one assignment", () => {
         block: "Araria",
         active: true,
         assignments: [
-          { department: "Agriculture", panchayat: "North", position: "Clerk" },
-          { department: "Welfare", panchayat: "South", position: "Clerk" },
+          { panchayat: "North", position: "Clerk" },
+          { panchayat: "South", position: "Coordinator" },
         ],
       },
     ],
@@ -191,7 +191,7 @@ test("department and panchayat filters must match one assignment", () => {
     start: "2026-10-21",
     end: "2026-10-21",
     today: "2026-10-21",
-    filters: { department: "Agriculture", panchayat: "South" },
+    filters: { position: "Clerk", panchayat: "South" },
   });
   assert.equal(report.sections[0].rows.length, 0);
 });
@@ -227,8 +227,12 @@ test("today's daily report shows the current staff name", () => {
 
 test("staff contact and every current assignment accompany attendance", () => {
   const assignments = [
-    { department: "Agriculture", panchayat: "North", position: "Clerk" },
-    { department: "Welfare", panchayat: "South", position: "Coordinator" },
+    { department: "पंचायती राज विभाग", panchayat: "North", position: "Clerk" },
+    {
+      department: "पंचायती राज विभाग",
+      panchayat: "South",
+      position: "Coordinator",
+    },
   ];
   const report = makeAttendanceReport({
     profiles: [

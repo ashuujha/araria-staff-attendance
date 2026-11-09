@@ -5,16 +5,12 @@ import type { Profile } from "../lib/types";
 
 type Filters = {
   search: string;
-  department: string;
   position: string;
-  block: string;
   panchayat: string;
 };
 const blank: Filters = {
   search: "",
-  department: "",
   position: "",
-  block: "",
   panchayat: "",
 };
 const unique = (values: string[]) =>
@@ -23,10 +19,15 @@ const unique = (values: string[]) =>
 export default function ReportDownload({
   selectedDate,
   staff,
+  role,
+  blocks,
 }: {
   selectedDate: string;
   staff: Profile[];
+  role: "bpro" | "dpro";
+  blocks: { id: string; name_en: string }[];
 }) {
+  const [blockId, setBlockId] = useState("");
   const [period, setPeriod] = useState<"day" | "month" | "range">("day");
   const [reportKind, setReportKind] = useState<"attendance" | "leave">(
     "attendance",
@@ -55,27 +56,17 @@ export default function ReportDownload({
   );
   const relevant = assignments.filter(
     (place) =>
-      (!filters.department || place.department === filters.department) &&
       (!filters.position || place.position === filters.position) &&
-      (!filters.block || place.block === filters.block),
+      (!blockId ||
+        blocks.find((b) => b.id === blockId)?.name_en === place.block),
   );
-  const departments = unique(assignments.map((place) => place.department));
-  const positions = unique(
-    assignments
-      .filter(
-        (place) =>
-          !filters.department || place.department === filters.department,
-      )
-      .map((place) => place.position),
-  );
-  const blocks = unique(staff.map((person) => person.block));
+  const positions = unique(assignments.map((place) => place.position));
   const panchayats = unique(relevant.map((place) => place.panchayat));
   function updateFilter(key: keyof Filters, value: string) {
     setFilters((previous) => ({
       ...previous,
       [key]: value,
-      ...(key === "department" ? { position: "", panchayat: "" } : {}),
-      ...(key === "position" || key === "block" ? { panchayat: "" } : {}),
+      ...(key === "position" ? { panchayat: "" } : {}),
     }));
     setError("");
   }
@@ -109,6 +100,7 @@ export default function ReportDownload({
         start: period === "day" ? selectedDate : start,
         end,
       });
+      if (role === "dpro" && blockId) params.set("block_id", blockId);
       if (reportKind === "leave") {
         params.set("year", leaveYear);
         params.set("month", leaveMonth);
@@ -161,6 +153,22 @@ export default function ReportDownload({
         करें
       </summary>
       <div className="sp-filters sp-report-filters">
+        {role === "dpro" && (
+          <label className="sp-field">
+            Block / प्रखंड
+            <select
+              value={blockId}
+              onChange={(e) => setBlockId(e.target.value)}
+            >
+              <option value="">All blocks / पूरा जिला</option>
+              {blocks.map((block) => (
+                <option key={block.id} value={block.id}>
+                  {block.name_en}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="sp-field">
           Report type / रिपोर्ट प्रकार
           <select
@@ -251,22 +259,6 @@ export default function ReportDownload({
             />
           </label>
           <label className="sp-field">
-            Department / विभाग
-            <select
-              value={filters.department}
-              onChange={(event) =>
-                updateFilter("department", event.target.value)
-              }
-            >
-              <option value="">All departments</option>
-              {departments.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="sp-field">
             Designation / पद
             <select
               value={filters.position}
@@ -274,20 +266,6 @@ export default function ReportDownload({
             >
               <option value="">All designations</option>
               {positions.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="sp-field">
-            Block / प्रखंड
-            <select
-              value={filters.block}
-              onChange={(event) => updateFilter("block", event.target.value)}
-            >
-              <option value="">All blocks</option>
-              {blocks.map((value) => (
                 <option key={value} value={value}>
                   {value}
                 </option>

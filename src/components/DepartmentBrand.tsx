@@ -6,11 +6,11 @@ import { Localized } from "../lib/portal-language";
 export default function DepartmentBrand({
   profile,
   selected,
-  adminLogin,
+  loginRole,
 }: {
   profile: Profile | null;
   selected: string;
-  adminLogin: boolean;
+  loginRole: "staff" | "bpro" | "dpro";
 }) {
   const branding =
     profile?.role === "staff"
@@ -18,7 +18,12 @@ export default function DepartmentBrand({
       : null;
   return (
     <Localized>
-      <a href={profile?.role === "bpro" ? "/bpro" : adminLogin ? "/dpro" : "/"} className="sp-brand">
+      <a
+        href={
+          loginRole === "bpro" ? "/bpro" : loginRole === "dpro" ? "/dpro" : "/"
+        }
+        className="sp-brand"
+      >
         <span
           className="sp-mark sp-department-mark"
           title="Government of Bihar"

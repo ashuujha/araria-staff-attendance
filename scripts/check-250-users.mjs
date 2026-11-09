@@ -36,8 +36,13 @@ const users = Array.from({ length: 250 }, (_, i) => {
     role: "staff",
     active: true,
     block: "Araria",
+    block_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
     assignments: [
-      { department: "Office", panchayat: "Office", position: "Staff" },
+      {
+        department: "पंचायती राज विभाग",
+        panchayat: "Office",
+        position: "Staff",
+      },
     ],
   };
 });
@@ -67,6 +72,10 @@ globalThis.fetch = async (input, init = {}) => {
         expires_in: 3600,
       });
     }
+    if (url.pathname === "/rest/v1/rpc/login_limit_status")
+      return Response.json(true);
+    if (url.pathname === "/rest/v1/rpc/clear_login_account")
+      return Response.json(null);
     if (url.pathname === "/rest/v1/rpc/portal_bootstrap") {
       const bearer = new Headers(init.headers).get("authorization").slice(7);
       const subject = JSON.parse(
@@ -98,6 +107,8 @@ globalThis.fetch = async (input, init = {}) => {
       return Response.json([user]);
     }
     if (url.pathname === "/rest/v1/attendance") return Response.json([]);
+    if (url.pathname === "/rest/v1/rpc/leave_balance_snapshot")
+      return Response.json({});
     throw Error("Unexpected upstream endpoint " + url.pathname);
   } finally {
     inFlight--;
@@ -117,7 +128,7 @@ try {
           body: JSON.stringify({
             identifier: user.phone,
             password: "fixture-password",
-            admin: false,
+            role: "staff",
           }),
         }),
       );

@@ -4,7 +4,7 @@ export function attendanceAssignments(record, profile) {
     return record.working_places;
   if (Array.isArray(profile?.assignments) && profile.assignments.length)
     return profile.assignments;
-  return [{ panchayat: record.panchayat, position: "", department: "" }];
+  return [{ panchayat: record.panchayat, position: "" }];
 }
 export function matchesWorkplace(row, place) {
   return (
@@ -37,7 +37,6 @@ export function makeAdminRows(records, staff) {
         assignments,
         working_places: [...new Set(assignments.map((s) => s.panchayat))],
         position: assignment.position,
-        department: assignment.department,
         time_in: time(a.time_in),
         time_out: time(a.time_out),
         raw_time_in: a.time_in,
@@ -62,7 +61,6 @@ export function makeAdminRows(records, staff) {
         assignments: p.assignments,
         working_places: [...new Set(p.assignments.map((a) => a.panchayat))],
         position: p.assignments[0]?.position || "",
-        department: p.assignments[0]?.department || "",
         time_in: null,
         time_out: null,
         status: "absent",

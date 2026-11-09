@@ -50,13 +50,12 @@ export function makeLeaveReport({
         Array.isArray(person?.assignments) && person.assignments.length
           ? person.assignments
           : leaves.map((record) => ({
-              department: record.department,
               panchayat: record.panchayat,
               position: record.position,
             }));
       const assignments = workplaces.length ? workplaces : [{}];
       const sameAssignment = (assignment) =>
-        ["department", "panchayat", "position"].every(
+        ["panchayat", "position"].every(
           (field) => !filters[field] || assignment[field] === filters[field],
         );
       const name = person?.name || first.staff_name || "Unknown staff";
@@ -90,13 +89,7 @@ export function makeLeaveReport({
       const gender = person?.gender || null;
       const selected = assignments.find(sameAssignment) || assignments[0];
       const designation = selected.position || first.position || "—";
-      const workplace =
-        [
-          selected.panchayat || first.panchayat,
-          selected.department || first.department,
-        ]
-          .filter(Boolean)
-          .join(" · ") || "—";
+      const workplace = selected.panchayat || first.panchayat || "—";
       return [
         {
           id,

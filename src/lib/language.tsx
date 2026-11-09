@@ -315,7 +315,6 @@ const english: Record<string, string> = {
   "पंचायत कार्यपालक सहायक": "Executive Assistant",
   "कचहरी सचिव": "Kachahari Secretary",
   "विकास मित्र": "Vikas Mitra",
-  "ग्रामीण विकास विभाग": "Rural Development Department",
   "स्थान समीक्षा": "Location review",
   "नई डिवाइस": "New device",
   पोखरिया: "Pokharia",

@@ -7,8 +7,8 @@ import {
   sheetRecordKey,
 } from "../src/lib/reporting.mjs";
 const assignments = [
-  { panchayat: "A", position: "Secretary", department: "Office" },
-  { panchayat: "B", position: "Secretary", department: "Office" },
+  { panchayat: "A", position: "Secretary", department: "पंचायती राज विभाग" },
+  { panchayat: "B", position: "Secretary", department: "पंचायती राज विभाग" },
 ];
 const profile = { id: "staff", name: "Staff", assignments, active: true };
 const record = {

@@ -12,7 +12,7 @@ const date = new Intl.DateTimeFormat("en-CA", {
   day: "2-digit",
 }).format(new Date());
 const assignment = {
-  department: "Panchayati Raj",
+  department: "पंचायती राज विभाग",
   panchayat: "Pokharia",
   position: "Panchayat Secretary",
 };
@@ -366,7 +366,6 @@ try {
     "Staff received admin dashboard",
   );
   for (const [label, value] of [
-    ["विभाग / Department", assignment.department],
     ["पंचायत / Panchayat", assignment.panchayat],
     ["पद / Position", assignment.position],
   ])
@@ -481,7 +480,6 @@ try {
   await search.fill("9000000001");
   assert.equal(await page.locator("tbody tr").count(), 1);
   for (const [label, value] of [
-    ["विभाग / Department", assignment.department],
     ["प्रखंड / Block", "Araria"],
     ["पंचायत / Panchayat", assignment.panchayat],
     ["पद / Position", assignment.position],
@@ -613,9 +611,6 @@ try {
   await editor
     .getByLabel("मोबाइल नंबर / Mobile number", { exact: true })
     .fill("9000000009");
-  await editor
-    .getByLabel("विभाग / Department", { exact: true })
-    .fill(assignment.department);
   await editor
     .getByLabel("पंचायत / Panchayat", { exact: true })
     .selectOption(assignment.panchayat);

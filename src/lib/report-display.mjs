@@ -20,13 +20,12 @@ export function reportStaffDisplay(row, date) {
     {};
   const panchayat = record?.panchayat || assignment.panchayat || "";
   const block = record?.block || row.block || "";
-  const department = record?.department || assignment.department || "";
   const workplace = [panchayat, block].filter(Boolean).join(", ");
   return {
     name: row.name,
     phone: row.phone,
     designation: record?.position || assignment.position || "—",
-    workplace: [workplace, department].filter(Boolean).join(" · ") || "—",
+    workplace: workplace || "—",
     status: STATUS[cell?.code] || "—",
     inTime: reportClock(record?.time_in),
     outTime: reportClock(record?.time_out),

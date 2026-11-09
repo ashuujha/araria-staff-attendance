@@ -4,9 +4,6 @@ export const BIHAR_EMBLEM =
   "https://upload.wikimedia.org/wikipedia/commons/e/e9/Seal_of_Bihar.svg";
 const departments = [
   ["पंचायती राज विभाग", "पंचायतीराज विभाग", "Panchayati Raj Department"],
-  ["कृषि विभाग", "Agriculture Department", "Department of Agriculture"],
-  ["ग्रामीण विकास विभाग", "Rural Development Department"],
-  ["कल्याण विभाग", "Welfare Department"],
 ];
 const key = (value: string) =>
   value.normalize("NFC").trim().replace(/\s+/g, " ").toLowerCase();
@@ -22,7 +19,6 @@ export function departmentBranding(
   const visible = matched ? [matched] : names;
   return {
     label: visible.join(" • "),
-    // A job title such as Data Entry Operator does not identify its employer.
     logo:
       visible.length &&
       visible.every((name) => governmentDepartments.has(key(name)))

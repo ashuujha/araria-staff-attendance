@@ -50,9 +50,8 @@ function historicalAssignments(history) {
   if (snapshot) return snapshot.working_places;
   const unique = new Map();
   for (const row of history) {
-    if (!row.department && !row.panchayat && !row.position) continue;
+    if (!row.panchayat && !row.position) continue;
     const place = {
-      department: row.department || "",
       panchayat: row.panchayat || "",
       position: row.position || "",
     };
@@ -104,7 +103,7 @@ function matchesStaff(profile, records, filters, dates, today, holidayDates) {
     !records.some((row) => row.block === filters.block)
   )
     return false;
-  const fields = ["department", "panchayat", "position"];
+  const fields = ["panchayat", "position"];
   const sameWorkplace = (row) =>
     fields.every((field) => !filters[field] || row[field] === filters[field]);
   if (
@@ -142,7 +141,16 @@ export function makeAttendanceReport({
 }) {
   const sections = dateSections(start, end);
   parseDay(today);
-  const holidayDates = new Set(holidays.map((item) => item.date));
+  const districtHolidays = new Set(
+    holidays.filter((item) => !item.block_id).map((item) => item.date),
+  );
+  const holidaysForBlock = (blockId) =>
+    new Set([
+      ...districtHolidays,
+      ...holidays
+        .filter((item) => item.block_id === blockId)
+        .map((item) => item.date),
+    ]);
   const allDates = sections.flatMap((section) => section.dates);
   const byId = new Map();
   for (const row of records) {
@@ -171,7 +179,7 @@ export function makeAttendanceReport({
         filters,
         allDates,
         today,
-        holidayDates,
+        holidaysForBlock(p?.block_id || rows[0]?.block_id),
       );
     })
     .map((id) => {
@@ -226,6 +234,9 @@ export function makeAttendanceReport({
             history[0]?.staff_name ||
             "Unknown staff";
           const block = first?.block || profile?.block || "";
+          const holidayDates = holidaysForBlock(
+            first?.block_id || profile?.block_id || history[0]?.block_id,
+          );
           const cells = section.dates.map((date) => {
             const record = daily.get(date) || null;
             return {

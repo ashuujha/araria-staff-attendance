@@ -19,12 +19,12 @@ test("Excel and PDF downloads contain a Hindi staff member's saved attendance", 
         block: "Araria",
         assignments: [
           {
-            department: "Agriculture",
+            department: "पंचायती राज विभाग",
             panchayat: "Pokharia",
             position: "Assistant",
           },
           {
-            department: "Welfare",
+            department: "पंचायती राज विभाग",
             panchayat: "Rampur",
             position: "Coordinator",
           },
@@ -39,7 +39,7 @@ test("Excel and PDF downloads contain a Hindi staff member's saved attendance", 
         date: "2026-10-20",
         staff_name: "सीमा कुमारी",
         block: "Araria",
-        department: "Agriculture",
+        department: "पंचायती राज विभाग",
         panchayat: "Pokharia",
         position: "Assistant",
         status: "present",
@@ -65,7 +65,7 @@ test("Excel and PDF downloads contain a Hindi staff member's saved attendance", 
   assert.equal(sheet.getCell("B8").value, "सीमा कुमारी");
   assert.equal(sheet.getCell("C8").value, "0000000000");
   assert.equal(sheet.getCell("D8").value, "Assistant");
-  assert.match(sheet.getCell("E8").value, /Pokharia.*Araria.*Agriculture/);
+  assert.match(sheet.getCell("E8").value, /Pokharia.*Araria/);
   assert.equal(sheet.getCell("F8").value, "Present · Saved");
   assert.match(sheet.getCell("G8").value, /9:30/i);
   assert.match(sheet.getCell("H8").value, /5:30/i);
@@ -119,7 +119,7 @@ test("multi-day exports keep identity fields separate from daily attendance code
         block: "Araria",
         assignments: [
           {
-            department: "Agriculture",
+            department: "पंचायती राज विभाग",
             panchayat: "Pokharia",
             position: "Assistant",
           },
@@ -134,7 +134,7 @@ test("multi-day exports keep identity fields separate from daily attendance code
         date: "2026-10-20",
         staff_name: "सीमा कुमारी",
         block: "Araria",
-        department: "Agriculture",
+        department: "पंचायती राज विभाग",
         panchayat: "Pokharia",
         position: "Assistant",
         status: "present",
@@ -162,7 +162,7 @@ test("multi-day exports keep identity fields separate from daily attendance code
   assert.equal(sheet.getCell("B8").value, "सीमा कुमारी");
   assert.equal(sheet.getCell("C8").value, "9000000000");
   assert.equal(sheet.getCell("D8").value, "Assistant");
-  assert.match(sheet.getCell("E8").value, /Pokharia.*Araria.*Agriculture/);
+  assert.match(sheet.getCell("E8").value, /Pokharia.*Araria/);
   assert.equal(sheet.getCell("F8").value, "P");
   assert.equal(sheet.getCell("G8").value, "NR");
   assert.deepEqual(

@@ -32,7 +32,7 @@ const profiles = [
     block: "Forbesganj",
     assignments: [
       {
-        department: "Agriculture",
+        department: "पंचायती राज विभाग",
         panchayat: "Kursakanta",
         position: "Assistant",
       },
@@ -123,7 +123,7 @@ test("annual leave report counts current-year saved leave once per date", () => 
       records,
       year: 2026,
       month: "02",
-      filters: { department: "Agriculture", search: "9000000002" },
+      filters: { position: "Assistant", search: "9000000002" },
       onlyWithLeave: true,
     }).rows.map((row) => row.id),
     ["male"],

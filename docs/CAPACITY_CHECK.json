@@ -7,8 +7,8 @@
   "successfulLogins": 250,
   "successfulSessionViews": 250,
   "successfulAttendanceViews": 250,
-  "upstreamRequests": 1500,
-  "peakMockedUpstreamConcurrency": 250,
+  "upstreamRequests": 2250,
+  "peakMockedUpstreamConcurrency": 500,
   "maxConcurrentEvidenceBuffers": 4,
   "elapsedMs": 247
 }
