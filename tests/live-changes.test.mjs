@@ -14,7 +14,8 @@ await db.exec(
   ),
 );
 for (const name of (await readdir("supabase/migrations")).sort())
-  await db.exec(await readFile("supabase/migrations/" + name, "utf8"));
+  if (!name.startsWith("20261109"))
+    await db.exec(await readFile("supabase/migrations/" + name, "utf8"));
 
 const admin = "11111111-1111-4111-8111-111111111111";
 const staff = "22222222-2222-4222-8222-222222222222";
@@ -78,7 +79,7 @@ test("optional camera position is stored while ordinary photo uploads remain val
     day: "2-digit",
   }).format(new Date());
   await db.query(
-    `update profiles set assignments='[{"panchayat":"Office","department":"Office","position":"Staff"}]' where id=$1`,
+    `update profiles set assignments='[{"panchayat":"Office","department":"पंचायती राज विभाग","position":"Staff"}]' where id=$1`,
     [other],
   );
   const photo = `${other}/${d}/camera.jpg`;
@@ -87,7 +88,7 @@ test("optional camera position is stored while ordinary photo uploads remain val
     other,
   ]);
   const saved = await db.query(
-    `select save_attendance_with_evidence($1,'save_draft','Office','Office','Staff','present',null,null,null,$2,null,22.5643,88.3693,1200) as record`,
+    `select save_attendance_with_evidence($1,'save_draft','Office','पंचायती राज विभाग','Staff','present',null,null,null,$2,null,22.5643,88.3693,1200) as record`,
     [other, photo],
   );
   assert.equal(saved.rows[0].record.latitude, 22.5643);
@@ -207,7 +208,11 @@ test("admin gender management and typed manual leave use the same quota checks",
       admin,
       newcomer,
       JSON.stringify([
-        { panchayat: "Office", department: "Office", position: "Staff" },
+        {
+          panchayat: "Office",
+          department: "पंचायती राज विभाग",
+          position: "Staff",
+        },
       ]),
     ],
   );

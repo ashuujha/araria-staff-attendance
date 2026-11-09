@@ -1,7 +1,7 @@
 import { identity, sb, json, failure, HttpError } from "../../../lib/server";
 export async function GET(req: Request) {
   try {
-    const { token } = await identity(req);
+    const { token, profile } = await identity(req);
     const url = new URL(req.url);
     const id = url.searchParams.get("id") || "";
     const kind = url.searchParams.get("kind") || "photo_path";
@@ -11,11 +11,18 @@ export async function GET(req: Request) {
     )
       throw new HttpError(400, "फ़ाइल अनुरोध अमान्य।");
     const records = await sb(
-      "/rest/v1/attendance?id=eq." + id + "&select=" + kind,
+      "/rest/v1/attendance?id=eq." + id + "&select=staff_id,block_id," + kind,
       {},
       token,
     );
-    const path = records?.[0]?.[kind];
+    const record = records?.[0];
+    if (
+      !record ||
+      (profile.role === "bpro" && record.block_id !== profile.block_id) ||
+      (profile.role === "staff" && record.staff_id !== profile.id)
+    )
+      throw new HttpError(403, "This file is outside your block.");
+    const path = record[kind];
     if (!path) throw new HttpError(404, "फ़ाइल नहीं मिली।");
     // Signed storage URLs keep full-size images out of function response bodies.
     if (
@@ -24,6 +31,10 @@ export async function GET(req: Request) {
       path.includes("..")
     )
       throw new HttpError(400, "फ़ाइल अनुरोध अमान्य।");
+    const modernPrefix = `${record.block_id}/${record.staff_id}/`;
+    const legacyPrefix = `${record.staff_id}/`;
+    if (!path.startsWith(modernPrefix) && !path.startsWith(legacyPrefix))
+      throw new HttpError(403, "This file is outside your block.");
     const signed = await sb(
       "/storage/v1/object/sign/attendance-private/" + path,
       { method: "POST", body: JSON.stringify({ expiresIn: 60 }) },

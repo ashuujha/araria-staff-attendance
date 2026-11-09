@@ -28,6 +28,7 @@ const user = {
   id: "11111111-1111-4111-8111-111111111111",
   role: "staff",
   active: true,
+  block_id: "22222222-2222-4222-8222-222222222222",
   name: "Fixture Staff",
   assignments: [],
 };
@@ -49,10 +50,10 @@ const request = () =>
     body: JSON.stringify({
       identifier: "9000000001",
       password: "fixture-password",
-      admin: false,
+      role: "staff",
     }),
   });
-test("staff login includes all initial dashboard data with exactly three upstream calls", async () => {
+test("staff login includes initial dashboard data and checks the login limit", async () => {
   const original = globalThis.fetch,
     calls = [];
   globalThis.fetch = async (input, init = {}) => {
@@ -60,6 +61,10 @@ test("staff login includes all initial dashboard data with exactly three upstrea
     calls.push(url.pathname);
     if (url.pathname === "/rest/v1/profiles")
       return Response.json([{ login_email: "staff@fixture.invalid" }]);
+    if (url.pathname === "/rest/v1/rpc/login_limit_status")
+      return Response.json(true);
+    if (url.pathname === "/rest/v1/rpc/clear_login_account")
+      return Response.json(null);
     if (url.pathname === "/auth/v1/token")
       return Response.json({
         access_token: token,
@@ -80,7 +85,7 @@ test("staff login includes all initial dashboard data with exactly three upstrea
     assert.equal(response.status, 200);
     const data = await response.json();
     assert.deepEqual(data.bootstrap, dashboard);
-    assert.equal(calls.length, 3);
+    assert.equal(calls.length, 5);
     assert.equal(response.headers.get("cache-control"), "no-store");
   } finally {
     globalThis.fetch = original;

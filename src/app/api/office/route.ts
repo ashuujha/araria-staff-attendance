@@ -7,15 +7,34 @@ import {
   failure,
   HttpError,
 } from "../../../lib/server";
+import { requestedBlock } from "../../../lib/district-scope";
 import { istDate } from "../../../lib/security.mjs";
 import { validOfficeDate } from "../../../lib/office-types";
 export async function GET(req: Request) {
   try {
-    const { token } = await identity(req);
+    const { token, profile } = await identity(req);
+    const supplied = new URL(req.url).searchParams.get("block_id");
+    if (profile.role === "staff" && supplied && supplied !== profile.block_id)
+      throw new HttpError(403, "This block is outside your office.");
+    const blockId =
+      profile.role === "staff"
+        ? profile.block_id
+        : requestedBlock(profile, supplied);
+    const scope = blockId
+      ? `&or=(block_id.is.null,block_id.eq.${blockId})`
+      : "";
     const [holidays, notices] = await Promise.all([
-      sb("/rest/v1/office_holidays?select=date,reason&order=date", {}, token),
       sb(
-        "/rest/v1/office_notices?deleted_at=is.null&select=id,title,body,created_at&order=created_at.desc,id.desc&limit=100",
+        "/rest/v1/office_holidays?select=date,reason,block_id" +
+          scope +
+          "&order=date",
+        {},
+        token,
+      ),
+      sb(
+        "/rest/v1/office_notices?deleted_at=is.null" +
+          scope +
+          "&select=id,title,body,created_at,block_id&order=created_at.desc,id.desc&limit=100",
         {},
         token,
       ),
@@ -28,7 +47,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     csrf(req);
-    const { profile } = await identity(req);
+    const { profile, token } = await identity(req);
     admin(profile, true);
     if (!req.headers.get("content-type")?.includes("application/json"))
       throw new HttpError(400, "अनुरोध अमान्य।");
@@ -38,6 +57,7 @@ export async function POST(req: Request) {
     if (!body || typeof body !== "object" || Array.isArray(body))
       throw new HttpError(400, "अनुरोध अमान्य।");
     const { action } = body;
+    const blockId = requestedBlock(profile, body.block_id);
     let payload;
     if (action === "set_holiday" || action === "remove_holiday") {
       if (!validOfficeDate(body.date))
@@ -51,7 +71,7 @@ export async function POST(req: Request) {
           400,
           "अवकाश का कारण लिखें (3–200 अक्षर)। / Enter a holiday reason (3–200 characters).",
         );
-      payload = { date: body.date, reason };
+      payload = { date: body.date, reason, block_id: blockId };
     } else if (action === "publish_notice") {
       const title = typeof body.title === "string" ? body.title.trim() : "";
       const text = typeof body.body === "string" ? body.body.trim() : "";
@@ -65,7 +85,7 @@ export async function POST(req: Request) {
           400,
           "सूचना का शीर्षक (3–150) और संदेश (3–4000 अक्षर) लिखें। / Enter a notice title and message.",
         );
-      payload = { title, body: text };
+      payload = { title, body: text, block_id: blockId };
     } else if (action === "remove_notice") {
       if (
         typeof body.id !== "string" ||
@@ -74,7 +94,17 @@ export async function POST(req: Request) {
         )
       )
         throw new HttpError(400, "सूचना अमान्य। / Invalid notice.");
-      payload = { id: body.id };
+      const rows = await sb(
+        `/rest/v1/office_notices?id=eq.${body.id}&select=id,block_id`,
+        {},
+        token,
+      );
+      if (
+        !rows.length ||
+        (profile.role === "bpro" && rows[0].block_id !== profile.block_id)
+      )
+        throw new HttpError(403, "This notice is outside your block.");
+      payload = { id: body.id, block_id: rows[0].block_id };
     } else throw new HttpError(400, "कार्रवाई अमान्य।");
     const result = await sb("/rest/v1/rpc/manage_office_board", {
       method: "POST",

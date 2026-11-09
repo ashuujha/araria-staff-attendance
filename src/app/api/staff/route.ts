@@ -8,12 +8,23 @@ import {
   HttpError,
   audit,
 } from "../../../lib/server";
+import {
+  districtAssignments,
+  ownBlock,
+  requestedBlock,
+} from "../../../lib/district-scope";
 export async function GET(req: Request) {
   try {
     const { profile, token } = await identity(req);
     admin(profile);
+    const blockId = requestedBlock(
+      profile,
+      new URL(req.url).searchParams.get("block_id"),
+    );
     const staff = await sb(
-      "/rest/v1/profiles?role=eq.staff&deleted_at=is.null&select=id,name,phone,email,secondary_phones,assignments,role,block,active,gender&order=name",
+      "/rest/v1/profiles?role=eq.staff&deleted_at=is.null" +
+        (blockId ? `&block_id=eq.${blockId}` : "") +
+        "&select=id,name,phone,email,secondary_phones,assignments,role,block,block_id,active,gender&order=name",
       {},
       token,
     );
@@ -48,6 +59,14 @@ export async function POST(req: Request) {
       b.action as "create" | "update" | "delete" | "restore" | "reset_password"
     ];
     if (b.action === "create") {
+      const blockId = ownBlock(profile, b.block_id);
+      const blockRows = await sb(
+        `/rest/v1/blocks?id=eq.${blockId}&active=eq.true&select=id,name_en`,
+        {},
+        token,
+      );
+      if (!blockRows.length)
+        throw new HttpError(400, "Choose an active block.");
       const name = String(b.name || "").trim(),
         phone = String(b.phone || "").trim(),
         email = String(b.email || "")
@@ -65,12 +84,12 @@ export async function POST(req: Request) {
       const existing = await sb(
         "/rest/v1/profiles?phone=eq." +
           phone +
-          "&select=id,name,phone,role,block,deleted_at",
+          "&select=id,name,phone,role,block,block_id,deleted_at",
       );
       if (existing.length) {
         const match = existing[0];
         const inScope =
-          profile.role === "dpro" || profile.block === match.block;
+          profile.role === "dpro" || profile.block_id === match.block_id;
         return json(
           {
             error:
@@ -116,8 +135,8 @@ export async function POST(req: Request) {
               staff_phone: phone,
               staff_email: email,
               auth_email: loginEmail,
-              block_name: profile.block,
-              workplaces: b.assignments,
+              block_name: blockRows[0].name_en,
+              workplaces: districtAssignments(b.assignments, blockId),
               reason_text: reason,
               gender_name: b.gender,
             }),
@@ -168,6 +187,47 @@ export async function POST(req: Request) {
         ("gender" in changes && !["female", "male"].includes(changes.gender))
       )
         throw new HttpError(400, "कर्मी विवरण अमान्य है।");
+      const target = await sb(
+        `/rest/v1/profiles?id=eq.${b.id}&role=eq.staff&select=id,block_id`,
+        {},
+        token,
+      );
+      if (!target.length)
+        throw new HttpError(403, "This staff member is outside your block.");
+      const moving =
+        "block_id" in changes && changes.block_id !== target[0].block_id;
+      if (
+        profile.role === "bpro" &&
+        (target[0].block_id !== profile.block_id || moving)
+      )
+        throw new HttpError(403, "This staff member is outside your block.");
+      if (moving) {
+        if (profile.role !== "dpro")
+          throw new HttpError(403, "DPRO access required.");
+        const destination = ownBlock(profile, changes.block_id);
+        const record = await sb("/rest/v1/rpc/move_staff_block", {
+          method: "POST",
+          body: JSON.stringify({
+            actor_id: profile.id,
+            target_id: b.id,
+            destination_id: destination,
+            changes: {
+              ...changes,
+              assignments: districtAssignments(
+                changes.assignments,
+                destination,
+              ),
+            },
+          }),
+        });
+        return json({ profile: record });
+      }
+      delete changes.block_id;
+      if ("assignments" in changes)
+        changes.assignments = districtAssignments(
+          changes.assignments,
+          target[0].block_id,
+        );
       // The RPC performs the same scope checks while locking the staff row.
       const record = await sb("/rest/v1/rpc/manage_staff_with_gender", {
         method: "POST",
@@ -183,14 +243,14 @@ export async function POST(req: Request) {
     const targets = await sb(
       "/rest/v1/profiles?id=eq." +
         b.id +
-        "&select=id,role,phone,block,deleted_at",
+        "&select=id,role,phone,block,block_id,deleted_at",
       {},
       token,
     );
     const target = targets[0];
     if (!target || target.role !== "staff")
       throw new HttpError(403, "कर्मी प्रबंधन की अनुमति नहीं।");
-    if (profile.role === "bpro" && target.block !== profile.block)
+    if (profile.role === "bpro" && target.block_id !== profile.block_id)
       throw new HttpError(403, "कर्मी प्रबंधन की अनुमति नहीं।");
     if (b.action === "restore") {
       if (!target.deleted_at)

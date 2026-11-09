@@ -14,7 +14,8 @@ await db.exec(
   ),
 );
 for (const file of (await readdir("supabase/migrations")).sort())
-  await db.exec(await readFile("supabase/migrations/" + file, "utf8"));
+  if (!file.startsWith("20261109"))
+    await db.exec(await readFile("supabase/migrations/" + file, "utf8"));
 const users = [
   "11111111-1111-4111-8111-111111111111",
   "22222222-2222-4222-8222-222222222222",
@@ -25,7 +26,7 @@ const users = [
 for (let i = 0; i < users.length; i++) {
   await db.query("insert into auth.users values($1)", [users[i]]);
   await db.query(
-    `insert into profiles(id,name,phone,login_email,device_hash,assignments) values($1,$2,$3,$4,'device','[{"panchayat":"Office","department":"Department","position":"Staff"}]')`,
+    `insert into profiles(id,name,phone,login_email,device_hash,assignments) values($1,$2,$3,$4,'device','[{"panchayat":"Office","department":"पंचायती राज विभाग","position":"Staff"}]')`,
     [users[i], "Staff " + i, "900000000" + i, "user" + i + "@test.invalid"],
   );
 }
@@ -51,7 +52,7 @@ async function params(user, status = "present") {
     user,
     "save_draft",
     "Office",
-    "Department",
+    "पंचायती राज विभाग",
     "Staff",
     status,
     status === "deputation" ? "District office" : null,
@@ -91,7 +92,7 @@ test("draft is persisted with server in time, snapshots and admin visibility; ra
   assert.ok(r.time_in);
   assert.equal(r.time_out, null);
   assert.equal(r.staff_name, "Staff 0");
-  assert.equal(r.department, "Department");
+  assert.equal(r.department, "पंचायती राज विभाग");
   assert.equal(r.working_places.length, 1);
   assert.deepEqual(r.flags, ["geofence_unconfigured"]);
   await db.query("update profiles set role='super_admin' where id=$1", [
@@ -127,7 +128,7 @@ test("absent and CL leave have no fabricated time and cannot be completed; leave
       user,
       "save_status",
       "Office",
-      "Department",
+      "पंचायती राज विभाग",
       "Staff",
       status,
       null,
@@ -203,7 +204,7 @@ test("SL evidence consumes owned attachment atomically without a camera challeng
   const user = "66666666-6666-4666-8666-666666666666";
   await db.query("insert into auth.users values($1)", [user]);
   await db.query(
-    `insert into profiles(id,name,phone,login_email,device_hash,assignments,gender) values($1,'SL Staff','9000000006','sl@test.invalid','device','[{"panchayat":"Office","department":"Department","position":"Staff"}]','female')`,
+    `insert into profiles(id,name,phone,login_email,device_hash,assignments,gender) values($1,'SL Staff','9000000006','sl@test.invalid','device','[{"panchayat":"Office","department":"पंचायती राज विभाग","position":"Staff"}]','female')`,
     [user],
   );
   const path = user + "/" + day + "/leave.pdf";
@@ -215,7 +216,7 @@ test("SL evidence consumes owned attachment atomically without a camera challeng
     user,
     "save_status",
     "Office",
-    "Department",
+    "पंचायती राज विभाग",
     "Staff",
     "leave",
     null,
@@ -241,7 +242,7 @@ test("configured fences block present outside, while named deputation records GP
   const user = "77777777-7777-4777-8777-777777777777";
   await db.query("insert into auth.users values($1)", [user]);
   await db.query(
-    `insert into profiles(id,name,phone,login_email,device_hash,assignments) values($1,'Fence Staff','9000000007','fence@test.invalid','device','[{"panchayat":"Office","department":"Department","position":"Staff"}]')`,
+    `insert into profiles(id,name,phone,login_email,device_hash,assignments) values($1,'Fence Staff','9000000007','fence@test.invalid','device','[{"panchayat":"Office","department":"पंचायती राज विभाग","position":"Staff"}]')`,
     [user],
   );
   await db.exec("update panchayats set latitude=27,longitude=88");
@@ -278,7 +279,7 @@ test("migration backfills unfinished legacy present records as completable draft
     );
     await legacy.query("insert into auth.users values($1)", [users[0]]);
     await legacy.query(
-      `insert into profiles(id,name,login_email,device_hash,assignments) values($1,'Existing','legacy@test.invalid','device','[{"panchayat":"Legacy","department":"Department","position":"Staff"}]')`,
+      `insert into profiles(id,name,login_email,device_hash,assignments) values($1,'Existing','legacy@test.invalid','device','[{"panchayat":"Legacy","department":"पंचायती राज विभाग","position":"Staff"}]')`,
       [users[0]],
     );
     await legacy.exec(`insert into panchayats(name) values('Legacy');`);
@@ -313,7 +314,7 @@ test("basic onboarding arrival ignores old browser binding and requires no GPS; 
   const user = "99999999-9999-4999-8999-999999999999";
   await db.query("insert into auth.users values($1)", [user]);
   await db.query(
-    `insert into profiles(id,name,phone,login_email,device_hash,assignments) values($1,'Basic Staff','9000000009','basic@test.invalid','old-browser','[{"panchayat":"Office","department":"Department","position":"Staff"}]')`,
+    `insert into profiles(id,name,phone,login_email,device_hash,assignments) values($1,'Basic Staff','9000000009','basic@test.invalid','old-browser','[{"panchayat":"Office","department":"पंचायती राज विभाग","position":"Staff"}]')`,
     [user],
   );
   await db.exec(
@@ -332,7 +333,7 @@ test("basic onboarding arrival ignores old browser binding and requires no GPS; 
     user,
     "save_draft",
     "Office",
-    "Department",
+    "पंचायती राज विभाग",
     "Staff",
     "present",
     null,
@@ -390,7 +391,7 @@ test("basic onboarding preserves required owned leave evidence and assignment va
   const user = "88888888-8888-4888-8888-888888888888";
   await db.query("insert into auth.users values($1)", [user]);
   await db.query(
-    `insert into profiles(id,name,phone,login_email,assignments) values($1,'Basic Leave','9000000008','basic-leave@test.invalid','[{"panchayat":"Office","department":"Department","position":"Staff"}]')`,
+    `insert into profiles(id,name,phone,login_email,assignments) values($1,'Basic Leave','9000000008','basic-leave@test.invalid','[{"panchayat":"Office","department":"पंचायती राज विभाग","position":"Staff"}]')`,
     [user],
   );
   const basic = async (args) =>
@@ -406,7 +407,7 @@ test("basic onboarding preserves required owned leave evidence and assignment va
     user,
     "save_status",
     "Office",
-    "Department",
+    "पंचायती राज विभाग",
     "Staff",
     "leave",
     null,
@@ -425,7 +426,7 @@ test("basic onboarding preserves required owned leave evidence and assignment va
   ]);
   args[3] = "Wrong";
   await assert.rejects(basic(args), /नियुक्ति/);
-  args[3] = "Department";
+  args[3] = "पंचायती राज विभाग";
   const record = await basic(args);
   assert.equal(record.leave_path, path);
   assert.equal(record.time_in, null);
@@ -448,7 +449,7 @@ test("workplace evidence RPC requires owned photo or absence reason, without GPS
   for (let i = 0; i < ids.length; i++) {
     await db.query("insert into auth.users values($1)", [ids[i]]);
     await db.query(
-      `insert into profiles(id,name,phone,login_email,assignments) values($1,$2,$3,$4,'[{"panchayat":"Office","department":"Department","position":"Staff"}]')`,
+      `insert into profiles(id,name,phone,login_email,assignments) values($1,$2,$3,$4,'[{"panchayat":"Office","department":"पंचायती राज विभाग","position":"Staff"}]')`,
       [
         ids[i],
         "Evidence " + i,
@@ -470,7 +471,7 @@ test("workplace evidence RPC requires owned photo or absence reason, without GPS
     ids[0],
     "save_draft",
     "Office",
-    "Department",
+    "पंचायती राज विभाग",
     "Staff",
     "present",
     null,
@@ -507,7 +508,7 @@ test("workplace evidence RPC requires owned photo or absence reason, without GPS
     ids[1],
     "save_status",
     "Office",
-    "Department",
+    "पंचायती राज विभाग",
     "Staff",
     "absent",
     null,

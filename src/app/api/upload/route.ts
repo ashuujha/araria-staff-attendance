@@ -42,18 +42,20 @@ export async function POST(req: Request) {
       );
     if (!cookies(req).araria_session)
       throw new HttpError(401, "कृपया लॉगिन करें।");
-    const [{ profile }] = await Promise.all([
-      identity(req),
-      requireWorkingDay(),
-    ]);
+    const { profile } = await identity(req);
     if (profile.role !== "staff")
       throw new HttpError(403, "केवल कर्मी फोटो अपलोड कर सकते हैं।");
+    await requireWorkingDay(profile.block_id);
     // Workplace inputs (including PNG) are normalized to a JPEG before saving.
-    const path = `${profile.id}/${istDate()}/${randomUUID()}.${!workplace && b.type === "application/pdf" ? "pdf" : "jpg"}`;
+    const path = `${profile.block_id}/${profile.id}/${istDate()}/${randomUUID()}.${!workplace && b.type === "application/pdf" ? "pdf" : "jpg"}`;
     const [, signed] = await Promise.all([
       sb("/rest/v1/pending_uploads", {
         method: "POST",
-        body: JSON.stringify({ path, staff_id: profile.id }),
+        body: JSON.stringify({
+          path,
+          staff_id: profile.id,
+          block_id: profile.block_id,
+        }),
       }),
       sb("/storage/v1/object/upload/sign/attendance-private/" + path, {
         method: "POST",

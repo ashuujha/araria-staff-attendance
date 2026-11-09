@@ -20,6 +20,7 @@ process.env.SUPABASE_URL = "https://fixture.supabase.invalid";
 process.env.SUPABASE_SECRET_KEY = "sb_secret_fixture";
 process.env.SUPABASE_PUBLISHABLE_KEY = "sb_publishable_fixture";
 const id = "11111111-1111-4111-8111-111111111111";
+const blockId = "22222222-2222-4222-8222-222222222222";
 test("private workplace photos use short-lived storage links after caller-scoped authorization", async () => {
   const original = globalThis.fetch;
   let accessible = true,
@@ -28,17 +29,25 @@ test("private workplace photos use short-lived storage links after caller-scoped
     const url = new URL(input);
     if (url.pathname === "/auth/v1/user") return Response.json({ id });
     if (url.pathname === "/rest/v1/profiles")
-      return Response.json([{ id, role: "super_admin", active: true }]);
+      return Response.json([{ id, role: "dpro", active: true }]);
     if (url.pathname === "/rest/v1/attendance") {
       assert.equal(init.headers.Authorization, "Bearer fixture-session");
       assert.equal(url.searchParams.get("id"), "eq." + id);
       return Response.json(
-        accessible ? [{ photo_path: `${id}/photo.jpg` }] : [],
+        accessible
+          ? [
+              {
+                staff_id: id,
+                block_id: blockId,
+                photo_path: `${blockId}/${id}/photo.jpg`,
+              },
+            ]
+          : [],
       );
     }
     if (
       url.pathname ===
-      `/storage/v1/object/sign/attendance-private/${id}/photo.jpg`
+      `/storage/v1/object/sign/attendance-private/${blockId}/${id}/photo.jpg`
     ) {
       signs++;
       assert.equal(JSON.parse(init.body).expiresIn, 60);
@@ -64,7 +73,7 @@ test("private workplace photos use short-lived storage links after caller-scoped
     );
     assert.equal(data.expires_in, 60);
     accessible = false;
-    assert.equal((await GET(request())).status, 404);
+    assert.equal((await GET(request())).status, 403);
     assert.equal((await GET(request(false))).status, 401);
     assert.equal(signs, 1);
   } finally {

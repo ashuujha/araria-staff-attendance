@@ -23,7 +23,7 @@ process.env.SUPABASE_PUBLISHABLE_KEY = "sb_publishable_fixture";
 process.env.APP_URL = "https://portal.example.test";
 process.env.TURNSTILE_SITE_KEY = "site-fixture";
 process.env.TURNSTILE_SECRET_KEY = "secret-fixture";
-function request(admin) {
+function request(role) {
   return new Request("https://portal.example.test/api/auth/login", {
     method: "POST",
     headers: {
@@ -33,21 +33,21 @@ function request(admin) {
     body: JSON.stringify({
       identifier: "person@example.test",
       password: "fixture-password",
-      admin,
+      role,
       captcha_token: adminCaptchaFixture(process.env.TURNSTILE_SECRET_KEY),
     }),
   });
 }
-test("Staff and Admin choices require the matching account role before session creation", async () => {
+test("staff, BPRO and DPRO logins require the matching role", async () => {
   const original = globalThis.fetch;
   try {
-    for (const [role, admin, expected] of [
-      ["staff", false, 200],
-      ["super_admin", true, 200],
-      ["staff", true, 403],
-      ["super_admin", false, 403],
-      ["block_admin", true, 200],
-      ["district_viewer", true, 200],
+    for (const [role, requestedRole, expected] of [
+      ["staff", "staff", 200],
+      ["dpro", "dpro", 200],
+      ["bpro", "bpro", 200],
+      ["staff", "bpro", 403],
+      ["dpro", "staff", 403],
+      ["bpro", "dpro", 403],
     ]) {
       let bound = false;
       globalThis.fetch = async (input, init = {}) => {
@@ -58,6 +58,14 @@ test("Staff and Admin choices require the matching account role before session c
             hostname: "portal.example.test",
             action: "admin_login",
           });
+        if (url.pathname === "/rest/v1/rpc/login_limit_status")
+          return Response.json(true);
+        if (
+          url.pathname === "/rest/v1/rpc/record_login_failure" ||
+          url.pathname === "/rest/v1/rpc/clear_login_account"
+        )
+          return Response.json(null);
+        if (url.pathname === "/rest/v1/audit_logs") return Response.json(null);
         if (url.pathname === "/auth/v1/token")
           return Response.json({
             user: { id: "11111111-1111-4111-8111-111111111111" },
@@ -70,6 +78,7 @@ test("Staff and Admin choices require the matching account role before session c
               id: "11111111-1111-4111-8111-111111111111",
               role,
               active: true,
+              block_id: "22222222-2222-4222-8222-222222222222",
               name: "Test account",
               assignments: [],
             },
@@ -83,6 +92,7 @@ test("Staff and Admin choices require the matching account role before session c
               id: "11111111-1111-4111-8111-111111111111",
               role,
               active: true,
+              block_id: "22222222-2222-4222-8222-222222222222",
               name: "Test account",
               assignments: [],
               device_hash: "old-browser-binding",
@@ -94,8 +104,12 @@ test("Staff and Admin choices require the matching account role before session c
         }
         throw Error("Unexpected request " + url.pathname);
       };
-      const response = await POST(request(admin));
-      assert.equal(response.status, expected, `${role} with admin=${admin}`);
+      const response = await POST(request(requestedRole));
+      assert.equal(
+        response.status,
+        expected,
+        `${role} through ${requestedRole}`,
+      );
       assert.equal(
         bound,
         false,
@@ -112,21 +126,29 @@ test("Staff and Admin choices require the matching account role before session c
   }
 });
 
-test("repeated failed credentials do not create an application lockout", async () => {
+test("five failed credentials trigger the account lockout", async () => {
   const original = globalThis.fetch;
   let authRequests = 0;
+  let failures = 0;
   try {
     globalThis.fetch = async (input) => {
       const url = new URL(String(input));
+      if (url.pathname === "/rest/v1/rpc/login_limit_status")
+        return Response.json(failures < 5);
+      if (url.pathname === "/rest/v1/rpc/record_login_failure") {
+        failures++;
+        return Response.json(null);
+      }
       if (url.pathname === "/auth/v1/token") {
         authRequests++;
         return Response.json({ error: "invalid_credentials" }, { status: 400 });
       }
       throw Error("Unexpected request " + url.pathname);
     };
-    for (let attempt = 0; attempt < 8; attempt++)
-      assert.equal((await POST(request(false))).status, 401);
-    assert.equal(authRequests, 8);
+    for (let attempt = 0; attempt < 5; attempt++)
+      assert.equal((await POST(request("staff"))).status, 401);
+    assert.equal((await POST(request("staff"))).status, 429);
+    assert.equal(authRequests, 5);
   } finally {
     globalThis.fetch = original;
   }

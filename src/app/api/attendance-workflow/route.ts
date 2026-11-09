@@ -18,6 +18,7 @@ import {
 } from "../../../lib/file-validation";
 import { reserveEvidenceSlot } from "../../../lib/evidence-capacity";
 import { requireWorkingDay } from "../../../lib/office-server";
+import { PANCHAYATI_RAJ_DEPARTMENT } from "../../../lib/district";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
@@ -63,12 +64,10 @@ export async function POST(req: Request) {
       throw new HttpError(400, "कार्रवाई अमान्य।");
     if (!cookies(req).araria_session)
       throw new HttpError(401, "कृपया लॉगिन करें।");
-    const [{ profile, token }] = await Promise.all([
-      identity(req),
-      requireWorkingDay(),
-    ]);
+    const { profile, token } = await identity(req);
     if (profile.role !== "staff")
       throw new HttpError(403, "केवल कर्मी उपस्थिति दर्ज कर सकते हैं।");
+    await requireWorkingDay(profile.block_id);
     const draft = body.action === "save_draft";
     if (body.action !== "complete") {
       for (const key of ["panchayat", "department", "position"]) {
@@ -79,6 +78,19 @@ export async function POST(req: Request) {
         )
           throw new HttpError(400, "कार्यस्थल, विभाग या पद अमान्य।");
       }
+      if (body.department !== PANCHAYATI_RAJ_DEPARTMENT)
+        throw new HttpError(403, "Only Panchayati Raj attendance is allowed.");
+      if (
+        !profile.assignments.some(
+          (a) =>
+            a.panchayat === body.panchayat &&
+            a.position === body.position &&
+            a.department === PANCHAYATI_RAJ_DEPARTMENT &&
+            (a as typeof a & { block_id?: string }).block_id ===
+              profile.block_id,
+        )
+      )
+        throw new HttpError(403, "Workspace is outside your assigned block.");
       if (
         body.status === "deputation" &&
         (typeof body.deputation_workplace !== "string" ||
@@ -168,12 +180,12 @@ export async function POST(req: Request) {
         if (path == null || path === "") continue;
         if (
           typeof path !== "string" ||
-          !path.startsWith(`${profile.id}/${istDate()}/`) ||
+          !path.startsWith(`${profile.block_id}/${profile.id}/${istDate()}/`) ||
           !/^[-a-zA-Z0-9/_.]+$/.test(path)
         )
           throw new HttpError(400, "अपलोड सत्यापन अमान्य।");
         const pending = await sb(
-          `/rest/v1/pending_uploads?path=eq.${encodeURIComponent(path)}&staff_id=eq.${profile.id}&select=*`,
+          `/rest/v1/pending_uploads?path=eq.${encodeURIComponent(path)}&staff_id=eq.${profile.id}&block_id=eq.${profile.block_id}&select=*`,
         );
         if (
           !pending[0] ||

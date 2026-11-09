@@ -1,9 +1,14 @@
-export type Holiday = { date: string; reason: string };
+export type Holiday = {
+  date: string;
+  reason: string;
+  block_id?: string | null;
+};
 export type OfficeNotice = {
   id: string;
   title: string;
   body: string;
   created_at: string;
+  block_id?: string | null;
 };
 export type OfficeFeed = {
   holidays: Holiday[];

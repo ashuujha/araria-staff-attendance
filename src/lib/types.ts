@@ -2,6 +2,7 @@ export type Assignment = {
   panchayat: string;
   position: string;
   department: string;
+  block_id?: string;
 };
 export type Profile = {
   id: string;

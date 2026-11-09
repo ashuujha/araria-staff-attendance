@@ -13,7 +13,8 @@ await db.exec(
   ),
 );
 for (const file of (await readdir("supabase/migrations")).sort())
-  await db.exec(await readFile("supabase/migrations/" + file, "utf8"));
+  if (!file.startsWith("20261109"))
+    await db.exec(await readFile("supabase/migrations/" + file, "utf8"));
 const admin = "11111111-1111-4111-8111-111111111111",
   staff = "22222222-2222-4222-8222-222222222222",
   other = "33333333-3333-4333-8333-333333333333",

@@ -8,12 +8,15 @@ import {
   HttpError,
 } from "../../../lib/server";
 import { istDate } from "../../../lib/security.mjs";
+import { requestedBlock } from "../../../lib/district-scope";
 export async function GET(req: Request) {
   try {
     const { profile, token } = await identity(req);
     admin(profile);
     const url = new URL(req.url);
     const date = url.searchParams.get("date") || istDate();
+    const blockId = requestedBlock(profile, url.searchParams.get("block_id"));
+    const blockFilter = blockId ? `&block_id=eq.${blockId}` : "";
     const includeStaff = url.searchParams.get("directory") !== "0";
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
       throw new HttpError(400, "तिथि अमान्य।");
@@ -21,20 +24,25 @@ export async function GET(req: Request) {
       sb(
         "/rest/v1/attendance?date=eq." +
           date +
-          "&deleted_at=is.null&select=id,staff_id,date,panchayat,department,position,block,staff_name,status,phase,deputation_workplace,leave_type,absence_reason,time_in,time_out,latitude,longitude,accuracy,photo_path,leave_path,working_places,profiles(id,name,phone,email,block,role,active)&order=created_at.desc",
+          blockFilter +
+          "&deleted_at=is.null&select=id,staff_id,date,panchayat,department,position,block,block_id,staff_name,status,phase,deputation_workplace,leave_type,absence_reason,time_in,time_out,latitude,longitude,accuracy,photo_path,leave_path,working_places,profiles(id,name,phone,email,block,block_id,role,active)&order=created_at.desc",
         {},
         token,
       ),
       includeStaff
         ? sb(
-            "/rest/v1/profiles?deleted_at=is.null&role=eq.staff&select=id,name,phone,email,assignments,block,role,active,gender&order=name",
+            "/rest/v1/profiles?deleted_at=is.null&role=eq.staff" +
+              blockFilter +
+              "&select=id,name,phone,email,assignments,block,block_id,role,active,gender&order=name",
             {},
             token,
           )
         : Promise.resolve(undefined),
       includeStaff
         ? sb(
-            "/rest/v1/profiles?deleted_at=not.is.null&role=eq.staff&select=id,name,phone,email,assignments,block,role,active,gender,deleted_at&order=name",
+            "/rest/v1/profiles?deleted_at=not.is.null&role=eq.staff" +
+              blockFilter +
+              "&select=id,name,phone,email,assignments,block,block_id,role,active,gender,deleted_at&order=name",
             {},
             token,
           )
@@ -57,14 +65,14 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     csrf(req);
-    const { profile } = await identity(req);
+    const { profile, token } = await identity(req);
     admin(profile, true);
     const body = await req.json();
     if (
       !body ||
       typeof body !== "object" ||
       Array.isArray(body) ||
-      !["input", "delete", "correct", "geofence"].includes(body.action)
+      !["input", "delete", "correct"].includes(body.action)
     )
       throw new HttpError(400, "कार्रवाई अमान्य।");
     const reason = {
@@ -82,6 +90,16 @@ export async function POST(req: Request) {
         throw new HttpError(400, "तिथि, स्थिति या कार्यस्थल अमान्य है।");
       if (body.status === "leave" && !["CL", "SL"].includes(body.leave_type))
         throw new HttpError(400, "CL या SL चुनें।");
+      const target = await sb(
+        `/rest/v1/profiles?id=eq.${body.staff_id}&role=eq.staff&select=id,block_id`,
+        {},
+        token,
+      );
+      if (
+        !target.length ||
+        (profile.role === "bpro" && target[0].block_id !== profile.block_id)
+      )
+        throw new HttpError(403, "This staff member is outside your block.");
       const result = await sb(
         "/rest/v1/rpc/admin_input_attendance_with_leave",
         {
@@ -104,6 +122,19 @@ export async function POST(req: Request) {
     if (body.action === "delete") {
       if (!/^[0-9a-f-]{36}$/.test(String(body.id)))
         throw new HttpError(400, "रिकॉर्ड नहीं मिला।");
+      const target = await sb(
+        `/rest/v1/attendance?id=eq.${body.id}&select=id,block_id`,
+        {},
+        token,
+      );
+      if (
+        !target.length ||
+        (profile.role === "bpro" && target[0].block_id !== profile.block_id)
+      )
+        throw new HttpError(
+          403,
+          "This attendance record is outside your block.",
+        );
       await sb("/rest/v1/rpc/delete_admin_attendance", {
         method: "POST",
         body: JSON.stringify({
@@ -115,6 +146,21 @@ export async function POST(req: Request) {
       return json({ success: true });
     }
     if (body.action === "correct") {
+      if (!/^[0-9a-f-]{36}$/.test(String(body.id)))
+        throw new HttpError(400, "Invalid record.");
+      const target = await sb(
+        `/rest/v1/attendance?id=eq.${body.id}&select=id,block_id`,
+        {},
+        token,
+      );
+      if (
+        !target.length ||
+        (profile.role === "bpro" && target[0].block_id !== profile.block_id)
+      )
+        throw new HttpError(
+          403,
+          "This attendance record is outside your block.",
+        );
       const result = await sb("/rest/v1/rpc/correct_attendance", {
         method: "POST",
         body: JSON.stringify({

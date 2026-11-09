@@ -23,7 +23,8 @@ process.env.SUPABASE_SECRET_KEY = "sb_secret_fixture";
 process.env.SUPABASE_PUBLISHABLE_KEY = "sb_publishable_fixture";
 process.env.APP_URL = "https://portal.example.test";
 const user = "11111111-1111-4111-8111-111111111111";
-const path = `${user}/${istDate()}/leave.pdf`;
+const blockId = "22222222-2222-4222-8222-222222222222";
+const path = `${blockId}/${user}/${istDate()}/leave.pdf`;
 const jpeg = await sharp({
   create: { width: 640, height: 480, channels: 3, background: "#456789" },
 })
@@ -40,7 +41,7 @@ function request(patch = {}) {
     body: JSON.stringify({
       action: "save_draft",
       status: "present",
-      department: "Department",
+      department: "पंचायती राज विभाग",
       panchayat: "Office",
       position: "Staff",
       photo_upload_path: path.replace("leave.pdf", "photo.jpg"),
@@ -66,10 +67,12 @@ function fixture(
           id: user,
           role,
           active: true,
+          block_id: blockId,
           device_hash: "another-browser",
           assignments: [
             {
-              department: "Department",
+              department: "पंचायती राज विभाग",
+              block_id: blockId,
               panchayat: "Office",
               position: "Staff",
             },
@@ -198,7 +201,10 @@ test("assignment, status and deputation validation still apply", async () => {
       { action: "save_status", status: "leave", leave_type: "CL" },
       { status: "absent" },
     ])
-      assert.equal((await POST(request(patch))).status, 400);
+      assert.equal(
+        (await POST(request(patch))).status,
+        patch.department === "Wrong" ? 403 : 400,
+      );
     assert.equal(
       calls.some((c) => c.url.pathname.includes("/rpc/")),
       false,
@@ -278,7 +284,7 @@ test("consumed or rejected leave evidence cannot create attendance", async () =>
 test("admin cannot submit staff attendance", async () => {
   const original = globalThis.fetch,
     calls = [];
-  globalThis.fetch = fixture(calls, { role: "super_admin" });
+  globalThis.fetch = fixture(calls, { role: "dpro" });
   try {
     assert.equal((await POST(request())).status, 403);
   } finally {
@@ -286,7 +292,7 @@ test("admin cannot submit staff attendance", async () => {
   }
 });
 
-test("working-day lookup runs while the staff profile is loading", async () => {
+test("working-day lookup uses the verified staff block", async () => {
   const original = globalThis.fetch;
   const calls = [];
   const base = fixture(calls);
@@ -307,7 +313,7 @@ test("working-day lookup runs while the staff profile is loading", async () => {
       request({ action: "complete", photo_upload_path: null }),
     );
     assert.equal(response.status, 200);
-    assert.equal(holidayStartedBeforeProfileFinished, true);
+    assert.equal(holidayStartedBeforeProfileFinished, false);
   } finally {
     globalThis.fetch = original;
   }

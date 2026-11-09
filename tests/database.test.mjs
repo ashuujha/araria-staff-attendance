@@ -27,7 +27,7 @@ await db.query("insert into auth.users(id) values($1),($2),($3)", [
   other,
 ]);
 await db.query(
-  `insert into profiles(id,name,phone,login_email,role,device_hash,assignments) values($1,'Staff','9000000001','staff@example.test','staff','device', '[{"panchayat":"Test","position":"Staff","department":"Office"},{"panchayat":"Test Two","position":"Staff","department":"Office"}]'),($2,'Admin',null,'admin@example.test','super_admin',null,'[]'),($3,'Other','9000000002','other@example.test','staff','other-device','[]')`,
+  `insert into profiles(id,name,phone,login_email,role,device_hash,assignments) values($1,'Staff','9000000001','staff@example.test','staff','device', '[{"panchayat":"Test","position":"Staff","department":"पंचायती राज विभाग"},{"panchayat":"Test Two","position":"Staff","department":"पंचायती राज विभाग"}]'),($2,'Admin',null,'admin@example.test','super_admin',null,'[]'),($3,'Other','9000000002','other@example.test','staff','other-device','[]')`,
   [user, admin, other],
 );
 await db.exec(
@@ -169,8 +169,12 @@ test("queue retry preserves pending attendance and backs off", async () => {
 
 const created = "44444444-4444-4444-8444-444444444444";
 const workplaces = [
-  { panchayat: "Test", position: "Secretary", department: "Office" },
-  { panchayat: "Test Two", position: "Secretary", department: "Office" },
+  { panchayat: "Test", position: "Secretary", department: "पंचायती राज विभाग" },
+  {
+    panchayat: "Test Two",
+    position: "Secretary",
+    department: "पंचायती राज विभाग",
+  },
 ];
 let manualId;
 const manualDate = (
@@ -246,7 +250,11 @@ test("invalid workplace assignment cannot be saved", async () => {
       created,
       JSON.stringify({
         assignments: [
-          { panchayat: "Unknown", position: "Secretary", department: "Office" },
+          {
+            panchayat: "Unknown",
+            position: "Secretary",
+            department: "पंचायती राज विभाग",
+          },
         ],
       }),
       "Reject unrecognized place",

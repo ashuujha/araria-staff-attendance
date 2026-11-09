@@ -37,7 +37,7 @@ function req(body, origin = process.env.APP_URL) {
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
 }
-function fixture(calls, role = "super_admin", holidays = []) {
+function fixture(calls, role = "dpro", holidays = []) {
   return async (input, init = {}) => {
     const url = new URL(String(input));
     calls.push({ url, init });
@@ -171,16 +171,19 @@ test("server working-day guard blocks Sundays without I/O and holidays with thei
   ]);
   try {
     await assert.rejects(
-      requireWorkingDay("2026-10-18"),
+      requireWorkingDay("11111111-1111-4111-8111-111111111111", "2026-10-18"),
       (e) => e.status === 409 && e.message.includes("Sunday"),
     );
     assert.equal(calls.length, 0);
     await assert.rejects(
-      requireWorkingDay("2026-10-19"),
+      requireWorkingDay("11111111-1111-4111-8111-111111111111", "2026-10-19"),
       (e) => e.status === 409 && e.message.includes("Festival leave"),
     );
     globalThis.fetch = fixture(calls, "staff", []);
-    await requireWorkingDay("2026-10-20");
+    await requireWorkingDay(
+      "11111111-1111-4111-8111-111111111111",
+      "2026-10-20",
+    );
     for (const date of ["2026-02-30", "2026-13-01", "invalid", null])
       assert.equal(validOfficeDate(date), false);
     assert.equal(validOfficeDate("2028-02-29"), true);

@@ -29,13 +29,18 @@ export async function GET(req: Request) {
   }
 }
 export async function POST(req: Request) {
+  if (process.env.ENABLE_LEGACY_GPS_ATTENDANCE !== "true")
+    return json(
+      { error: "Legacy attendance entry is closed; use the staff dashboard." },
+      410,
+    );
   let path: string | null = null;
   try {
     csrf(req);
     const { profile, device } = await identity(req);
     if (profile.role !== "staff")
       throw new HttpError(403, "पंच केवल कर्मी खाते से करें।");
-    await requireWorkingDay();
+    await requireWorkingDay(profile.block_id);
     if (req.headers.get("content-type")?.includes("application/json")) {
       const body = await req.json();
       if (body.action !== "challenge")

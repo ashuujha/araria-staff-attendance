@@ -5,10 +5,12 @@ import {
   HttpError,
   requireSetup,
   sessionCookie,
+  audit,
 } from "../../../../lib/server";
 import { verifyAdminCaptcha } from "../../../../lib/admin-captcha";
 import { isIP } from "node:net";
 import { portalBootstrap } from "../../../../lib/bootstrap";
+import { createHmac } from "node:crypto";
 export async function POST(req: Request) {
   const started = performance.now();
   try {
@@ -44,6 +46,25 @@ export async function POST(req: Request) {
       );
       email = profiles?.[0]?.login_email || `${phone}@staff.araria.invalid`;
     }
+    const keyFor = (value: string) =>
+      createHmac(
+        "sha256",
+        process.env.LOGIN_LIMIT_SECRET || process.env.SUPABASE_SECRET_KEY!,
+      )
+        .update(value)
+        .digest("hex");
+    const accountKey = keyFor("account:" + email);
+    const rawIp =
+      process.env.VERCEL === "1"
+        ? req.headers.get("x-vercel-forwarded-for")?.split(",")[0].trim()
+        : null;
+    const ipKey = rawIp && isIP(rawIp) ? keyFor("ip:" + rawIp) : null;
+    const allowed = await sb("/rest/v1/rpc/login_limit_status", {
+      method: "POST",
+      body: JSON.stringify({ account_key: accountKey, ip_key: ipKey }),
+    });
+    if (!allowed)
+      throw new HttpError(429, "Too many attempts. Try again in 15 minutes.");
     // Enable only after Supabase's trusted IP forwarding is configured. Use
     // Vercel's overwritten header, never a client-supplied forwarded-for value.
     const forwardedIp =
@@ -77,7 +98,13 @@ export async function POST(req: Request) {
         503,
         "लॉगिन सेवा उपलब्ध नहीं है। फिर कोशिश करें। / Login service unavailable. Please retry.",
       );
-    if (!res.ok) throw new HttpError(401, "मोबाइल/ईमेल या पासवर्ड गलत है।");
+    if (!res.ok) {
+      await sb("/rest/v1/rpc/record_login_failure", {
+        method: "POST",
+        body: JSON.stringify({ account_key: accountKey, ip_key: ipKey }),
+      });
+      throw new HttpError(401, "मोबाइल/ईमेल या पासवर्ड गलत है।");
+    }
     const session = await res.json();
     const bootstrap = await portalBootstrap(session.access_token);
     const profiles = bootstrap
@@ -91,11 +118,30 @@ export async function POST(req: Request) {
         );
     const profile = profiles?.[0];
     if (
-      !profile?.active || profile.role !== body.role ||
+      !profile?.active ||
+      profile.role !== body.role ||
       (profile.role === "bpro" && !profile.block_id) ||
       (profile.role === "staff" && !profile.block_id)
-    )
+    ) {
+      await sb("/rest/v1/rpc/record_login_failure", {
+        method: "POST",
+        body: JSON.stringify({ account_key: accountKey, ip_key: ipKey }),
+      });
       throw new HttpError(403, "इस कार्यस्थल में प्रवेश की अनुमति नहीं है।");
+    }
+    await sb("/rest/v1/rpc/clear_login_account", {
+      method: "POST",
+      body: JSON.stringify({ account_key: accountKey }),
+    });
+    if (profile.role !== "staff")
+      await audit(
+        profile.id,
+        "admin_login",
+        profile.role,
+        "Administrator signed in",
+        null,
+        profile.block_id,
+      );
     const headers = new Headers({
       "Cache-Control": "no-store",
       "Content-Type": "application/json",

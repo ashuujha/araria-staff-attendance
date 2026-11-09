@@ -44,7 +44,7 @@ function request(patch = {}) {
     body: JSON.stringify({
       identifier: "admin@example.test",
       password: "fixture-password",
-      admin: true,
+      role: "dpro",
       captcha_token: adminCaptchaFixture(process.env.TURNSTILE_SECRET_KEY),
       ...patch,
     }),
@@ -74,12 +74,21 @@ function fixture(
         user: { id: "11111111-1111-4111-8111-111111111111" },
         access_token: "fixture-jwt",
       });
+    if (url.pathname === "/rest/v1/rpc/login_limit_status")
+      return Response.json(true);
+    if (
+      url.pathname === "/rest/v1/rpc/record_login_failure" ||
+      url.pathname === "/rest/v1/rpc/clear_login_account"
+    )
+      return Response.json(null);
+    if (url.pathname === "/rest/v1/audit_logs") return Response.json(null);
     if (url.pathname === "/rest/v1/rpc/portal_bootstrap")
       return Response.json({
         profile: {
           id: "11111111-1111-4111-8111-111111111111",
-          role: "super_admin",
+          role: "dpro",
           active: true,
+          block_id: "33333333-3333-4333-8333-333333333333",
         },
         records: [],
         staff: [],
@@ -89,8 +98,9 @@ function fixture(
       return Response.json([
         {
           id: "11111111-1111-4111-8111-111111111111",
-          role: "super_admin",
+          role: "dpro",
           active: true,
+          block_id: "33333333-3333-4333-8333-333333333333",
         },
       ]);
     throw Error("Unexpected request");
@@ -176,7 +186,7 @@ test("missing configuration and provider failures fail closed while staff login 
     const calls = [];
     globalThis.fetch = fixture(calls);
     assert.equal(
-      (await POST(request({ admin: false, captcha_token: null }))).status,
+      (await POST(request({ role: "staff", captcha_token: null }))).status,
       403,
       "Admin account cannot bypass CAPTCHA through staff login",
     );
@@ -184,7 +194,7 @@ test("missing configuration and provider failures fail closed while staff login 
       calls.some((c) => c.url.hostname === "challenges.cloudflare.com"),
       false,
     );
-    assert.equal((await POST(request({ admin: "false" }))).status, 400);
+    assert.equal((await POST(request({ role: "invalid" }))).status, 400);
   } finally {
     globalThis.fetch = original;
     process.env.TURNSTILE_SECRET_KEY = secret;

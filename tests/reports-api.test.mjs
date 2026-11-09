@@ -41,7 +41,7 @@ test("reports reject staff and invalid date ranges before reading attendance", a
       (await GET(req("format=xlsx&period=day&start=2026-10-21"))).status,
       403,
     );
-    globalThis.fetch = fixture("super_admin", calls);
+    globalThis.fetch = fixture("dpro", calls);
     for (const query of [
       "format=csv&period=day&start=2026-10-21",
       "format=pdf&period=day&start=2026-02-30",
@@ -68,7 +68,7 @@ test("admin can download a year-specific leave balance report", async () => {
       if (url.pathname === "/auth/v1/user") return Response.json({ id });
       if (url.pathname === "/rest/v1/profiles" && url.searchParams.has("id"))
         return Response.json([
-          { id, role: "super_admin", active: true, assignments: [] },
+          { id, role: "dpro", active: true, assignments: [] },
         ]);
       const firstPage = url.searchParams.get("offset") === "0";
       if (url.pathname === "/rest/v1/profiles")
@@ -85,7 +85,7 @@ test("admin can download a year-specific leave balance report", async () => {
                   active: true,
                   assignments: [
                     {
-                      department: "Agriculture",
+                      department: "पंचायती राज विभाग",
                       panchayat: "Bairgachhi",
                       position: "Assistant",
                     },
@@ -108,12 +108,11 @@ test("admin can download a year-specific leave balance report", async () => {
               ]
             : [],
         );
+      if (url.pathname === "/rest/v1/audit_logs") return Response.json(null);
       throw Error(`Unexpected URL: ${url}`);
     };
     const response = await GET(
-      req(
-        "kind=leave&format=xlsx&year=2026&month=10&leave_only=1&department=Agriculture",
-      ),
+      req("kind=leave&format=xlsx&year=2026&month=10&leave_only=1"),
     );
     assert.equal(response.status, 200);
     assert.match(

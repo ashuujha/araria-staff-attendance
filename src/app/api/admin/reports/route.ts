@@ -4,7 +4,9 @@ import {
   HttpError,
   identity,
   sb,
+  audit,
 } from "../../../../lib/server";
+import { requestedBlock } from "../../../../lib/district-scope";
 import { istDate } from "../../../../lib/security.mjs";
 import {
   dateSections,
@@ -43,6 +45,14 @@ export async function GET(req: Request) {
     const { profile, token } = await identity(req);
     admin(profile);
     const query = new URL(req.url).searchParams;
+    const blockId = requestedBlock(profile, query.get("block_id"));
+    const blockFilter = blockId ? `&block_id=eq.${blockId}` : "";
+    const selectedBlock = blockId
+      ? (
+          await sb(`/rest/v1/blocks?id=eq.${blockId}&select=name_en`, {}, token)
+        )[0]
+      : null;
+    if (blockId && !selectedBlock) throw new HttpError(400, "Unknown block.");
     const format = query.get("format");
     const kind = query.get("kind") || "attendance";
     const period = query.get("period") || "day";
@@ -76,8 +86,6 @@ export async function GET(req: Request) {
     const filters: Record<string, string> = {};
     for (const field of [
       "search",
-      "department",
-      "block",
       "panchayat",
       "position",
       "status",
@@ -113,11 +121,13 @@ export async function GET(req: Request) {
       const last = `${year}-12-31`;
       const [records, profiles] = await Promise.all([
         allPages(
-          `/rest/v1/attendance?date=gte.${first}&date=lte.${last}&status=eq.leave&deleted_at=is.null&select=id,staff_id,date,staff_name,block,department,panchayat,position,status,leave_type,version&order=date.asc,staff_id.asc,id.asc`,
+          `/rest/v1/attendance?date=gte.${first}&date=lte.${last}&status=eq.leave&deleted_at=is.null${blockFilter}&select=id,staff_id,date,staff_name,block,block_id,department,panchayat,position,status,leave_type,version&order=date.asc,staff_id.asc,id.asc`,
           token,
         ),
         allPages(
-          "/rest/v1/profiles?role=eq.staff&select=id,name,phone,block,assignments,gender,role,active,deleted_at&order=id.asc",
+          "/rest/v1/profiles?role=eq.staff" +
+            blockFilter +
+            "&select=id,name,phone,block,block_id,assignments,gender,role,active,deleted_at&order=id.asc",
           token,
         ),
       ]);
@@ -131,12 +141,9 @@ export async function GET(req: Request) {
       });
       const report = {
         ...summary,
-        officeLabel:
-          profile.role === "bpro"
-            ? `Block office ${profile.block}, Araria`
-            : filters.block
-              ? `Block office ${filters.block}, Araria`
-              : "District Araria",
+        officeLabel: selectedBlock
+          ? `Block office ${selectedBlock.name_en}, Araria District`
+          : "Araria District",
       };
       if (format === "pdf" && report.rows.length > 3500)
         throw new HttpError(
@@ -152,6 +159,14 @@ export async function GET(req: Request) {
           413,
           "Leave report exceeds 4 MB. Add staff filters.",
         );
+      await audit(
+        profile.id,
+        "export_leave_report",
+        `${year}-${month}`,
+        "Report exported",
+        null,
+        blockId,
+      );
       return new Response(new Uint8Array(output), {
         headers: {
           "Content-Type":
@@ -164,14 +179,16 @@ export async function GET(req: Request) {
         },
       });
     }
-    const recordsPath = `/rest/v1/attendance?date=gte.${start}&date=lte.${end}&deleted_at=is.null&select=id,staff_id,date,staff_name,block,department,panchayat,position,working_places,status,phase,leave_type,deputation_workplace,absence_reason,time_in,time_out,created_at,version&order=date.asc,staff_id.asc,id.asc`;
+    const recordsPath = `/rest/v1/attendance?date=gte.${start}&date=lte.${end}&deleted_at=is.null${blockFilter}&select=id,staff_id,date,staff_name,block,block_id,department,panchayat,position,working_places,status,phase,leave_type,deputation_workplace,absence_reason,time_in,time_out,created_at,version&order=date.asc,staff_id.asc,id.asc`;
     const profilesPath =
-      "/rest/v1/profiles?role=eq.staff&select=id,name,phone,secondary_phones,email,block,assignments,role,active,created_at,deleted_at&order=id.asc";
+      "/rest/v1/profiles?role=eq.staff" +
+      blockFilter +
+      "&select=id,name,phone,secondary_phones,email,block,block_id,assignments,role,active,created_at,deleted_at&order=id.asc";
     const [records, profiles, holidays] = await Promise.all([
       allPages(recordsPath, token),
       allPages(profilesPath, token),
       sb(
-        `/rest/v1/office_holidays?date=gte.${start}&date=lte.${end}&select=date,reason&order=date.asc`,
+        `/rest/v1/office_holidays?date=gte.${start}&date=lte.${end}${blockId ? `&or=(block_id.is.null,block_id.eq.${blockId})` : ""}&select=date,reason,block_id&order=date.asc`,
         {},
         token,
       ),
@@ -185,12 +202,9 @@ export async function GET(req: Request) {
       today: istDate(),
       filters,
     });
-    report.officeLabel =
-      profile.role === "bpro"
-        ? `Block office ${profile.block}, Araria`
-        : filters.block
-          ? `Block office ${filters.block}, Araria`
-          : "District Araria";
+    report.officeLabel = selectedBlock
+      ? `Block office ${selectedBlock.name_en}, Araria District`
+      : "Araria District";
     const gridCells = report.sections.reduce(
       (count: number, section: { dates: string[]; rows: unknown[] }) =>
         count + section.dates.length * section.rows.length,
@@ -222,6 +236,14 @@ export async function GET(req: Request) {
         413,
         "Report exceeds 4 MB. Choose a shorter range or fewer staff.",
       );
+    await audit(
+      profile.id,
+      "export_attendance_report",
+      `${start}:${end}`,
+      "Report exported",
+      null,
+      blockId,
+    );
     const filename = `araria-attendance-${start}${end === start ? "" : `-to-${end}`}.${format}`;
     return new Response(new Uint8Array(output), {
       headers: {

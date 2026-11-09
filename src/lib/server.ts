@@ -51,6 +51,11 @@ export function requireSetup() {
       503,
       "लाइव पोर्टल सेटअप बाकी है। एडमिन से Supabase कॉन्फ़िगरेशन पूरा करवाएँ।",
     );
+  if (
+    process.env.NODE_ENV === "production" &&
+    (!process.env.APP_URL || new URL(process.env.APP_URL).protocol !== "https:")
+  )
+    throw new HttpError(503, "Production APP_URL must use HTTPS.");
 }
 export function csrf(req: Request) {
   const origin = req.headers.get("origin");
@@ -174,6 +179,7 @@ export async function audit(
   target: string,
   reason: string,
   details: unknown,
+  blockId?: string | null,
 ) {
   await sb("/rest/v1/audit_logs", {
     method: "POST",
@@ -183,6 +189,7 @@ export async function audit(
       target_id: target,
       reason,
       details,
+      ...(blockId ? { block_id: blockId } : {}),
     }),
   });
 }
