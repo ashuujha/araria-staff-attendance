@@ -127,7 +127,7 @@ export async function POST(req: Request) {
       return json(result);
     }
     if (body.action === "geofence") {
-      if (profile.role !== "super_admin")
+      if (profile.role !== "dpro")
         throw new HttpError(403, "जियोफेंस बदलने के लिए Super Admin आवश्यक।");
       const lat = Number(body.latitude),
         lng = Number(body.longitude),

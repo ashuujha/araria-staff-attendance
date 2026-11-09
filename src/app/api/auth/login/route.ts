@@ -19,7 +19,7 @@ export async function POST(req: Request) {
       !body ||
       typeof body !== "object" ||
       Array.isArray(body) ||
-      (body.admin !== undefined && typeof body.admin !== "boolean")
+      !["staff", "bpro", "dpro"].includes(body.role)
     )
       throw new HttpError(400, "अनुरोध अमान्य।");
     const identifier = String(body.identifier || "")
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
       password.length > 128
     )
       throw new HttpError(400, "मोबाइल/ईमेल और पासवर्ड जाँचें।");
-    if (body.admin === true) await verifyAdminCaptcha(body.captcha_token);
+    if (body.role !== "staff") await verifyAdminCaptcha(body.captcha_token);
     let email = identifier;
     if (!identifier.includes("@")) {
       const phone = identifier.replace(/^(?:\+91|91(?=\d{10}$))/, "");
@@ -85,14 +85,15 @@ export async function POST(req: Request) {
       : await sb(
           "/rest/v1/profiles?id=eq." +
             session.user.id +
-            "&deleted_at=is.null&select=id,name,phone,email,assignments,role,block,active,gender",
+            "&deleted_at=is.null&select=id,name,phone,email,assignments,role,block,block_id,active,gender",
           {},
           session.access_token,
         );
     const profile = profiles?.[0];
     if (
-      !profile?.active ||
-      (body.admin ? profile.role === "staff" : profile.role !== "staff")
+      !profile?.active || profile.role !== body.role ||
+      (profile.role === "bpro" && !profile.block_id) ||
+      (profile.role === "staff" && !profile.block_id)
     )
       throw new HttpError(403, "इस कार्यस्थल में प्रवेश की अनुमति नहीं है।");
     const headers = new Headers({

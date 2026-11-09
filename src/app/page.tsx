@@ -3,7 +3,7 @@ import { LanguageProvider } from "../lib/portal-language";
 export default function Page() {
   return (
     <LanguageProvider>
-      <Portal />
+      <Portal loginRole="staff" />
     </LanguageProvider>
   );
 }

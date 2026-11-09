@@ -145,7 +145,7 @@ export async function identity(
   const profiles = await sb(
     "/rest/v1/profiles?id=eq." +
       encodeURIComponent(subject!) +
-      "&deleted_at=is.null&select=id,name,phone,email,assignments,role,block,active,gender",
+      "&deleted_at=is.null&select=id,name,phone,email,assignments,role,block,block_id,active,gender",
     {},
     c.araria_session,
   );
@@ -159,7 +159,7 @@ export async function identity(
   };
 }
 export function admin(profile: Profile, write = false) {
-  if (profile.role === "staff" || (write && profile.role === "district_viewer"))
+  if (profile.role !== "bpro" && profile.role !== "dpro")
     throw new HttpError(403, "यह कार्रवाई केवल अधिकृत एडमिन के लिए है।");
 }
 export function hash(value: string | Uint8Array) {

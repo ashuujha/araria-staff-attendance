@@ -6,11 +6,12 @@ export type Assignment = {
 export type Profile = {
   id: string;
   name: string;
-  role: "staff" | "super_admin" | "district_viewer" | "block_admin";
+  role: "staff" | "bpro" | "dpro";
   phone: string;
   email: string | null;
   assignments: Assignment[];
   block: string;
+  block_id: string;
   active: boolean;
   gender?: "female" | "male" | null;
   deleted_at?: string | null;

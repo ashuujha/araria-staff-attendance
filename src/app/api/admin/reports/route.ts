@@ -132,7 +132,7 @@ export async function GET(req: Request) {
       const report = {
         ...summary,
         officeLabel:
-          profile.role === "block_admin"
+          profile.role === "bpro"
             ? `Block office ${profile.block}, Araria`
             : filters.block
               ? `Block office ${filters.block}, Araria`
@@ -186,7 +186,7 @@ export async function GET(req: Request) {
       filters,
     });
     report.officeLabel =
-      profile.role === "block_admin"
+      profile.role === "bpro"
         ? `Block office ${profile.block}, Araria`
         : filters.block
           ? `Block office ${filters.block}, Araria`

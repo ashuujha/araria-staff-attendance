@@ -400,10 +400,11 @@ function SavedAttendanceEvidence({ row }: { row: RecordRow }) {
 }
 
 export default function Portal({
-  adminLogin = false,
+  loginRole = "staff",
 }: {
-  adminLogin?: boolean;
+  loginRole?: "staff" | "bpro" | "dpro";
 }) {
+  const adminLogin = loginRole !== "staff";
   const [profile, setProfile] = useState<Profile | null>(null);
   const [bootstrap, setBootstrap] = useState<Bootstrap | null>(null);
   const [revisions, setRevisions] = useState<Revisions | null>(null);
@@ -412,7 +413,6 @@ export default function Portal({
   useEffect(() => {
     setActiveDepartment("");
   }, [profile?.id]);
-  const loginRole = adminLogin ? "admin" : "staff";
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -440,9 +440,9 @@ export default function Portal({
     api("/api/session")
       .then((data) => {
         if (active && generation === sessionGeneration.current) {
-          if ((data.profile.role !== "staff") !== adminLogin) {
+          if (data.profile.role !== loginRole) {
             window.location.replace(
-              data.profile.role === "staff" ? "/" : "/admin",
+              data.profile.role === "staff" ? "/" : `/${data.profile.role}`,
             );
             return;
           }
@@ -463,7 +463,7 @@ export default function Portal({
     return () => {
       active = false;
     };
-  }, [fail, adminLogin]);
+  }, [fail, loginRole]);
   async function login(event: React.FormEvent) {
     event.preventDefault();
     sessionGeneration.current++;
@@ -475,7 +475,7 @@ export default function Portal({
       const data = await api("/api/auth/login", {
         identifier,
         password,
-        admin: loginRole === "admin",
+        role: loginRole,
         ...(adminLogin ? { captcha_token: captchaToken } : {}),
       });
       setPassword("");
@@ -535,9 +535,9 @@ export default function Portal({
           if (prior && next.profile !== prior.profile) {
             const data = await api("/api/session");
             if (!active || generation !== sessionGeneration.current) return;
-            if ((data.profile.role !== "staff") !== adminLogin) {
+            if (data.profile.role !== loginRole) {
               window.location.replace(
-                data.profile.role === "staff" ? "/" : "/admin",
+                data.profile.role === "staff" ? "/" : `/${data.profile.role}`,
               );
               return;
             }
@@ -579,7 +579,7 @@ export default function Portal({
       window.removeEventListener("araria:changed", visible);
       document.removeEventListener("visibilitychange", visible);
     };
-  }, [profile?.id, !!revisions, adminLogin]);
+  }, [profile?.id, !!revisions, loginRole]);
   return (
     <Localized>
       <div className="simple-portal">
@@ -627,13 +627,13 @@ export default function Portal({
               <span className="sp-eyebrow">सुरक्षित प्रवेश / SECURE LOGIN</span>
               <h1>
                 {adminLogin
-                  ? "प्रशासक लॉगिन / Admin login"
+                  ? loginRole === "bpro" ? "प्रखंड पंचायती राज पदाधिकारी / BPRO login" : "जिला पंचायती राज पदाधिकारी / DPRO login"
                   : "कर्मी लॉगिन / Staff login"}
               </h1>
               <p className="sp-muted">अपना लॉगिन विवरण और पासवर्ड डालें।</p>
               <form onSubmit={login}>
                 <label className="sp-field">
-                  {loginRole === "admin"
+                  {adminLogin
                     ? "ईमेल या मोबाइल / Email or mobile"
                     : "मोबाइल नंबर / Mobile number"}
                   <input
@@ -707,7 +707,7 @@ export default function Portal({
               fail={fail}
               initial={bootstrap?.profile.id === profile.id ? bootstrap : null}
               revisions={revisions}
-              canManage={profile.role !== "district_viewer"}
+              canManage
               adminBlock={profile.block}
             />
           )}

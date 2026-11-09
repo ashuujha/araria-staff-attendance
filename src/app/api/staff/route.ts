@@ -70,7 +70,7 @@ export async function POST(req: Request) {
       if (existing.length) {
         const match = existing[0];
         const inScope =
-          profile.role === "super_admin" || profile.block === match.block;
+          profile.role === "dpro" || profile.block === match.block;
         return json(
           {
             error:
@@ -190,7 +190,7 @@ export async function POST(req: Request) {
     const target = targets[0];
     if (!target || target.role !== "staff")
       throw new HttpError(403, "कर्मी प्रबंधन की अनुमति नहीं।");
-    if (profile.role === "block_admin" && target.block !== profile.block)
+    if (profile.role === "bpro" && target.block !== profile.block)
       throw new HttpError(403, "कर्मी प्रबंधन की अनुमति नहीं।");
     if (b.action === "restore") {
       if (!target.deleted_at)
@@ -221,7 +221,7 @@ export async function POST(req: Request) {
       return json({ profile: restored[0] });
     }
     if (b.action === "reset_password") {
-      if (profile.role !== "super_admin")
+      if (profile.role !== "dpro")
         throw new HttpError(403, "Super Admin आवश्यक।");
       if (!target.phone)
         throw new HttpError(

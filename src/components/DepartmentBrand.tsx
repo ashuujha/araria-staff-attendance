@@ -18,7 +18,7 @@ export default function DepartmentBrand({
       : null;
   return (
     <Localized>
-      <a href={adminLogin ? "/admin" : "/"} className="sp-brand">
+      <a href={profile?.role === "bpro" ? "/bpro" : adminLogin ? "/dpro" : "/"} className="sp-brand">
         <span
           className="sp-mark sp-department-mark"
           title="Government of Bihar"
