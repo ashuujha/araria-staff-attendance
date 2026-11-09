@@ -1,16 +1,11 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 const apply = process.argv.includes("--apply");
-const adminOnly = process.argv.includes("--admin-only");
-const source = adminOnly
-  ? { staff: [], summary: { mode: "admin_only", staff_imported: 0 } }
-  : JSON.parse(await readFile("private/staff-import.json", "utf8"));
+const source = JSON.parse(await readFile("private/staff-import.json", "utf8"));
 if (!apply) {
   console.log("Import preview:", source.summary);
   console.log(
-    adminOnly
-      ? "Set INITIAL_ADMIN_PASSWORD, then run node --env-file=.env.local scripts/seed.mjs --admin-only --apply."
-      : "Review private/staff-import.json, then run npm run seed -- --apply.",
+    "Review private/staff-import.json, then run npm run seed -- --apply.",
   );
   process.exit(0);
 }
@@ -41,6 +36,8 @@ for (let page = 1; ; page++) {
   if (data.users.length < 1000) break;
 }
 const byEmail = new Map(users.map((u) => [u.email, u]));
+const blocks = await api("/rest/v1/blocks?active=eq.true&select=id,name_en");
+const blockIds = new Map(blocks.map((block) => [block.name_en, block.id]));
 const existingPhones = new Set(
   source.staff.length
     ? (await api("/rest/v1/profiles?select=phone")).map((p) => p.phone)
@@ -48,6 +45,18 @@ const existingPhones = new Set(
 );
 const credentials = [];
 for (const item of source.staff) {
+  const blockId = blockIds.get(item.block);
+  if (
+    !blockId ||
+    !Array.isArray(item.assignments) ||
+    item.assignments.some(
+      (a) =>
+        a.department !== "पंचायती राज विभाग" || !a.panchayat || !a.position,
+    )
+  )
+    throw Error(
+      "Review staff block and Panchayati Raj assignments before seeding.",
+    );
   const phone = item.phones[0] || null;
   if (phone && existingPhones.has(phone)) continue;
   const email = item.email || (phone ? `${phone}@staff.araria.invalid` : null);
@@ -83,47 +92,16 @@ for (const item of source.staff) {
       secondary_phones: item.phones.slice(1),
       email: item.email,
       login_email: email,
-      assignments: item.assignments,
+      block: item.block,
+      block_id: blockId,
+      assignments: item.assignments.map((a) => ({ ...a, block_id: blockId })),
       role: "staff",
       active: true,
     });
 }
-console.log("Staff master data preserved; admin provisioning next.");
-const adminEmail = process.env.INITIAL_ADMIN_EMAIL || "sfc.aditya@gmail.com";
-let admin = byEmail.get(adminEmail);
-if (!admin) {
-  if (
-    !process.env.INITIAL_ADMIN_PASSWORD ||
-    process.env.INITIAL_ADMIN_PASSWORD.length < 14
-  )
-    throw Error(
-      "Set INITIAL_ADMIN_PASSWORD to a strong password of at least 14 characters.",
-    );
-  admin = await api("/auth/v1/admin/users", "POST", {
-    email: adminEmail,
-    password: process.env.INITIAL_ADMIN_PASSWORD,
-    email_confirm: true,
-    user_metadata: { name: "Araria Administrator" },
-  });
-}
-const currentAdmin = await api(
-  "/rest/v1/profiles?id=eq." + admin.id + "&select=id,role",
+console.log(
+  "Panchayati Raj staff master data preserved. Seed administrators with scripts/seed-admins.ts.",
 );
-if (currentAdmin?.length && currentAdmin[0].role !== "super_admin")
-  throw Error(
-    "Existing admin-email profile has another role. Review it manually before promoting.",
-  );
-if (!currentAdmin?.length)
-  await api("/rest/v1/profiles", "POST", {
-    id: admin.id,
-    name: "Araria Administrator",
-    phone: null,
-    email: adminEmail,
-    login_email: adminEmail,
-    role: "super_admin",
-    assignments: [],
-    active: true,
-  });
 if (credentials.length) {
   const path = `private/credentials-${Date.now()}.csv`;
   const fields = ["name", "phone", "email", "login", "password"];
@@ -141,5 +119,3 @@ if (credentials.length) {
     `${credentials.length} new accounts. One-time credentials saved privately to ${path}.`,
   );
 } else console.log("No new accounts. Existing passwords were not changed.");
-
-console.log("Administrator ready:", adminEmail);

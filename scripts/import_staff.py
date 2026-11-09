@@ -16,18 +16,23 @@ def read_xlsx(path):
             rows.append((int(r.get('r')),cells))
         return rows
 
-def normalize(rows):
-    candidates=[]; vacancies=[]; needs_fix=[]; current_panchayat=''
+PR_NAMES={'पंचायती राज विभाग','पंचायतीराज विभाग','Panchayati Raj Department'}
+PR_DEPARTMENT='पंचायती राज विभाग'
+def normalize(rows, block='Araria'):
+    candidates=[]; vacancies=[]; needs_fix=[]; current_panchayat=''; skipped_departments=0
     for number,c in rows:
         if number<6: continue
         if c.get('B'): current_panchayat=c['B']
+        if re.sub(r'\s+',' ',c.get('D','')).strip() not in PR_NAMES:
+            skipped_departments+=1
+            continue
         name=re.sub(r'\s+',' ',c.get('E','')).strip()
         if not name or name in ('-','—','रिक्त','रिक्त पद'): vacancies.append(number); continue
         phones=[]
         for p in re.findall(r'(?:\+?91[\s-]*)?([6-9]\d{9})(?!\d)',c.get('F','')):
             if p not in phones: phones.append(p)
         emails=re.findall(r'[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}',c.get('G',''))
-        item={'name':name,'phones':phones,'email':emails[0].lower() if emails else None,'assignments':[{'panchayat':current_panchayat,'position':re.sub(r'\s+',' ',c.get('C','')).strip(),'department':re.sub(r'\s+',' ',c.get('D','')).strip()}],'source_rows':[number]}
+        item={'name':name,'phones':phones,'email':emails[0].lower() if emails else None,'block':block,'assignments':[{'panchayat':current_panchayat,'position':re.sub(r'\s+',' ',c.get('C','')).strip(),'department':PR_DEPARTMENT}],'source_rows':[number]}
         if not phones and not emails: needs_fix.append(item); continue
         candidates.append(item)
     # Union-find handles transitive overlaps, including secondary numbers.
@@ -55,8 +60,8 @@ def normalize(rows):
     conflicts=[a for a in staff if a['name_conflicts']]
     staff=[a for a in staff if not a['name_conflicts']]
     needs_fix+=conflicts
-    return {'staff':staff,'needs_fix':needs_fix,'vacancy_rows':vacancies,'summary':{'source_rows':len(candidates)+len(needs_fix)-len(conflicts),'accounts_ready':len(staff),'needs_fix':len(needs_fix),'vacancies':len(vacancies),'name_conflicts':len(conflicts),'panchayats':len(set(a['panchayat'] for i in staff+needs_fix for a in i['assignments']))}}
+    return {'staff':staff,'needs_fix':needs_fix,'vacancy_rows':vacancies,'summary':{'block':block,'skipped_non_panchayati_rows':skipped_departments,'source_rows':len(candidates)+len(needs_fix)-len(conflicts),'accounts_ready':len(staff),'needs_fix':len(needs_fix),'vacancies':len(vacancies),'name_conflicts':len(conflicts),'panchayats':len(set(a['panchayat'] for i in staff+needs_fix for a in i['assignments']))}}
 if __name__=='__main__':
-    p=argparse.ArgumentParser(); p.add_argument('file',nargs='?',default='../ALL STAFF ARARIA.xlsx'); p.add_argument('--output',default='private/staff-import.json'); args=p.parse_args()
-    result=normalize(read_xlsx(args.file)); target=Path(args.output); target.parent.mkdir(parents=True,exist_ok=True); target.write_text(json.dumps(result,ensure_ascii=False,indent=2)); target.chmod(0o600)
+    p=argparse.ArgumentParser(); p.add_argument('file',nargs='?',default='../ALL STAFF ARARIA.xlsx'); p.add_argument('--block',required=True,choices=['Araria','Bhargama','Forbesganj','Jokihat','Kursakanta','Narpatganj','Palasi','Raniganj','Sikti']); p.add_argument('--output',default='private/staff-import.json'); args=p.parse_args()
+    result=normalize(read_xlsx(args.file),args.block); target=Path(args.output); target.parent.mkdir(parents=True,exist_ok=True); target.write_text(json.dumps(result,ensure_ascii=False,indent=2)); target.chmod(0o600)
     print(json.dumps(result['summary'],ensure_ascii=False)); print('Private import written to '+str(target))

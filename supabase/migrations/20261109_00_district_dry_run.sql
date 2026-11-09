@@ -17,6 +17,12 @@ select 'historical_attendance_by_department' as section,
        count(*) filter (where deleted_at is null) as active_rows
 from public.attendance group by department order by rows desc;
 
+select 'staff_to_soft_archive_without_panchayati_assignment' as section,
+       count(*) as affected_staff
+from public.profiles p where p.role='staff' and p.active and p.deleted_at is null
+ and not exists (select 1 from jsonb_array_elements(coalesce(p.assignments,'[]'::jsonb)) a
+   where a->>'department' in ('पंचायती राज विभाग','पंचायतीराज विभाग','Panchayati Raj Department'));
+
 select 'historical_attendance_by_block' as section,
        coalesce(block,'<NULL>') as block, count(*) as rows
 from public.attendance group by block order by rows desc;

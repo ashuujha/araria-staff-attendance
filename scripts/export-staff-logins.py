@@ -46,7 +46,7 @@ def main():
             for item in csv.DictReader(stream):
                 if item.get("login") and item.get("password"):
                     credentials[item["login"]] = item
-    rows = [["No.", "Staff name", "Mobile number", "Email", "Login ID", "Password", "Login role", "Department", "Panchayat", "Position", "Website"]]
+    rows = [["No.", "Staff name", "Mobile number", "Email", "Login ID", "Password", "Login role", "Block", "Panchayat", "Position", "Website"]]
     missing = 0
     for person in sorted(source["staff"], key=lambda p: p["name"]):
         login = person["phones"][0] if person["phones"] else person["email"]
@@ -58,7 +58,7 @@ def main():
         rows.append([
             str(len(rows)), person["name"], credential["phone"], credential["email"],
             credential["login"], credential["password"], "Staff",
-            '\n'.join(a.get("department", "") for a in assignments),
+            person.get("block", "Araria"),
             '\n'.join(a.get("panchayat", "") for a in assignments),
             '\n'.join(a.get("position", "") for a in assignments),
             "https://araria-staff-attendance.vercel.app",

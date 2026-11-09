@@ -1,0 +1,63 @@
+{
+  "dpro": {
+    "name": "DPRO Araria",
+    "email": "dpro@example.invalid",
+    "password": "REPLACE_WITH_PRIVATE_PASSWORD"
+  },
+  "bpros": [
+    {
+      "block": "Araria",
+      "name": "BPRO Araria",
+      "email": "araria@example.invalid",
+      "password": "REPLACE_WITH_PRIVATE_PASSWORD"
+    },
+    {
+      "block": "Bhargama",
+      "name": "BPRO Bhargama",
+      "email": "bhargama@example.invalid",
+      "password": "REPLACE_WITH_PRIVATE_PASSWORD"
+    },
+    {
+      "block": "Forbesganj",
+      "name": "BPRO Forbesganj",
+      "email": "forbesganj@example.invalid",
+      "password": "REPLACE_WITH_PRIVATE_PASSWORD"
+    },
+    {
+      "block": "Jokihat",
+      "name": "BPRO Jokihat",
+      "email": "jokihat@example.invalid",
+      "password": "REPLACE_WITH_PRIVATE_PASSWORD"
+    },
+    {
+      "block": "Kursakanta",
+      "name": "BPRO Kursakanta",
+      "email": "kursakanta@example.invalid",
+      "password": "REPLACE_WITH_PRIVATE_PASSWORD"
+    },
+    {
+      "block": "Narpatganj",
+      "name": "BPRO Narpatganj",
+      "email": "narpatganj@example.invalid",
+      "password": "REPLACE_WITH_PRIVATE_PASSWORD"
+    },
+    {
+      "block": "Palasi",
+      "name": "BPRO Palasi",
+      "email": "palasi@example.invalid",
+      "password": "REPLACE_WITH_PRIVATE_PASSWORD"
+    },
+    {
+      "block": "Raniganj",
+      "name": "BPRO Raniganj",
+      "email": "raniganj@example.invalid",
+      "password": "REPLACE_WITH_PRIVATE_PASSWORD"
+    },
+    {
+      "block": "Sikti",
+      "name": "BPRO Sikti",
+      "email": "sikti@example.invalid",
+      "password": "REPLACE_WITH_PRIVATE_PASSWORD"
+    }
+  ]
+}
