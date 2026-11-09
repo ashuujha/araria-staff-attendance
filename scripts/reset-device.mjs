@@ -21,7 +21,7 @@ export async function resetStaffDevice(phone, { url, key, adminEmail }) {
   const admins = await api(
     "/rest/v1/profiles?email=eq." +
       encodeURIComponent(adminEmail) +
-      "&role=eq.super_admin&active=eq.true&deleted_at=is.null&select=id",
+      "&role=eq.dpro&active=eq.true&deleted_at=is.null&select=id",
   );
   const staff = await api(
     "/rest/v1/profiles?phone=eq." +

@@ -35,7 +35,7 @@ export async function resetAdminPassword({
   const profiles = await api(
     "/rest/v1/profiles?login_email=eq." +
       encodeURIComponent(email) +
-      "&role=eq.super_admin&active=eq.true&deleted_at=is.null&select=id",
+      "&role=eq.dpro&active=eq.true&deleted_at=is.null&select=id",
   );
   if (profiles.length !== 1)
     throw Error(
@@ -44,7 +44,7 @@ export async function resetAdminPassword({
   const id = profiles[0].id;
   await api("/auth/v1/admin/users/" + id, "PUT", { password });
   // Clear only this administrator's old origin-bound cookie, preserving staff binding.
-  await api("/rest/v1/profiles?id=eq." + id + "&role=eq.super_admin", "PATCH", {
+  await api("/rest/v1/profiles?id=eq." + id + "&role=eq.dpro", "PATCH", {
     device_hash: null,
   });
   const session = await api(

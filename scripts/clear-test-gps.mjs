@@ -80,7 +80,7 @@ export async function clearTestGps({
   const admins = await api(
     "/rest/v1/profiles?login_email=eq." +
       encodeURIComponent(adminEmail) +
-      "&role=eq.super_admin&active=eq.true&deleted_at=is.null&select=id",
+      "&role=eq.dpro&active=eq.true&deleted_at=is.null&select=id",
   );
   if (admins.length !== 1)
     throw Error("Exactly one active administrator is required.");

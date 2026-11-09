@@ -51,7 +51,7 @@ const staff = [
 const admin = {
   ...staff[0],
   id: "00000000-0000-4000-8000-000000000004",
-  role: "super_admin",
+  role: "dpro",
   name: "Browser Administrator",
   email: "browser-admin@example.test",
 };
@@ -312,7 +312,7 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await noOverflow();
   await screenshot("login-mobile");
-  await page.goto(baseUrl + "/admin");
+  await page.goto(baseUrl + "/dpro");
   await page.locator("#admin-captcha-code").fill("ABC234");
   await page
     .getByRole("checkbox", { name: "Browser CAPTCHA check", exact: true })
