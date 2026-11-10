@@ -1647,8 +1647,7 @@ function Admin({
             )))),
   );
   const [page, setPage] = useState(1);
-  const totalRows =
-    tab === "staff" ? visibleStaff.length : visibleRecords.length;
+  const totalRows = visibleRecords.length;
   const pages = Math.max(1, Math.ceil(totalRows / 25));
   const activePage = Math.min(page, pages);
   useEffect(() => {
@@ -2074,7 +2073,7 @@ function Admin({
                       </tr>
                     </thead>
                     <tbody>
-                      {visibleStaff.slice(start, start + 25).map((person) => (
+                      {visibleStaff.map((person) => (
                         <tr key={person.id}>
                           <td>
                             <span className="sp-cell-label" aria-hidden="true">
@@ -2207,8 +2206,8 @@ function Admin({
                     " हटाए गए कर्मी देखने के लिए Removed staff चुनें।"}
                 </p>
               )}
-              {pages > 1 && (
-                <nav className="sp-pagination" aria-label="Staff list pages">
+              {tab !== "staff" && pages > 1 && (
+                <nav className="sp-pagination" aria-label="Attendance pages">
                   <button
                     type="button"
                     className="sp-button sp-secondary"
