@@ -140,13 +140,20 @@ begin
  return to_jsonb(r);
 end $$;
 
--- Retire older service-role attendance entry points; the current workflow remains available.
-
-revoke execute on function public.save_attendance_basic(uuid,text,text,text,text,text,text,text,text,text,text,double precision,double precision,double precision,uuid,text,text,text,text) from service_role;
-
-revoke execute on function public.save_attendance_workflow(uuid,text,text,text,text,text,text,text,text,text,text,double precision,double precision,double precision,uuid,text,text,text,text) from service_role;
-
-revoke execute on function public.submit_attendance(uuid,text,text,double precision,double precision,double precision,uuid,text,text,text,text,text,text) from service_role;
+-- Retire only entry points that actually exist in this installation.
+-- Older deployments have different overloads, or may lack one altogether.
+do $$
+declare old_entry record;
+begin
+ for old_entry in
+  select p.oid::regprocedure as signature
+  from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+  where n.nspname='public' and p.proname in
+    ('save_attendance_basic','save_attendance_workflow','submit_attendance')
+ loop
+  execute format('revoke execute on function %s from service_role',old_entry.signature);
+ end loop;
+end $$;
 
 notify pgrst, 'reload schema';
 

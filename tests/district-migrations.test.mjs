@@ -261,3 +261,18 @@ test("district migrations can be rerun without duplicating the block catalog or 
     before,
   );
 });
+
+test("district RPC migration tolerates an older attendance function being absent", async () => {
+  const existing = (
+    await db.query(
+      "select p.oid::regprocedure::text as signature from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='save_attendance_basic' limit 1",
+    )
+  ).rows[0];
+  if (existing) await db.exec(`drop function ${existing.signature}`);
+  await db.exec(
+    await readFile(
+      "supabase/migrations/20261109_04_district_rpc_roles.sql",
+      "utf8",
+    ),
+  );
+});
