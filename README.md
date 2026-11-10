@@ -32,15 +32,15 @@ The first command validates without writing. Repeating `--apply` updates profile
 
 ## Staff import
 
-Seven block workbooks are in `../STAFF DETAILS ALL BLOCK/`. The roster import creates directory entries for the corresponding BPROs without creating staff Auth users or passwords. The Forbesganj and Narpatganj lists will be imported when provided. Apply migration 09 first, then review the read-only comparison before replacing the old Araria directory:
+Nine block workbooks are in `../STAFF DETAILS ALL BLOCK/`. The roster import creates directory entries for the corresponding BPROs without creating staff Auth users or passwords. Apply migration 09 first, then review the read-only comparison. Select only the blocks you intend to import, since reimporting an existing block can overwrite dashboard edits:
 
 ```bash
 node scripts/prepare-block-rosters.mjs
-node scripts/import-block-rosters.mjs --replace-araria
-node scripts/import-block-rosters.mjs --apply --replace-araria
+node scripts/import-block-rosters.mjs --blocks=forbesganj,narpatganj
+node scripts/import-block-rosters.mjs --apply --blocks=forbesganj,narpatganj
 ```
 
-The preview is gitignored under `private/`. The final command soft archives former Araria staff accounts while preserving their historical attendance. It does not create or distribute new staff credentials. New directory entries may also be added in the authorized BPRO/DPRO dashboard. See [docs/MIGRATIONS.md](docs/MIGRATIONS.md) for the archive and rollback notes.
+The preview is gitignored under `private/`. These commands leave existing block rosters, Auth accounts, and historical attendance alone. The separate `--replace-araria` option soft archives former Araria staff accounts only when explicitly requested with `--blocks=araria`. The import does not create or distribute new staff credentials. New directory entries may also be added in the authorized BPRO/DPRO dashboard. See [docs/MIGRATIONS.md](docs/MIGRATIONS.md) for the archive and rollback notes.
 
 ## Environment and verification
 

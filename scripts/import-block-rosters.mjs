@@ -11,6 +11,24 @@ if (!base || !key) throw Error("Supabase configuration missing");
 const preview = JSON.parse(
   await readFile("private/block-roster-preview.json", "utf8"),
 );
+const blockOption = process.argv.find((argument) => argument.startsWith("--blocks="));
+const selectedCodes = blockOption
+  ? blockOption.slice("--blocks=".length).split(",").map((code) => code.trim())
+  : Object.keys(preview.summary);
+if (
+  !selectedCodes.length ||
+  selectedCodes.some((code) => !preview.summary[code]) ||
+  new Set(selectedCodes).size !== selectedCodes.length
+)
+  throw Error("--blocks must list distinct block codes present in the preview");
+if (replaceAraria && !selectedCodes.includes("araria"))
+  throw Error("--replace-araria requires araria in --blocks");
+const selected = new Set(selectedCodes);
+const incomingSummary = Object.fromEntries(
+  selectedCodes.map((code) => [code, preview.summary[code]]),
+);
+const people = preview.people.filter((person) => selected.has(person.block));
+if (!people.length) throw Error("No staff found for selected blocks");
 const api = async (endpoint, method = "GET", body, extraHeaders = {}) => {
   const response = await fetch(`${base}${endpoint}`, {
     method,
@@ -31,7 +49,7 @@ const api = async (endpoint, method = "GET", body, extraHeaders = {}) => {
 };
 const blocks = await api("/rest/v1/blocks?select=id,code,name_en&limit=20");
 const blockByCode = new Map(blocks.map((block) => [block.code, block]));
-for (const code of Object.keys(preview.summary))
+for (const code of selectedCodes)
   if (!blockByCode.has(code)) throw Error(`Missing block code: ${code}`);
 const araria = blockByCode.get("araria");
 const dproRows = await api(
@@ -54,10 +72,12 @@ try {
   if (apply) throw error;
   console.log("Roster migration has not been applied yet.");
 }
-const existingKeys = new Set(existingRoster.map((row) => row.source_key));
-const incomingKeys = new Set(preview.people.map((row) => row.source_key));
+const selectedBlockIds = new Set(selectedCodes.map((code) => blockByCode.get(code).id));
+const scopedRoster = existingRoster.filter((row) => selectedBlockIds.has(row.block_id));
+const existingKeys = new Set(scopedRoster.map((row) => row.source_key));
+const incomingKeys = new Set(people.map((row) => row.source_key));
 const workplaces = new Map();
-for (const person of preview.people)
+for (const person of people)
   for (const assignment of person.assignments) {
     const block = blockByCode.get(person.block);
     workplaces.set(`${block.id}|${assignment.panchayat}`, {
@@ -69,15 +89,15 @@ for (const person of preview.people)
 console.log(
   JSON.stringify(
     {
-      incoming: preview.summary,
+      incoming: incomingSummary,
       distinct_workspaces: workplaces.size,
-      rows_to_insert: preview.people.filter(
+      rows_to_insert: people.filter(
         (row) => !existingKeys.has(row.source_key),
       ).length,
-      rows_to_update: preview.people.filter((row) =>
+      rows_to_update: people.filter((row) =>
         existingKeys.has(row.source_key),
       ).length,
-      existing_roster_not_in_workbooks: existingRoster.filter(
+      existing_roster_not_in_workbooks: scopedRoster.filter(
         (row) => row.source_key && !incomingKeys.has(row.source_key),
       ).length,
       old_araria_profiles_to_soft_archive: replaceAraria
@@ -100,7 +120,7 @@ for (let i = 0; i < places.length; i += 100)
     places.slice(i, i + 100),
     { Prefer: "resolution=ignore-duplicates,return=minimal" },
   );
-const rows = preview.people.map((person) => ({
+const rows = people.map((person) => ({
   block_id: blockByCode.get(person.block).id,
   name: person.name,
   phone: person.phone,
@@ -127,11 +147,11 @@ const saved = await api(
   "/rest/v1/staff_roster?deleted_at=is.null&select=source_key,block_id&limit=1000",
 );
 const savedKeys = new Set(saved.map((row) => row.source_key));
-if (preview.people.some((row) => !savedKeys.has(row.source_key)))
+if (people.some((row) => !savedKeys.has(row.source_key)))
   throw Error(
     "Roster verification failed; old Araria accounts were not changed",
   );
-for (const [code, summary] of Object.entries(preview.summary))
+for (const [code, summary] of Object.entries(incomingSummary))
   await api("/rest/v1/audit_logs", "POST", {
     actor_id: dproId,
     action: "import_block_roster",

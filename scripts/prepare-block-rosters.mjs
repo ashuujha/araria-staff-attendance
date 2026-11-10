@@ -6,6 +6,7 @@ import path from "node:path";
 const sources = [
   ["araria", "BPRO_ARARIA.xlsx", "Data Base", 6, [2, 3, 4, 5, 6, 7, 8, 9]],
   ["bhargama", "BPRO_BHARGAMA.xlsx", "Bhargama", 6, [2, 3, 4, 5, 6, 7, 8, 9]],
+  ["forbesganj", "BPRO_FORBESGANJ.xlsx", "Sheet1", 2, [2, 3, 4, 5, 6, 7, 8, 9]],
   ["jokihat", "BPRO_JOKIHAT.xlsx", "Sheet11", 3, [2, 3, 4, 5, 6, 7, 8, 9]],
   [
     "kursakanta",
@@ -14,6 +15,7 @@ const sources = [
     3,
     [2, 3, 4, 5, 6, 7, 8, 9],
   ],
+  ["narpatganj", "Bpro_NARPATGANJ.xlsx", "Sheet11", 3, [2, 3, 4, 5, 6, 7, 8, 9]],
   ["palasi", "BPRO_PALASI.xlsx", "Database", 4, [2, 3, 4, 5, 6, 7, 8, 9]],
   ["raniganj", "BPRO_RANIGANJ.xlsx", "RANIGANJ", 5, [2, 3, 5, 6, 7, 8, 9, 10]],
   ["sikti", "BPPRO_SIKTI.xlsx", "PRD Karmi", 3, [2, 3, 4, 5, 6, 7, 8, 9]],
@@ -22,8 +24,10 @@ const department = "पंचायती राज विभाग";
 const blockNames = {
   araria: "अररिया",
   bhargama: "भरगामा",
+  forbesganj: "फारबिसगंज",
   jokihat: "जोकीहाट",
   kursakanta: "कुर्साकांटा",
+  narpatganj: "नरपतगंज",
   palasi: "पलासी",
   raniganj: "रानीगंज",
   sikti: "सिकटी",
