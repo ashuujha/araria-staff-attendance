@@ -635,10 +635,11 @@ export default function Portal({
               <form onSubmit={login}>
                 <label className="sp-field">
                   {adminLogin
-                    ? "ईमेल या मोबाइल / Email or mobile"
+                    ? "ईमेल / Email"
                     : "मोबाइल नंबर / Mobile number"}
                   <input
                     required
+                    type={adminLogin ? "email" : "tel"}
                     autoComplete="username"
                     inputMode={loginRole === "staff" ? "tel" : "email"}
                     value={identifier}
