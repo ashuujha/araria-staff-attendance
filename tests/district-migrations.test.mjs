@@ -14,7 +14,7 @@ await db.exec(
   ),
 );
 for (const name of (await readdir("supabase/migrations")).sort()) {
-  if (name.startsWith("20261109")) continue;
+  if (name.startsWith("20261109") || name.startsWith("20261110")) continue;
   await db.exec(await readFile("supabase/migrations/" + name, "utf8"));
 }
 const dpro = "11111111-1111-4111-8111-111111111111";
@@ -79,6 +79,9 @@ await db.exec(
 );
 await db.exec(
   await readFile("supabase/migrations/20261109_09_block_rosters.sql", "utf8"),
+);
+await db.exec(
+  await readFile("supabase/migrations/20261110_10_leave_approvals.sql", "utf8"),
 );
 
 test("block catalog and historical Araria backfill", async () => {
@@ -272,6 +275,191 @@ test("block and district office visibility, attendance visibility, and write den
     assert.equal(
       (await db.query("select count(*)::int n from office_notices")).rows[0].n,
       3,
+    );
+  } finally {
+    await db.exec("reset role");
+  }
+});
+
+test("leave requests stay pending, respect BPRO scope, and become attendance only after approval", async () => {
+  const sikti = (await db.query("select id from blocks where code='sikti'"))
+    .rows[0].id;
+  const today = (
+    await db.query(
+      "select to_char(now() at time zone 'Asia/Kolkata','YYYY-MM-DD') as d",
+    )
+  ).rows[0].d;
+  const path = `${sikti}/${staff}/${today}/leave.pdf`;
+  await db.query(
+    "insert into pending_uploads(path,staff_id,block_id) values($1,$2,$3)",
+    [path, staff, sikti],
+  );
+  await db.exec("set role authenticated");
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+    staff,
+  ]);
+  let requestId;
+  try {
+    const result = await db.query(
+      "select submit_leave_application('Office','Staff','CL',$1) as result",
+      [path],
+    );
+    requestId = result.rows[0].result.id;
+    assert.equal(result.rows[0].result.status, "pending");
+    assert.equal(
+      (
+        await db.query(
+          "select count(*)::int n from attendance where staff_id=$1 and date=$2",
+          [staff, today],
+        )
+      ).rows[0].n,
+      0,
+    );
+    await assert.rejects(
+      db.query("select submit_leave_application('Office','Staff','CL',$1)", [
+        path,
+      ]),
+    );
+  } finally {
+    await db.exec("reset role");
+  }
+  await db.exec("set role authenticated");
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [bpro]);
+  try {
+    assert.equal(
+      (await db.query("select count(*)::int n from leave_applications")).rows[0]
+        .n,
+      0,
+    );
+    await assert.rejects(
+      db.query("select decide_leave_application($1,true)", [requestId]),
+    );
+  } finally {
+    await db.exec("reset role");
+  }
+  await db.exec("set role authenticated");
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [dpro]);
+  try {
+    const approved = await db.query(
+      "select decide_leave_application($1,true) as result",
+      [requestId],
+    );
+    assert.equal(approved.rows[0].result.status, "approved");
+    assert.equal(
+      (
+        await db.query(
+          "select count(*)::int n from attendance where staff_id=$1 and date=$2 and status='leave'",
+          [staff, today],
+        )
+      ).rows[0].n,
+      1,
+    );
+    await assert.rejects(
+      db.query("select decide_leave_application($1,true)", [requestId]),
+    );
+  } finally {
+    await db.exec("reset role");
+  }
+});
+
+test("BPRO can reject then approve a corrected request in their block", async () => {
+  const araria = (await db.query("select id from blocks where code='araria'"))
+    .rows[0].id;
+  const today = (
+    await db.query(
+      "select to_char(now() at time zone 'Asia/Kolkata','YYYY-MM-DD') as d",
+    )
+  ).rows[0].d;
+  const applicant = "44444444-4444-4444-8444-444444444444";
+  await db.query("insert into auth.users values($1)", [applicant]);
+  await db.query(
+    "insert into profiles(id,name,login_email,role,block,block_id,assignments,active) values($1,'Applicant',$2,'staff','Araria',$3,$4::jsonb,true)",
+    [
+      applicant,
+      "applicant@test.invalid",
+      araria,
+      JSON.stringify([
+        {
+          panchayat: "Office",
+          position: "Staff",
+          department: "पंचायती राज विभाग",
+          block_id: araria,
+        },
+      ]),
+    ],
+  );
+  const first = `${araria}/${applicant}/${today}/first.pdf`;
+  const second = `${araria}/${applicant}/${today}/second.pdf`;
+  await db.query(
+    "insert into pending_uploads(path,staff_id,block_id) values($1,$3,$4),($2,$3,$4)",
+    [first, second, applicant, araria],
+  );
+  await db.exec("set role authenticated");
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+    applicant,
+  ]);
+  let firstId;
+  try {
+    firstId = (
+      await db.query(
+        "select submit_leave_application('Office','Staff','CL',$1) as result",
+        [first],
+      )
+    ).rows[0].result.id;
+  } finally {
+    await db.exec("reset role");
+  }
+  await db.exec("set role authenticated");
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [bpro]);
+  try {
+    const rejected = await db.query(
+      "select decide_leave_application($1,false) as result",
+      [firstId],
+    );
+    assert.equal(rejected.rows[0].result.status, "rejected");
+    assert.equal(
+      (
+        await db.query(
+          "select count(*)::int n from attendance where staff_id=$1 and date=$2",
+          [applicant, today],
+        )
+      ).rows[0].n,
+      0,
+    );
+  } finally {
+    await db.exec("reset role");
+  }
+  await db.exec("set role authenticated");
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+    applicant,
+  ]);
+  let secondId;
+  try {
+    secondId = (
+      await db.query(
+        "select submit_leave_application('Office','Staff','CL',$1) as result",
+        [second],
+      )
+    ).rows[0].result.id;
+  } finally {
+    await db.exec("reset role");
+  }
+  await db.exec("set role authenticated");
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [bpro]);
+  try {
+    const approved = await db.query(
+      "select decide_leave_application($1,true) as result",
+      [secondId],
+    );
+    assert.equal(approved.rows[0].result.status, "approved");
+    assert.equal(
+      (
+        await db.query(
+          "select count(*)::int n from attendance where staff_id=$1 and date=$2 and status='leave'",
+          [applicant, today],
+        )
+      ).rows[0].n,
+      1,
     );
   } finally {
     await db.exec("reset role");

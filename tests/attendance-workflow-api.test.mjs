@@ -111,6 +111,8 @@ function fixture(
         phase: body.action === "complete" ? "submitted" : "draft",
       });
     }
+    if (url.pathname === "/rest/v1/rpc/submit_leave_application")
+      return Response.json({ id: "pending-leave", status: "pending" });
     throw Error("Unexpected request " + url.pathname);
   };
 }
@@ -232,9 +234,10 @@ test("leave PDF remains owned, bounded and scanned when configured", async () =>
     assert.equal(response.status, 200);
     assert.ok(calls.some((c) => c.url.hostname === "scanner.example.test"));
     const rpc = calls.find(
-      (c) => c.url.pathname === "/rest/v1/rpc/save_attendance_with_evidence",
+      (c) => c.url.pathname === "/rest/v1/rpc/submit_leave_application",
     );
-    assert.equal(JSON.parse(rpc.init.body).leave_path, path);
+    assert.equal(JSON.parse(rpc.init.body).document_path, path);
+    assert.equal((await response.json()).application.status, "pending");
   } finally {
     globalThis.fetch = original;
     delete process.env.UPLOAD_SCAN_URL;

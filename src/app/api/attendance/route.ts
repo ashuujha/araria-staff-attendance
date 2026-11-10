@@ -63,6 +63,11 @@ export async function POST(req: Request) {
     const f = await req.formData();
     const action = String(f.get("action"));
     const panchayat = String(f.get("panchayat"));
+    if (action === "leave")
+      throw new HttpError(
+        409,
+        "Submit leave through the approval application form.",
+      );
     if (
       !["in", "out", "leave"].includes(action) ||
       !profile.assignments.some((a) => a.panchayat === panchayat)

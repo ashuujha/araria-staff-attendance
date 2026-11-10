@@ -25,7 +25,7 @@ export const maxDuration = 60;
 export async function GET(req: Request) {
   try {
     const { profile, token } = await identity(req);
-    const [records, leaveBalances] = await Promise.all([
+    const [records, leaveBalances, applications] = await Promise.all([
       sb(
         `/rest/v1/attendance?staff_id=eq.${profile.id}&date=eq.${istDate()}&deleted_at=is.null&select=*`,
         {},
@@ -36,8 +36,19 @@ export async function GET(req: Request) {
         { method: "POST", body: "{}" },
         token,
       ),
+      profile.role === "staff"
+        ? sb(
+            `/rest/v1/leave_applications?staff_id=eq.${profile.id}&date=eq.${istDate()}&select=id,date,leave_type,status,created_at,decided_at,panchayat,position&order=created_at.desc&limit=1`,
+            {},
+            token,
+          )
+        : Promise.resolve([]),
     ]);
-    return json({ records, leaveBalances });
+    return json({
+      records,
+      leaveBalances,
+      application: applications[0] || null,
+    });
   } catch (e) {
     return failure(e);
   }
@@ -234,6 +245,23 @@ export async function POST(req: Request) {
     }
     releaseEvidence?.();
     releaseEvidence = undefined;
+    if (body.status === "leave") {
+      const application = await sb(
+        "/rest/v1/rpc/submit_leave_application",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            panchayat_name: body.panchayat,
+            position_name: body.position,
+            leave_kind: body.leave_type,
+            document_path: body.leave_upload_path,
+          }),
+        },
+        token,
+      );
+      cleanup.length = 0;
+      return json({ application });
+    }
     const record = await sb("/rest/v1/rpc/save_attendance_with_evidence", {
       method: "POST",
       body: JSON.stringify({
@@ -265,15 +293,7 @@ export async function POST(req: Request) {
       }),
     });
     cleanup.length = 0;
-    const leaveBalances =
-      body.status === "leave"
-        ? await sb(
-            "/rest/v1/rpc/leave_balance_snapshot",
-            { method: "POST", body: "{}" },
-            token,
-          ).catch(() => null)
-        : undefined;
-    return json({ record, ...(leaveBalances ? { leaveBalances } : {}) });
+    return json({ record });
   } catch (e) {
     releaseEvidence?.();
     releaseEvidence = undefined;
