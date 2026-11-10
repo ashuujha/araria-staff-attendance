@@ -13,6 +13,8 @@ Panchayati Raj Department attendance for the nine blocks of Araria District. The
 
 Both admin routes require the typed image CAPTCHA and Cloudflare Turnstile. Login checks the role on the server. BPRO and DPRO dashboards include attendance, staff management, holidays, notices, leave balances, evidence and PDF/XLSX reports. DPRO also sees a per-block daily summary. Staff continue to submit Present, Absent, Leave or Deputation, with arrival drafts and later out-time. Photos and documents remain private and have signed links after authorization checks. District holidays and notices reach all blocks; block entries reach the selected block.
 
+CL/SL submissions now create pending applications. The staff member sees the pending decision, and the request appears simultaneously in that block's BPRO dashboard and the DPRO dashboard. Either administrator may approve or reject it; the first decision wins. Only approval creates a leave attendance row and uses the leave allowance. Administrators see a pending alert and can enable the new-application sound from their dashboard; browsers require that click before audio can play. Apply migration 10 before deploying this code.
+
 ## District conversion
 
 The migration sequence and checks are in [docs/MIGRATIONS.md](docs/MIGRATIONS.md). **A Vercel deployment does not apply SQL.** First run the read-only dry-run SQL and take a database backup. The data-changing migrations are intentionally not run by `npm run deploy`. Non-Panchayati-Raj staff are archived, not physically deleted; historical attendance remains stored. Only one DPRO and one BPRO per block may be active.

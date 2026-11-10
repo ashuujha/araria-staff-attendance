@@ -58,6 +58,21 @@ type RecordRow = {
   profiles?: Profile;
   working_places?: Assignment[];
 };
+type LeaveApplication = {
+  id: string;
+  staff_id?: string;
+  staff_name?: string;
+  block_id?: string;
+  blocks?: { name_en: string };
+  date: string;
+  panchayat: string;
+  position: string;
+  leave_type: "CL" | "SL";
+  status: "pending" | "approved" | "rejected";
+  created_at: string;
+  decided_at?: string | null;
+  leave_path?: string;
+};
 type Bootstrap = {
   profile: Profile;
   date: string;
@@ -760,6 +775,8 @@ function Staff({
   const [record, setRecord] = useState<RecordRow | null>(
     initial?.records[0] || null,
   );
+  const [leaveApplication, setLeaveApplication] =
+    useState<LeaveApplication | null>(null);
   const [leaveBalances, setLeaveBalances] =
     useState<LeaveBalanceSnapshot | null>(initial?.leaveBalances || null);
   useEffect(() => {
@@ -836,6 +853,7 @@ function Staff({
             ) || null,
           );
           if (data.leaveBalances) setLeaveBalances(data.leaveBalances);
+          setLeaveApplication(data.application || null);
           setLoadError(false);
         }
       } catch (err) {
@@ -867,12 +885,32 @@ function Staff({
   useEffect(() => {
     alive.current = true;
     if (!initial) void load();
+    else
+      void api("/api/leave-applications")
+        .then((data) => {
+          if (alive.current) setLeaveApplication(data.application || null);
+        })
+        .catch(fail);
     return () => {
       alive.current = false;
       staffRequestId.current++;
       if (retryLoad.current) clearTimeout(retryLoad.current);
     };
   }, [load, initial]);
+  useEffect(() => {
+    if (leaveApplication?.status !== "pending") return;
+    const timer = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void api("/api/leave-applications")
+        .then((data) => {
+          if (!alive.current) return;
+          setLeaveApplication(data.application || null);
+          if (data.application?.status === "approved") void load(true);
+        })
+        .catch(() => {});
+    }, 20000);
+    return () => clearInterval(timer);
+  }, [leaveApplication?.status, load]);
   const lastAttendanceRevision = useRef({
     attendance: revisions?.attendance,
     today: revisions?.today,
@@ -1001,6 +1039,17 @@ function Staff({
       }
       const saved = await api("/api/attendance-workflow", body);
       if (!alive.current) return;
+      if (saved.application?.id) {
+        staffRequestId.current++;
+        setLeaveApplication(saved.application);
+        setLoading(false);
+        setLoadError(false);
+        setLeave(null);
+        notify(
+          "अवकाश आवेदन भेजा गया है। BPRO और DPRO के निर्णय की प्रतीक्षा करें। / Leave application sent for approval.",
+        );
+        return;
+      }
       if (!saved.record?.id)
         throw new Error(
           "सहेजी गई उपस्थिति नहीं मिली। रीफ़्रेश करें। / Saved attendance not returned. Refresh to confirm.",
@@ -1126,273 +1175,296 @@ function Staff({
                 </p>
               )}
             </>
+          ) : leaveApplication?.status === "pending" ? (
+            <div role="status" className="sp-alert sp-holiday">
+              <h2>अवकाश आवेदन लंबित / Leave application pending</h2>
+              <p>
+                {leaveApplication.leave_type} • {leaveApplication.date} •{" "}
+                {leaveApplication.panchayat}
+              </p>
+              <p>
+                BPRO या DPRO के निर्णय के बाद अवकाश दर्ज होगा और शेष अवकाश
+                बदलेगा।
+              </p>
+            </div>
           ) : !assignments.length ? (
             <p className="sp-alert sp-error">
               आपके विभाग, पंचायत और पद का आवंटन उपलब्ध नहीं है। कार्यालय से
               संपर्क करें।
             </p>
           ) : (
-            <form onSubmit={(event) => save(event)}>
-              <fieldset className="sp-form-controls" disabled={busy}>
-                <div className="sp-grid">
-                  {hasMultipleWorkspaces ? (
-                    <div
-                      className="sp-field sp-workspace-picker"
-                      role="group"
-                      aria-labelledby="workspace-label"
-                      aria-required="true"
-                    >
-                      <strong id="workspace-label">
-                        आज का कार्यस्थल / Today’s workspace
-                      </strong>
-                      <small>
-                        केवल एक कार्यस्थल पर टिक करें। दोबारा दबाकर चयन हटा सकते
-                        हैं। / Tick one workspace for this attendance. Tap it
-                        again to untick.
-                      </small>
-                      <div className="sp-workspace-options">
-                        {workspaceOptions.map((assignment) => {
-                          const key = workspaceKey(assignment);
-                          return (
-                            <label className="sp-workspace-option" key={key}>
-                              <input
-                                type="checkbox"
-                                checked={selectedWorkspaceKey === key}
-                                onChange={(event) =>
-                                  setSelectedWorkspaceKey(
-                                    event.target.checked ? key : "",
-                                  )
-                                }
-                              />
-                              <span>
-                                <strong translate="no">
-                                  {assignment.panchayat}
-                                </strong>
-                                <small translate="no">
-                                  {assignment.position}
-                                </small>
-                              </span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <SelectField
-                        label="पंचायत / Panchayat"
-                        value={panchayat}
-                        required
-                        options={panchayats}
-                        onChange={(value) => {
-                          setPanchayat(value);
-                          setPosition("");
-                        }}
-                      />
-                      <SelectField
-                        label="पद / Position"
-                        value={position}
-                        required
-                        options={positions}
-                        onChange={setPosition}
-                      />
-                    </>
-                  )}
-                  <label className="sp-field">
-                    कार्य स्थिति / Work status
-                    <select
-                      value={status}
-                      onChange={(e) => {
-                        setStatus(e.target.value);
-                        setWorkplacePhoto(null);
-                        setCapturedLocation(null);
-                        setCameraOpen(false);
-                        setLeave(null);
-                      }}
-                    >
-                      {Object.entries(statusLabels).map(([value, label]) => (
-                        <option key={value} value={value}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {status === "deputation" && (
-                    <label className="sp-field">
-                      प्रतिनियुक्ति कार्यस्थल का नाम / Workplace name
-                      <input
-                        required
-                        maxLength={200}
-                        value={deputation}
-                        onChange={(e) => setDeputation(e.target.value)}
-                      />
-                    </label>
-                  )}
-                  {(status === "present" || status === "deputation") && (
-                    <div className="sp-field" key={status}>
-                      <label htmlFor="workplace-photo">
-                        कार्यस्थल की फोटो / Workplace photo
-                      </label>
-                      <input
-                        id="workplace-photo"
-                        type="file"
-                        accept="image/jpeg,image/png,.jpg,.jpeg,.png"
-                        onChange={(event) => {
-                          const file = event.target.files?.[0];
-                          if (
-                            file &&
-                            (!["image/jpeg", "image/png"].includes(file.type) ||
-                              !file.size ||
-                              file.size >= 5 * 1024 * 1024)
-                          ) {
-                            event.target.value = "";
-                            setWorkplacePhoto(null);
-                            setCapturedLocation(null);
-                            fail(
-                              new Error(
-                                "JPEG/PNG फोटो चुनें, 5 MB से कम। / Choose a JPEG/PNG photo smaller than 5 MB.",
-                              ),
-                            );
-                          } else {
-                            setWorkplacePhoto(file || null);
-                            setCapturedLocation(null);
-                            setCameraOpen(false);
-                          }
-                        }}
-                      />
-                      <small>
-                        JPEG / PNG • 5 MB से कम / Smaller than 5 MB. या कैमरे से
-                        नई फोटो लें / Or take a new photo.
-                      </small>
-                      <button
-                        type="button"
-                        className="sp-button sp-secondary"
-                        onClick={() => setCameraOpen((open) => !open)}
+            <>
+              {leaveApplication?.status === "rejected" && (
+                <p role="status" className="sp-alert sp-error">
+                  पिछला अवकाश आवेदन अस्वीकृत हुआ। आप सही जानकारी के साथ फिर
+                  आवेदन कर सकते हैं। / The previous leave request was rejected;
+                  you may apply again.
+                </p>
+              )}
+              <form onSubmit={(event) => save(event)}>
+                <fieldset className="sp-form-controls" disabled={busy}>
+                  <div className="sp-grid">
+                    {hasMultipleWorkspaces ? (
+                      <div
+                        className="sp-field sp-workspace-picker"
+                        role="group"
+                        aria-labelledby="workspace-label"
+                        aria-required="true"
                       >
-                        {cameraOpen
-                          ? "कैमरा बंद करें / Close camera"
-                          : "कैमरा खोलें / Open camera"}
-                      </button>
-                      {cameraOpen && (
-                        <WorkplaceCamera
-                          onClose={() => setCameraOpen(false)}
-                          onUse={(file, location) => {
-                            setWorkplacePhoto(file);
-                            setCapturedLocation(location);
-                            const input = document.getElementById(
-                              "workplace-photo",
-                            ) as HTMLInputElement | null;
-                            if (input) input.value = "";
+                        <strong id="workspace-label">
+                          आज का कार्यस्थल / Today’s workspace
+                        </strong>
+                        <small>
+                          केवल एक कार्यस्थल पर टिक करें। दोबारा दबाकर चयन हटा
+                          सकते हैं। / Tick one workspace for this attendance.
+                          Tap it again to untick.
+                        </small>
+                        <div className="sp-workspace-options">
+                          {workspaceOptions.map((assignment) => {
+                            const key = workspaceKey(assignment);
+                            return (
+                              <label className="sp-workspace-option" key={key}>
+                                <input
+                                  type="checkbox"
+                                  checked={selectedWorkspaceKey === key}
+                                  onChange={(event) =>
+                                    setSelectedWorkspaceKey(
+                                      event.target.checked ? key : "",
+                                    )
+                                  }
+                                />
+                                <span>
+                                  <strong translate="no">
+                                    {assignment.panchayat}
+                                  </strong>
+                                  <small translate="no">
+                                    {assignment.position}
+                                  </small>
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <SelectField
+                          label="पंचायत / Panchayat"
+                          value={panchayat}
+                          required
+                          options={panchayats}
+                          onChange={(value) => {
+                            setPanchayat(value);
+                            setPosition("");
                           }}
                         />
-                      )}
-                      {photoPreview && (
-                        <img
-                          className="sp-workplace-preview"
-                          src={photoPreview}
-                          alt="कार्यस्थल फोटो का पूर्वावलोकन / Workplace photo preview"
-                        />
-                      )}
-                      {capturedLocation && (
-                        <small>
-                          कैमरा स्थान / Camera location:{" "}
-                          {capturedLocation.latitude.toFixed(6)},{" "}
-                          {capturedLocation.longitude.toFixed(6)} • ±
-                          {Math.round(capturedLocation.accuracy)} m
-                        </small>
-                      )}
-                    </div>
-                  )}
-                  {status === "absent" && (
-                    <label className="sp-field">
-                      अनुपस्थिति का कारण / Absence reason
-                      <textarea
-                        required
-                        minLength={3}
-                        maxLength={1000}
-                        rows={3}
-                        value={absenceReason}
-                        onChange={(event) =>
-                          setAbsenceReason(event.target.value)
-                        }
-                      />
-                    </label>
-                  )}
-                  {status === "leave" && (
-                    <>
-                      <label className="sp-field">
-                        अवकाश प्रकार / Leave type
-                        <select
-                          value={leaveType}
-                          onChange={(e) => setLeaveType(e.target.value)}
-                        >
-                          <option value="CL">CL / आकस्मिक अवकाश</option>
-                          {profile.gender === "female" && (
-                            <option value="SL">SL / बीमारी अवकाश</option>
-                          )}
-                        </select>
-                      </label>
-                      <label className="sp-field">
-                        CL / SL दस्तावेज़ / Required leave document
-                        <input
-                          type="file"
+                        <SelectField
+                          label="पद / Position"
+                          value={position}
                           required
-                          accept="image/jpeg,application/pdf,.jpg,.jpeg,.pdf"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
+                          options={positions}
+                          onChange={setPosition}
+                        />
+                      </>
+                    )}
+                    <label className="sp-field">
+                      कार्य स्थिति / Work status
+                      <select
+                        value={status}
+                        onChange={(e) => {
+                          setStatus(e.target.value);
+                          setWorkplacePhoto(null);
+                          setCapturedLocation(null);
+                          setCameraOpen(false);
+                          setLeave(null);
+                        }}
+                      >
+                        {Object.entries(statusLabels).map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {status === "deputation" && (
+                      <label className="sp-field">
+                        प्रतिनियुक्ति कार्यस्थल का नाम / Workplace name
+                        <input
+                          required
+                          maxLength={200}
+                          value={deputation}
+                          onChange={(e) => setDeputation(e.target.value)}
+                        />
+                      </label>
+                    )}
+                    {(status === "present" || status === "deputation") && (
+                      <div className="sp-field" key={status}>
+                        <label htmlFor="workplace-photo">
+                          कार्यस्थल की फोटो / Workplace photo
+                        </label>
+                        <input
+                          id="workplace-photo"
+                          type="file"
+                          accept="image/jpeg,image/png,.jpg,.jpeg,.png"
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
                             if (
                               file &&
-                              (!["image/jpeg", "application/pdf"].includes(
+                              (!["image/jpeg", "image/png"].includes(
                                 file.type,
                               ) ||
                                 !file.size ||
                                 file.size >= 5 * 1024 * 1024)
                             ) {
-                              e.target.value = "";
-                              setLeave(null);
+                              event.target.value = "";
+                              setWorkplacePhoto(null);
+                              setCapturedLocation(null);
                               fail(
                                 new Error(
-                                  "JPG या PDF चुनें, 5 MB से कम। / Choose JPG or PDF smaller than 5 MB.",
+                                  "JPEG/PNG फोटो चुनें, 5 MB से कम। / Choose a JPEG/PNG photo smaller than 5 MB.",
                                 ),
                               );
-                            } else setLeave(file || null);
+                            } else {
+                              setWorkplacePhoto(file || null);
+                              setCapturedLocation(null);
+                              setCameraOpen(false);
+                            }
                           }}
                         />
                         <small>
-                          JPG या PDF • 5 MB से कम / Smaller than 5 MB
+                          JPEG / PNG • 5 MB से कम / Smaller than 5 MB. या कैमरे
+                          से नई फोटो लें / Or take a new photo.
                         </small>
+                        <button
+                          type="button"
+                          className="sp-button sp-secondary"
+                          onClick={() => setCameraOpen((open) => !open)}
+                        >
+                          {cameraOpen
+                            ? "कैमरा बंद करें / Close camera"
+                            : "कैमरा खोलें / Open camera"}
+                        </button>
+                        {cameraOpen && (
+                          <WorkplaceCamera
+                            onClose={() => setCameraOpen(false)}
+                            onUse={(file, location) => {
+                              setWorkplacePhoto(file);
+                              setCapturedLocation(location);
+                              const input = document.getElementById(
+                                "workplace-photo",
+                              ) as HTMLInputElement | null;
+                              if (input) input.value = "";
+                            }}
+                          />
+                        )}
+                        {photoPreview && (
+                          <img
+                            className="sp-workplace-preview"
+                            src={photoPreview}
+                            alt="कार्यस्थल फोटो का पूर्वावलोकन / Workplace photo preview"
+                          />
+                        )}
+                        {capturedLocation && (
+                          <small>
+                            कैमरा स्थान / Camera location:{" "}
+                            {capturedLocation.latitude.toFixed(6)},{" "}
+                            {capturedLocation.longitude.toFixed(6)} • ±
+                            {Math.round(capturedLocation.accuracy)} m
+                          </small>
+                        )}
+                      </div>
+                    )}
+                    {status === "absent" && (
+                      <label className="sp-field">
+                        अनुपस्थिति का कारण / Absence reason
+                        <textarea
+                          required
+                          minLength={3}
+                          maxLength={1000}
+                          rows={3}
+                          value={absenceReason}
+                          onChange={(event) =>
+                            setAbsenceReason(event.target.value)
+                          }
+                        />
                       </label>
-                    </>
-                  )}
-                </div>
-                <label className="sp-consent">
-                  <input
-                    type="checkbox"
-                    checked={consent}
-                    onChange={(e) => setConsent(e.target.checked)}
-                    required
-                  />
-                  <span>
-                    मैं उपस्थिति की जानकारी कार्यालय के प्रशासक के साथ साझा करने
-                    की सहमति देता/देती हूँ। कैमरा चुनने पर फोटो और उसका स्थान भी
-                    साझा होगा।
-                  </span>
-                </label>
-                <button className="sp-button sp-primary" disabled={busy}>
-                  {busy
-                    ? "सहेजा जा रहा है…"
-                    : status === "present" || status === "deputation"
-                      ? "इन टाइम और ड्राफ़्ट सहेजें / Save arrival draft"
-                      : "स्थिति सहेजें / Save status"}
-                </button>
-                <p className="sp-note">
-                  समय अपने आप दर्ज होगा।
-                  {status === "present" || status === "deputation"
-                    ? " ड्राफ़्ट तुरंत प्रशासक को दिखाई देगा।"
-                    : " अनुपस्थिति और अवकाश के लिए इन/आउट टाइम नहीं लगेगा।"}
-                </p>
-              </fieldset>
-            </form>
+                    )}
+                    {status === "leave" && (
+                      <>
+                        <label className="sp-field">
+                          अवकाश प्रकार / Leave type
+                          <select
+                            value={leaveType}
+                            onChange={(e) => setLeaveType(e.target.value)}
+                          >
+                            <option value="CL">CL / आकस्मिक अवकाश</option>
+                            {profile.gender === "female" && (
+                              <option value="SL">SL / बीमारी अवकाश</option>
+                            )}
+                          </select>
+                        </label>
+                        <label className="sp-field">
+                          CL / SL दस्तावेज़ / Required leave document
+                          <input
+                            type="file"
+                            required
+                            accept="image/jpeg,application/pdf,.jpg,.jpeg,.pdf"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (
+                                file &&
+                                (!["image/jpeg", "application/pdf"].includes(
+                                  file.type,
+                                ) ||
+                                  !file.size ||
+                                  file.size >= 5 * 1024 * 1024)
+                              ) {
+                                e.target.value = "";
+                                setLeave(null);
+                                fail(
+                                  new Error(
+                                    "JPG या PDF चुनें, 5 MB से कम। / Choose JPG or PDF smaller than 5 MB.",
+                                  ),
+                                );
+                              } else setLeave(file || null);
+                            }}
+                          />
+                          <small>
+                            JPG या PDF • 5 MB से कम / Smaller than 5 MB
+                          </small>
+                        </label>
+                      </>
+                    )}
+                  </div>
+                  <label className="sp-consent">
+                    <input
+                      type="checkbox"
+                      checked={consent}
+                      onChange={(e) => setConsent(e.target.checked)}
+                      required
+                    />
+                    <span>
+                      मैं उपस्थिति की जानकारी कार्यालय के प्रशासक के साथ साझा
+                      करने की सहमति देता/देती हूँ। कैमरा चुनने पर फोटो और उसका
+                      स्थान भी साझा होगा।
+                    </span>
+                  </label>
+                  <button className="sp-button sp-primary" disabled={busy}>
+                    {busy
+                      ? "सहेजा जा रहा है…"
+                      : status === "present" || status === "deputation"
+                        ? "इन टाइम और ड्राफ़्ट सहेजें / Save arrival draft"
+                        : "स्थिति सहेजें / Save status"}
+                  </button>
+                  <p className="sp-note">
+                    समय अपने आप दर्ज होगा।
+                    {status === "present" || status === "deputation"
+                      ? " ड्राफ़्ट तुरंत प्रशासक को दिखाई देगा।"
+                      : " अनुपस्थिति और अवकाश के लिए इन/आउट टाइम नहीं लगेगा।"}
+                  </p>
+                </fieldset>
+              </form>
+            </>
           )}
         </section>
       </>
@@ -1460,6 +1532,111 @@ function Admin({
   const [tab, setTab] = useState("attendance"),
     [loading, setLoading] = useState(!initial),
     [busy, setBusy] = useState(false);
+  const [pendingLeaves, setPendingLeaves] = useState<LeaveApplication[]>([]);
+  const [leaveError, setLeaveError] = useState("");
+  const [decisionBusy, setDecisionBusy] = useState<string | null>(null);
+  const [leaveDocumentLinks, setLeaveDocumentLinks] = useState<
+    Record<string, string>
+  >({});
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const alertAudio = useRef<AudioContext | null>(null);
+  const seenLeaveIds = useRef<Set<string> | null>(null);
+  const playLeaveSound = useCallback(() => {
+    const context = alertAudio.current;
+    if (!context || context.state !== "running") return;
+    const start = context.currentTime;
+    for (const [offset, frequency] of [
+      [0, 660],
+      [0.22, 880],
+    ]) {
+      const oscillator = context.createOscillator();
+      const volume = context.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.value = frequency;
+      volume.gain.setValueAtTime(0.0001, start + offset);
+      volume.gain.exponentialRampToValueAtTime(0.08, start + offset + 0.02);
+      volume.gain.exponentialRampToValueAtTime(0.0001, start + offset + 0.17);
+      oscillator.connect(volume).connect(context.destination);
+      oscillator.start(start + offset);
+      oscillator.stop(start + offset + 0.18);
+    }
+  }, []);
+  async function enableLeaveSound() {
+    try {
+      alertAudio.current ||= new window.AudioContext();
+      await alertAudio.current.resume();
+      setSoundEnabled(true);
+      playLeaveSound();
+    } catch {
+      setLeaveError("Browser blocked alert sound. Tap Enable sound again.");
+    }
+  }
+  const refreshPendingLeaves = useCallback(async () => {
+    const data = await api("/api/leave-applications");
+    const applications: LeaveApplication[] = data.applications || [];
+    const nextIds = new Set(applications.map((application) => application.id));
+    if (
+      seenLeaveIds.current &&
+      applications.some(
+        (application) => !seenLeaveIds.current?.has(application.id),
+      ) &&
+      soundEnabled
+    )
+      playLeaveSound();
+    seenLeaveIds.current = nextIds;
+    setPendingLeaves(applications);
+    setLeaveError("");
+  }, [soundEnabled, playLeaveSound]);
+  useEffect(() => {
+    void refreshPendingLeaves().catch((error) =>
+      setLeaveError(
+        error instanceof Error
+          ? error.message
+          : "Leave applications could not load.",
+      ),
+    );
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible")
+        void refreshPendingLeaves().catch(() => {});
+    }, 20000);
+    return () => clearInterval(timer);
+  }, [refreshPendingLeaves]);
+  async function decideLeave(application: LeaveApplication, approve: boolean) {
+    setDecisionBusy(application.id);
+    setLeaveError("");
+    try {
+      await api("/api/leave-applications", { id: application.id, approve });
+      setPendingLeaves((current) =>
+        current.filter((item) => item.id !== application.id),
+      );
+      await load(false, true);
+      await refreshPendingLeaves();
+    } catch (error) {
+      setLeaveError(
+        error instanceof Error ? error.message : "Leave decision failed.",
+      );
+      await refreshPendingLeaves().catch(() => {});
+    } finally {
+      setDecisionBusy(null);
+    }
+  }
+  async function showLeaveDocument(application: LeaveApplication) {
+    try {
+      const result = await api(
+        `/api/files?id=${encodeURIComponent(application.id)}&kind=application_leave_path`,
+      );
+      setLeaveDocumentLinks((current) => ({
+        ...current,
+        [application.id]: result.url,
+      }));
+    } catch (error) {
+      setLeaveError(
+        error instanceof Error
+          ? error.message
+          : "Leave document could not open.",
+      );
+    }
+  }
   const [filters, setFilters] = useState<
     DirectoryFilters & { status: string; phase: string }
   >({
@@ -1739,6 +1916,32 @@ function Admin({
             </button>
           </div>
         </div>
+        {pendingLeaves.length > 0 && (
+          <div className="sp-leave-notification" role="status">
+            <strong>
+              🔔 {pendingLeaves.length} अवकाश आवेदन लंबित / leave application
+              {pendingLeaves.length === 1 ? "" : "s"} pending
+            </strong>
+            <div className="sp-actions">
+              <button
+                type="button"
+                className="sp-button sp-secondary"
+                onClick={() => setTab("leave")}
+              >
+                View applications
+              </button>
+              {!soundEnabled && (
+                <button
+                  type="button"
+                  className="sp-button sp-secondary"
+                  onClick={() => void enableLeaveSound()}
+                >
+                  Enable alert sound
+                </button>
+              )}
+            </div>
+          </div>
+        )}
         <ReportDownload
           selectedDate={date}
           staff={staff}
@@ -1799,13 +2002,122 @@ function Admin({
             </button>
             <button
               role="tab"
+              aria-selected={tab === "leave"}
+              onClick={() => {
+                setTab("leave");
+                void refreshPendingLeaves().catch(() => {});
+              }}
+            >
+              अवकाश आवेदन / Pending leave ({pendingLeaves.length})
+            </button>
+            <button
+              role="tab"
               aria-selected={tab === "office"}
               onClick={() => setTab("office")}
             >
               अवकाश और सूचनाएँ / Holidays & Notices
             </button>
           </div>
-          {tab === "office" ? (
+          {tab === "leave" ? (
+            <div className="sp-leave-approvals">
+              <div className="sp-actions">
+                <p role="status">
+                  {pendingLeaves.length} pending leave applications
+                </p>
+                <button
+                  type="button"
+                  className="sp-button sp-secondary"
+                  onClick={() => void enableLeaveSound()}
+                >
+                  {soundEnabled ? "🔔 Alert sound on" : "🔔 Enable alert sound"}
+                </button>
+                <button
+                  type="button"
+                  className="sp-button sp-secondary"
+                  onClick={() =>
+                    void refreshPendingLeaves().catch((error) =>
+                      setLeaveError(
+                        error instanceof Error
+                          ? error.message
+                          : "Refresh failed.",
+                      ),
+                    )
+                  }
+                >
+                  Refresh
+                </button>
+              </div>
+              {leaveError && (
+                <p role="alert" className="sp-alert sp-error">
+                  {leaveError}
+                </p>
+              )}
+              {!pendingLeaves.length && !leaveError && (
+                <p className="sp-muted">
+                  No leave applications are waiting for approval.
+                </p>
+              )}
+              <div className="sp-leave-request-list">
+                {pendingLeaves.map((application) => (
+                  <article key={application.id} className="sp-leave-request">
+                    <div>
+                      <strong translate="no">{application.staff_name}</strong>
+                      <p className="sp-muted">
+                        {application.blocks?.name_en || adminBlock} •{" "}
+                        {application.panchayat} • {application.position}
+                      </p>
+                      <p>
+                        {application.leave_type} • {application.date} • Applied{" "}
+                        {new Date(application.created_at).toLocaleString(
+                          "en-IN",
+                        )}
+                      </p>
+                    </div>
+                    <div className="sp-actions">
+                      {leaveDocumentLinks[application.id] ? (
+                        <a
+                          className="sp-button sp-secondary"
+                          href={leaveDocumentLinks[application.id]}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          Open document
+                        </a>
+                      ) : (
+                        <button
+                          type="button"
+                          className="sp-button sp-secondary"
+                          onClick={() => void showLeaveDocument(application)}
+                        >
+                          View document
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="sp-button sp-primary"
+                        title="Approve"
+                        aria-label={`Approve leave for ${application.staff_name}`}
+                        disabled={decisionBusy !== null}
+                        onClick={() => void decideLeave(application, true)}
+                      >
+                        ✓ Approve
+                      </button>
+                      <button
+                        type="button"
+                        className="sp-button sp-secondary"
+                        title="Reject"
+                        aria-label={`Reject leave for ${application.staff_name}`}
+                        disabled={decisionBusy !== null}
+                        onClick={() => void decideLeave(application, false)}
+                      >
+                        ✕ Reject
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+          ) : tab === "office" ? (
             <OfficeSettings
               feed={office.feed}
               error={office.error}
