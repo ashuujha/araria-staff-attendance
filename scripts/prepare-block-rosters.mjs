@@ -153,6 +153,32 @@ for (const row of rows) {
 const people = [...byPerson.values()].sort(
   (a, b) => a.block.localeCompare(b.block) || a.name.localeCompare(b.name),
 );
+const names = new Map();
+const phones = new Map();
+for (const person of people) {
+  const nameKey = `${person.block}|${key(person.name)}`;
+  const phoneKey = `${person.block}|${person.phone || ""}`;
+  if (!names.has(nameKey)) names.set(nameKey, new Set());
+  names.get(nameKey).add(person.phone || "");
+  if (person.phone) {
+    if (!phones.has(phoneKey)) phones.set(phoneKey, new Set());
+    phones.get(phoneKey).add(key(person.name));
+  }
+}
+for (const [identity, values] of names)
+  if (values.size > 1)
+    issues.push({
+      block: identity.split("|")[0],
+      type: "same_name_different_phone",
+      value: identity,
+    });
+for (const [identity, values] of phones)
+  if (values.size > 1)
+    issues.push({
+      block: identity.split("|")[0],
+      type: "same_phone_different_name",
+      value: identity,
+    });
 const summary = Object.fromEntries(
   sources.map(([block]) => [
     block,
