@@ -32,15 +32,15 @@ The first command validates without writing. Repeating `--apply` updates profile
 
 ## Staff import
 
-Run the importer for one block at a time. It accepts only Panchayati Raj rows; review its output before creating accounts.
+Seven block workbooks are in `../STAFF DETAILS ALL BLOCK/`. The roster import creates directory entries for the corresponding BPROs without creating staff Auth users or passwords. The Forbesganj and Narpatganj lists will be imported when provided. Apply migration 09 first, then review the read-only comparison before replacing the old Araria directory:
 
 ```bash
-python3 scripts/import_staff.py '../ALL STAFF ARARIA.xlsx' --block Araria
-node --env-file=.env.local scripts/seed.mjs
-node --env-file=.env.local scripts/seed.mjs --apply
+node scripts/prepare-block-rosters.mjs
+node scripts/import-block-rosters.mjs --replace-araria
+node scripts/import-block-rosters.mjs --apply --replace-araria
 ```
 
-The import and generated credentials live under gitignored `private/`. Existing staff passwords are preserved. New staff may also be added in the authorized BPRO/DPRO dashboard.
+The preview is gitignored under `private/`. The final command soft archives former Araria staff accounts while preserving their historical attendance. It does not create or distribute new staff credentials. New directory entries may also be added in the authorized BPRO/DPRO dashboard. See [docs/MIGRATIONS.md](docs/MIGRATIONS.md) for the archive and rollback notes.
 
 ## Environment and verification
 
