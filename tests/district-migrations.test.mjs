@@ -83,6 +83,12 @@ await db.exec(
 await db.exec(
   await readFile("supabase/migrations/20261110_10_leave_approvals.sql", "utf8"),
 );
+await db.exec(
+  await readFile(
+    "supabase/migrations/20261110_11_leave_decision_documents.sql",
+    "utf8",
+  ),
+);
 
 test("block catalog and historical Araria backfill", async () => {
   const blocks = (
@@ -332,7 +338,10 @@ test("leave requests stay pending, respect BPRO scope, and become attendance onl
       0,
     );
     await assert.rejects(
-      db.query("select decide_leave_application($1,true)", [requestId]),
+      db.query("select decide_leave_application_v2($1,true,$2,null)", [
+        requestId,
+        `${sikti}/${staff}/leave-decisions/${requestId}/signed.pdf`,
+      ]),
     );
   } finally {
     await db.exec("reset role");
@@ -340,11 +349,30 @@ test("leave requests stay pending, respect BPRO scope, and become attendance onl
   await db.exec("set role authenticated");
   await db.query("select set_config('request.jwt.claim.sub',$1,false)", [dpro]);
   try {
+    const signedPath = `${sikti}/${staff}/leave-decisions/${requestId}/signed.pdf`;
+    await db.exec("reset role");
+    await db.query(
+      "insert into leave_decision_documents(path,request_id,actor_id,block_id,method) values($1,$2,$3,$4,'drawn')",
+      [signedPath, requestId, dpro, sikti],
+    );
+    await db.exec("set role authenticated");
+    await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+      dpro,
+    ]);
+    await assert.rejects(
+      db.query("select decide_leave_application($1,true)", [requestId]),
+    );
+    await assert.rejects(
+      db.query("select decide_leave_application_v2($1,true,null,null)", [
+        requestId,
+      ]),
+    );
     const approved = await db.query(
-      "select decide_leave_application($1,true) as result",
-      [requestId],
+      "select decide_leave_application_v2($1,true,$2,null) as result",
+      [requestId, signedPath],
     );
     assert.equal(approved.rows[0].result.status, "approved");
+    assert.equal(approved.rows[0].result.decision_document_path, signedPath);
     assert.equal(
       (
         await db.query(
@@ -355,7 +383,10 @@ test("leave requests stay pending, respect BPRO scope, and become attendance onl
       1,
     );
     await assert.rejects(
-      db.query("select decide_leave_application($1,true)", [requestId]),
+      db.query("select decide_leave_application_v2($1,true,$2,null)", [
+        requestId,
+        signedPath,
+      ]),
     );
   } finally {
     await db.exec("reset role");
@@ -412,11 +443,20 @@ test("BPRO can reject then approve a corrected request in their block", async ()
   await db.exec("set role authenticated");
   await db.query("select set_config('request.jwt.claim.sub',$1,false)", [bpro]);
   try {
+    await assert.rejects(
+      db.query("select decide_leave_application_v2($1,false,null,null)", [
+        firstId,
+      ]),
+    );
     const rejected = await db.query(
-      "select decide_leave_application($1,false) as result",
+      "select decide_leave_application_v2($1,false,null,'Document incomplete') as result",
       [firstId],
     );
     assert.equal(rejected.rows[0].result.status, "rejected");
+    assert.equal(
+      rejected.rows[0].result.rejection_reason,
+      "Document incomplete",
+    );
     assert.equal(
       (
         await db.query(
@@ -447,9 +487,19 @@ test("BPRO can reject then approve a corrected request in their block", async ()
   await db.exec("set role authenticated");
   await db.query("select set_config('request.jwt.claim.sub',$1,false)", [bpro]);
   try {
+    const signedPath = `${araria}/${applicant}/leave-decisions/${secondId}/signed.pdf`;
+    await db.exec("reset role");
+    await db.query(
+      "insert into leave_decision_documents(path,request_id,actor_id,block_id,method) values($1,$2,$3,$4,'uploaded')",
+      [signedPath, secondId, bpro, araria],
+    );
+    await db.exec("set role authenticated");
+    await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+      bpro,
+    ]);
     const approved = await db.query(
-      "select decide_leave_application($1,true) as result",
-      [secondId],
+      "select decide_leave_application_v2($1,true,$2,null) as result",
+      [secondId, signedPath],
     );
     assert.equal(approved.rows[0].result.status, "approved");
     assert.equal(
@@ -483,6 +533,12 @@ test("district migrations can be rerun without duplicating the block catalog or 
     await db.exec(
       await readFile(`supabase/migrations/20261109_${number}.sql`, "utf8"),
     );
+  await db.exec(
+    await readFile(
+      "supabase/migrations/20261110_11_leave_decision_documents.sql",
+      "utf8",
+    ),
+  );
   assert.equal(
     (await db.query("select count(*)::int n from blocks")).rows[0].n,
     9,

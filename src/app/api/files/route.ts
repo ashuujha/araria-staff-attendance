@@ -12,15 +12,17 @@ export async function GET(req: Request) {
         "out_photo_path",
         "leave_path",
         "application_leave_path",
+        "decision_document_path",
       ].includes(kind)
     )
       throw new HttpError(400, "फ़ाइल अनुरोध अमान्य।");
-    const applicationFile = kind === "application_leave_path";
+    const applicationFile =
+      kind === "application_leave_path" || kind === "decision_document_path";
     const records = await sb(
       applicationFile
         ? "/rest/v1/leave_applications?id=eq." +
             id +
-            "&select=staff_id,block_id,leave_path"
+            `&select=staff_id,block_id,${kind === "application_leave_path" ? "leave_path" : "decision_document_path"}`
         : "/rest/v1/attendance?id=eq." +
             id +
             "&select=staff_id,block_id," +
@@ -35,7 +37,12 @@ export async function GET(req: Request) {
       (profile.role === "staff" && record.staff_id !== profile.id)
     )
       throw new HttpError(403, "This file is outside your block.");
-    const path = record[applicationFile ? "leave_path" : kind];
+    const path =
+      record[
+        applicationFile && kind === "application_leave_path"
+          ? "leave_path"
+          : kind
+      ];
     if (!path) throw new HttpError(404, "फ़ाइल नहीं मिली।");
     // Signed storage URLs keep full-size images out of function response bodies.
     if (

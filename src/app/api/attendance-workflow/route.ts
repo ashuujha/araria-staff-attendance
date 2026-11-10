@@ -38,7 +38,7 @@ export async function GET(req: Request) {
       ),
       profile.role === "staff"
         ? sb(
-            `/rest/v1/leave_applications?staff_id=eq.${profile.id}&date=eq.${istDate()}&select=id,date,leave_type,status,created_at,decided_at,panchayat,position&order=created_at.desc&limit=1`,
+            `/rest/v1/leave_applications?staff_id=eq.${profile.id}&date=eq.${istDate()}&select=id,date,leave_type,status,created_at,decided_at,panchayat,position,rejection_reason,decision_document_path&order=created_at.desc&limit=1`,
             {},
             token,
           )

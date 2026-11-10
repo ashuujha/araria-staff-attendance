@@ -5,31 +5,59 @@ import {
   json,
   failure,
   HttpError,
+  randomUUID,
 } from "../../../lib/server";
 import { istDate } from "../../../lib/security.mjs";
+import {
+  MAX_UPLOAD_BYTES,
+  readBoundedUpload,
+  validateUploadBytes,
+  scanIfConfigured,
+  sanitizeLeaveJpeg,
+} from "../../../lib/file-validation";
+import { makeSignedLeavePdf } from "../../../lib/leave-decision-document";
+
+export const runtime = "nodejs";
+export const maxDuration = 60;
+const fields =
+  "id,staff_id,staff_name,block_id,date,panchayat,position,leave_type,status,created_at,decided_at,decided_by,rejection_reason,leave_path,decision_document_path,decision_method,blocks(name_en),decider:profiles!leave_applications_decided_by_fkey(name,role)";
 
 export async function GET(req: Request) {
   try {
     const { profile, token } = await identity(req);
+    const query = new URL(req.url).searchParams;
+    const history = query.get("view") === "history";
     if (profile.role === "staff") {
       const rows = await sb(
-        `/rest/v1/leave_applications?staff_id=eq.${profile.id}&date=eq.${istDate()}&select=id,date,leave_type,status,created_at,decided_at,panchayat,position&order=created_at.desc&limit=1`,
+        `/rest/v1/leave_applications?staff_id=eq.${profile.id}${history ? "" : `&date=eq.${istDate()}`}&select=${fields}&order=created_at.desc&limit=${history ? 500 : 1}`,
         {},
         token,
       );
-      return json({ application: rows[0] || null });
+      return json(
+        history ? { history: rows } : { application: rows[0] || null },
+      );
     }
     if (profile.role !== "bpro" && profile.role !== "dpro")
       throw new HttpError(403, "Administrator access required.");
     // RLS enforces BPRO block scope even if a caller changes the URL.
+    const requestedBlock = query.get("block_id") || "";
+    if (requestedBlock && !/^[0-9a-f-]{36}$/.test(requestedBlock))
+      throw new HttpError(400, "Invalid block.");
     const blockFilter =
-      profile.role === "bpro" ? `&block_id=eq.${profile.block_id}` : "";
+      profile.role === "bpro"
+        ? `&block_id=eq.${profile.block_id}`
+        : history && requestedBlock
+          ? `&block_id=eq.${requestedBlock}`
+          : "";
+    const date = query.get("date") || istDate();
+    if (history && !/^\d{4}-\d{2}-\d{2}$/.test(date))
+      throw new HttpError(400, "Invalid date.");
     const rows = await sb(
-      `/rest/v1/leave_applications?status=eq.pending${blockFilter}&select=id,staff_id,staff_name,block_id,date,panchayat,position,leave_type,created_at,leave_path,blocks(name_en)&order=created_at.desc&limit=500`,
+      `/rest/v1/leave_applications?${history ? `status=in.(approved,rejected)&date=eq.${date}` : "status=eq.pending"}${blockFilter}&select=${fields}&order=${history ? "decided_at" : "created_at"}.desc&limit=500`,
       {},
       token,
     );
-    return json({ applications: rows });
+    return json(history ? { history: rows } : { applications: rows });
   } catch (error) {
     return failure(error);
   }
@@ -41,25 +69,170 @@ export async function POST(req: Request) {
     const { profile, token } = await identity(req);
     if (profile.role !== "bpro" && profile.role !== "dpro")
       throw new HttpError(403, "Administrator access required.");
-    const body = await req.json();
     if (
-      !body ||
-      typeof body !== "object" ||
-      Array.isArray(body) ||
-      typeof body.id !== "string" ||
-      !/^[0-9a-f-]{36}$/.test(body.id) ||
-      typeof body.approve !== "boolean"
+      Number(req.headers.get("content-length") || 0) >
+      MAX_UPLOAD_BYTES + 1024 * 1024
+    )
+      throw new HttpError(413, "Decision file must be smaller than 5 MB.");
+    const form = await req.formData();
+    const id = String(form.get("id") || "");
+    const approve = form.get("approve") === "true";
+    if (
+      !/^[0-9a-f-]{36}$/.test(id) ||
+      !["true", "false"].includes(String(form.get("approve")))
     )
       throw new HttpError(400, "Invalid leave decision.");
-    const application = await sb(
-      "/rest/v1/rpc/decide_leave_application",
-      {
-        method: "POST",
-        body: JSON.stringify({ request_id: body.id, approve: body.approve }),
-      },
+    const rows = await sb(
+      `/rest/v1/leave_applications?id=eq.${id}&status=eq.pending&select=id,staff_id,block_id,date,leave_type,leave_path`,
+      {},
       token,
     );
-    return json({ application });
+    const request = rows[0];
+    if (
+      !request ||
+      (profile.role === "bpro" && request.block_id !== profile.block_id)
+    )
+      throw new HttpError(
+        403,
+        "This leave request is outside your block or is already decided.",
+      );
+    const reason = String(form.get("reason") || "").trim();
+    let decisionPath: string | null = null;
+    let stored = false;
+    try {
+      if (approve) {
+        const mode = String(form.get("mode") || "");
+        const file = form.get("file");
+        if (
+          !(file instanceof File) ||
+          !file.size ||
+          file.size >= MAX_UPLOAD_BYTES ||
+          !["drawn", "uploaded"].includes(mode)
+        )
+          throw new HttpError(
+            400,
+            "Provide a signed document or drawn signature smaller than 5 MB.",
+          );
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        let document: Uint8Array;
+        let type: string;
+        if (mode === "drawn") {
+          if (
+            file.type !== "image/png" ||
+            bytes.length > 1024 * 1024 ||
+            bytes[0] !== 137 ||
+            bytes[1] !== 80 ||
+            bytes[2] !== 78 ||
+            bytes[3] !== 71
+          )
+            throw new HttpError(
+              400,
+              "Draw a valid signature before approving.",
+            );
+          const originalResponse = await fetch(
+            `${process.env.SUPABASE_URL}/storage/v1/object/attendance-private/${request.leave_path}`,
+            {
+              headers: { apikey: process.env.SUPABASE_SECRET_KEY! },
+              signal: AbortSignal.timeout(15000),
+            },
+          );
+          if (!originalResponse.ok)
+            throw new HttpError(404, "Original leave application is missing.");
+          const original = await readBoundedUpload(originalResponse);
+          document = await makeSignedLeavePdf({
+            original,
+            signature: bytes,
+            requestId: id,
+            staffId: request.staff_id,
+            leaveDate: request.date,
+            leaveType: request.leave_type,
+            approverRole: profile.role,
+            decidedAt: new Date(),
+          });
+          type = "application/pdf";
+        } else {
+          type = validateUploadBytes(bytes);
+          if (file.type !== type)
+            throw new HttpError(400, "Upload a valid JPEG or PDF signed copy.");
+          await scanIfConfigured(bytes, type);
+          document =
+            type === "image/jpeg" ? await sanitizeLeaveJpeg(bytes) : bytes;
+        }
+        if (document.length >= MAX_UPLOAD_BYTES)
+          throw new HttpError(400, "Signed document exceeds 5 MB.");
+        decisionPath = `${request.block_id}/${request.staff_id}/leave-decisions/${id}/${randomUUID()}.${type === "application/pdf" ? "pdf" : "jpg"}`;
+        const upload = await fetch(
+          `${process.env.SUPABASE_URL}/storage/v1/object/attendance-private/${decisionPath}`,
+          {
+            method: "POST",
+            headers: {
+              apikey: process.env.SUPABASE_SECRET_KEY!,
+              "Content-Type": type,
+            },
+            body: new Uint8Array(document).buffer,
+            signal: AbortSignal.timeout(15000),
+          },
+        );
+        if (!upload.ok)
+          throw new HttpError(502, "Signed document could not be stored.");
+        stored = true;
+        await sb("/rest/v1/leave_decision_documents", {
+          method: "POST",
+          body: JSON.stringify({
+            path: decisionPath,
+            request_id: id,
+            actor_id: profile.id,
+            block_id: request.block_id,
+            method: mode,
+          }),
+        });
+      } else if (reason.length < 3 || reason.length > 1000) {
+        throw new HttpError(
+          400,
+          "Give a rejection reason of 3 to 1000 characters.",
+        );
+      }
+      const application = await sb(
+        "/rest/v1/rpc/decide_leave_application_v2",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            request_id: id,
+            approve,
+            decision_path: decisionPath,
+            reason_text: reason || null,
+          }),
+        },
+        token,
+      );
+      return json({ application });
+    } catch (error) {
+      if (stored && decisionPath) {
+        // A timed-out RPC may already have committed. Keep the signed copy
+        // unless the request is definitely still pending.
+        try {
+          const current = await sb(
+            `/rest/v1/leave_applications?id=eq.${id}&select=status,decision_document_path`,
+            {},
+            token,
+          );
+          if (current[0]?.status === "pending")
+            await Promise.allSettled([
+              sb(
+                `/rest/v1/leave_decision_documents?path=eq.${encodeURIComponent(decisionPath)}`,
+                { method: "DELETE" },
+              ),
+              sb("/storage/v1/object/attendance-private", {
+                method: "DELETE",
+                body: JSON.stringify({ prefixes: [decisionPath] }),
+              }),
+            ]);
+        } catch {
+          /* Preserve the private file when commit status is unknown. */
+        }
+      }
+      throw error;
+    }
   } catch (error) {
     return failure(error);
   }
