@@ -21,6 +21,7 @@ import {
   type CameraLocation,
 } from "../lib/osm-camera";
 import ReportDownload from "./ReportDownload";
+import LeaveDecisionDialog from "./LeaveDecisionDialog";
 import StaffEditor from "./StaffEditor";
 import { PANCHAYATI_RAJ_DEPARTMENT } from "../lib/district";
 import {
@@ -72,6 +73,11 @@ type LeaveApplication = {
   created_at: string;
   decided_at?: string | null;
   leave_path?: string;
+  decision_document_path?: string | null;
+  decision_method?: "drawn" | "uploaded" | null;
+  rejection_reason?: string | null;
+  decided_by?: string | null;
+  decider?: { name: string; role: string } | null;
 };
 type Bootstrap = {
   profile: Profile;
@@ -153,6 +159,22 @@ async function api(url: string, body?: object) {
     ].includes(url)
   )
     window.dispatchEvent(new Event("araria:changed"));
+  return data;
+}
+async function sendLeaveDecision(form: FormData) {
+  const response = await fetch("/api/leave-applications", {
+    method: "POST",
+    body: form,
+    cache: "no-store",
+    signal: AbortSignal.timeout(60000),
+  });
+  const data = await response.json();
+  if (!response.ok)
+    throw new RequestError(
+      data.error || "Leave decision failed.",
+      response.status,
+    );
+  window.dispatchEvent(new Event("araria:changed"));
   return data;
 }
 function dateToday() {
@@ -777,6 +799,10 @@ function Staff({
   );
   const [leaveApplication, setLeaveApplication] =
     useState<LeaveApplication | null>(null);
+  const [leaveHistory, setLeaveHistory] = useState<LeaveApplication[]>([]);
+  const [staffDecisionLinks, setStaffDecisionLinks] = useState<
+    Record<string, string>
+  >({});
   const [leaveBalances, setLeaveBalances] =
     useState<LeaveBalanceSnapshot | null>(initial?.leaveBalances || null);
   useEffect(() => {
@@ -911,6 +937,23 @@ function Staff({
     }, 20000);
     return () => clearInterval(timer);
   }, [leaveApplication?.status, load]);
+  useEffect(() => {
+    void api("/api/leave-applications?view=history")
+      .then((data) => {
+        if (alive.current) setLeaveHistory(data.history || []);
+      })
+      .catch(() => {});
+  }, [leaveApplication?.status]);
+  async function showStaffDecision(id: string) {
+    try {
+      const result = await api(
+        `/api/files?id=${encodeURIComponent(id)}&kind=decision_document_path`,
+      );
+      setStaffDecisionLinks((current) => ({ ...current, [id]: result.url }));
+    } catch (error) {
+      fail(error);
+    }
+  }
   const lastAttendanceRevision = useRef({
     attendance: revisions?.attendance,
     today: revisions?.today,
@@ -1197,8 +1240,12 @@ function Staff({
               {leaveApplication?.status === "rejected" && (
                 <p role="status" className="sp-alert sp-error">
                   पिछला अवकाश आवेदन अस्वीकृत हुआ। आप सही जानकारी के साथ फिर
-                  आवेदन कर सकते हैं। / The previous leave request was rejected;
-                  you may apply again.
+                  आवेदन कर सकते हैं।{" "}
+                  {leaveApplication.rejection_reason && (
+                    <>कारण / Reason: {leaveApplication.rejection_reason}.</>
+                  )}{" "}
+                  / The previous leave request was rejected; you may apply
+                  again.
                 </p>
               )}
               <form onSubmit={(event) => save(event)}>
@@ -1467,6 +1514,61 @@ function Staff({
             </>
           )}
         </section>
+        {leaveHistory.length > 0 && (
+          <section className="sp-card sp-leave-history">
+            <h2>मेरे अवकाश आवेदन / My leave applications</h2>
+            <div className="sp-leave-request-list">
+              {leaveHistory.map((application) => (
+                <article key={application.id} className="sp-leave-request">
+                  <div>
+                    <strong>
+                      {application.leave_type} • {application.date}
+                    </strong>
+                    <p>
+                      {application.status === "approved"
+                        ? "स्वीकृत / Approved"
+                        : application.status === "rejected"
+                          ? "अस्वीकृत / Rejected"
+                          : "लंबित / Pending"}
+                    </p>
+                    {application.decided_at && (
+                      <p className="sp-muted">
+                        Decision:{" "}
+                        {new Date(application.decided_at).toLocaleString(
+                          "en-IN",
+                          { timeZone: "Asia/Kolkata" },
+                        )}{" "}
+                        IST
+                      </p>
+                    )}
+                    {application.rejection_reason && (
+                      <p>Reason: {application.rejection_reason}</p>
+                    )}
+                  </div>
+                  {application.decision_document_path &&
+                    (staffDecisionLinks[application.id] ? (
+                      <a
+                        className="sp-button sp-secondary"
+                        href={staffDecisionLinks[application.id]}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Open signed document
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        className="sp-button sp-secondary"
+                        onClick={() => void showStaffDecision(application.id)}
+                      >
+                        Get signed document
+                      </button>
+                    ))}
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
       </>
     </Localized>
   );
@@ -1533,9 +1635,21 @@ function Admin({
     [loading, setLoading] = useState(!initial),
     [busy, setBusy] = useState(false);
   const [pendingLeaves, setPendingLeaves] = useState<LeaveApplication[]>([]);
+  const [leaveHistoryRows, setLeaveHistoryRows] = useState<LeaveApplication[]>(
+    [],
+  );
+  const [historyDate, setHistoryDate] = useState(dateToday());
+  const [historyBlockId, setHistoryBlockId] = useState("");
+  const [decisionTarget, setDecisionTarget] = useState<{
+    application: LeaveApplication;
+    approve: boolean;
+  } | null>(null);
   const [leaveError, setLeaveError] = useState("");
   const [decisionBusy, setDecisionBusy] = useState<string | null>(null);
   const [leaveDocumentLinks, setLeaveDocumentLinks] = useState<
+    Record<string, string>
+  >({});
+  const [decisionDocumentLinks, setDecisionDocumentLinks] = useState<
     Record<string, string>
   >({});
   const [soundEnabled, setSoundEnabled] = useState(false);
@@ -1601,16 +1715,33 @@ function Admin({
     }, 20000);
     return () => clearInterval(timer);
   }, [refreshPendingLeaves]);
-  async function decideLeave(application: LeaveApplication, approve: boolean) {
-    setDecisionBusy(application.id);
+  const refreshLeaveHistory = useCallback(async () => {
+    const data = await api(
+      `/api/leave-applications?view=history&date=${historyDate}${role === "dpro" && historyBlockId ? `&block_id=${historyBlockId}` : ""}`,
+    );
+    setLeaveHistoryRows(data.history || []);
+  }, [historyDate, historyBlockId, role]);
+  useEffect(() => {
+    if (tab === "leave_history")
+      void refreshLeaveHistory().catch((error) =>
+        setLeaveError(
+          error instanceof Error ? error.message : "History could not load.",
+        ),
+      );
+  }, [tab, refreshLeaveHistory]);
+  async function decideLeave(form: FormData) {
+    if (!decisionTarget) return;
+    setDecisionBusy(decisionTarget.application.id);
     setLeaveError("");
     try {
-      await api("/api/leave-applications", { id: application.id, approve });
+      await sendLeaveDecision(form);
       setPendingLeaves((current) =>
-        current.filter((item) => item.id !== application.id),
+        current.filter((item) => item.id !== decisionTarget.application.id),
       );
+      setDecisionTarget(null);
       await load(false, true);
       await refreshPendingLeaves();
+      await refreshLeaveHistory();
     } catch (error) {
       setLeaveError(
         error instanceof Error ? error.message : "Leave decision failed.",
@@ -1634,6 +1765,23 @@ function Admin({
         error instanceof Error
           ? error.message
           : "Leave document could not open.",
+      );
+    }
+  }
+  async function showDecisionDocument(application: LeaveApplication) {
+    try {
+      const result = await api(
+        `/api/files?id=${encodeURIComponent(application.id)}&kind=decision_document_path`,
+      );
+      setDecisionDocumentLinks((current) => ({
+        ...current,
+        [application.id]: result.url,
+      }));
+    } catch (error) {
+      setLeaveError(
+        error instanceof Error
+          ? error.message
+          : "Signed document could not open.",
       );
     }
   }
@@ -2012,13 +2160,128 @@ function Admin({
             </button>
             <button
               role="tab"
+              aria-selected={tab === "leave_history"}
+              onClick={() => setTab("leave_history")}
+            >
+              अवकाश इतिहास / Leave history
+            </button>
+            <button
+              role="tab"
               aria-selected={tab === "office"}
               onClick={() => setTab("office")}
             >
               अवकाश और सूचनाएँ / Holidays & Notices
             </button>
           </div>
-          {tab === "leave" ? (
+          {tab === "leave_history" ? (
+            <div className="sp-leave-approvals">
+              <div className="sp-actions">
+                <label className="sp-field">
+                  Leave date / अवकाश तिथि
+                  <input
+                    type="date"
+                    value={historyDate}
+                    onChange={(event) => setHistoryDate(event.target.value)}
+                  />
+                </label>
+                {role === "dpro" && (
+                  <label className="sp-field">
+                    Block / प्रखंड
+                    <select
+                      value={historyBlockId}
+                      onChange={(event) =>
+                        setHistoryBlockId(event.target.value)
+                      }
+                    >
+                      <option value="">All blocks</option>
+                      {blocks.map((block) => (
+                        <option key={block.id} value={block.id}>
+                          {block.name_en}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <button
+                  className="sp-button sp-secondary"
+                  type="button"
+                  onClick={() =>
+                    void refreshLeaveHistory().catch((error) =>
+                      setLeaveError(
+                        error instanceof Error
+                          ? error.message
+                          : "History could not load.",
+                      ),
+                    )
+                  }
+                >
+                  Refresh
+                </button>
+              </div>
+              {leaveError && (
+                <p role="alert" className="sp-alert sp-error">
+                  {leaveError}
+                </p>
+              )}
+              {!leaveHistoryRows.length && (
+                <p className="sp-muted">No leave decisions for this date.</p>
+              )}
+              <div className="sp-leave-request-list">
+                {leaveHistoryRows.map((application) => (
+                  <article key={application.id} className="sp-leave-request">
+                    <div>
+                      <strong>{application.staff_name}</strong>
+                      <p>
+                        {application.blocks?.name_en || adminBlock} •{" "}
+                        {application.panchayat} • {application.position}
+                      </p>
+                      <p>
+                        {application.leave_type} • Leave: {application.date} •{" "}
+                        {application.status === "approved"
+                          ? "Approved"
+                          : "Rejected"}
+                      </p>
+                      {application.decided_at && (
+                        <p>
+                          Decision:{" "}
+                          {new Date(application.decided_at).toLocaleString(
+                            "en-IN",
+                            { timeZone: "Asia/Kolkata" },
+                          )}{" "}
+                          IST{" "}
+                          {application.decider?.name
+                            ? `• ${application.decider.name} (${application.decider.role.toUpperCase()})`
+                            : ""}
+                        </p>
+                      )}
+                      {application.rejection_reason && (
+                        <p>Reason: {application.rejection_reason}</p>
+                      )}
+                    </div>
+                    {application.decision_document_path &&
+                      (decisionDocumentLinks[application.id] ? (
+                        <a
+                          className="sp-button sp-secondary"
+                          href={decisionDocumentLinks[application.id]}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          Open signed document
+                        </a>
+                      ) : (
+                        <button
+                          className="sp-button sp-secondary"
+                          type="button"
+                          onClick={() => void showDecisionDocument(application)}
+                        >
+                          Get signed document
+                        </button>
+                      ))}
+                  </article>
+                ))}
+              </div>
+            </div>
+          ) : tab === "leave" ? (
             <div className="sp-leave-approvals">
               <div className="sp-actions">
                 <p role="status">
@@ -2098,7 +2361,9 @@ function Admin({
                         title="Approve"
                         aria-label={`Approve leave for ${application.staff_name}`}
                         disabled={decisionBusy !== null}
-                        onClick={() => void decideLeave(application, true)}
+                        onClick={() =>
+                          setDecisionTarget({ application, approve: true })
+                        }
                       >
                         ✓ Approve
                       </button>
@@ -2108,7 +2373,9 @@ function Admin({
                         title="Reject"
                         aria-label={`Reject leave for ${application.staff_name}`}
                         disabled={decisionBusy !== null}
-                        onClick={() => void decideLeave(application, false)}
+                        onClick={() =>
+                          setDecisionTarget({ application, approve: false })
+                        }
                       >
                         ✕ Reject
                       </button>
@@ -2718,6 +2985,15 @@ function Admin({
                 );
               void load(true);
             }}
+          />
+        )}
+        {decisionTarget && (
+          <LeaveDecisionDialog
+            request={decisionTarget.application}
+            approve={decisionTarget.approve}
+            busy={decisionBusy !== null}
+            onClose={() => setDecisionTarget(null)}
+            onSubmit={decideLeave}
           />
         )}
       </>

@@ -15,6 +15,8 @@ Both admin routes require the typed image CAPTCHA and Cloudflare Turnstile. Logi
 
 CL/SL submissions now create pending applications. The staff member sees the pending decision, and the request appears simultaneously in that block's BPRO dashboard and the DPRO dashboard. Either administrator may approve or reject it; the first decision wins. Only approval creates a leave attendance row and uses the leave allowance. Administrators see a pending alert and can enable the new-application sound from their dashboard; browsers require that click before audio can play. Apply migration 10 before deploying this code.
 
+Approving a leave application requires a signed copy. An administrator can draw a visual signature in the portal, which adds a signed decision page to the original PDF or JPEG, or upload an already signed JPEG/PDF smaller than 5 MB. The applicant can open that private signed copy from their leave history. Rejection requires a reason shown to the applicant. BPRO and DPRO have a date-filtered leave decision history with the decision time and approver. The drawn signature is a visual mark, not a cryptographic digital certificate. Apply migration 11 after migration 10 before deploying this version.
+
 ## District conversion
 
 The migration sequence and checks are in [docs/MIGRATIONS.md](docs/MIGRATIONS.md). **A Vercel deployment does not apply SQL.** First run the read-only dry-run SQL and take a database backup. The data-changing migrations are intentionally not run by `npm run deploy`. Non-Panchayati-Raj staff are archived, not physically deleted; historical attendance remains stored. Only one DPRO and one BPRO per block may be active.
