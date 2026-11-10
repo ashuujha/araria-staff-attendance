@@ -17,6 +17,8 @@ CL/SL submissions now create pending applications. The staff member sees the pen
 
 Approving a leave application requires a signed copy. An administrator can draw a visual signature in the portal, which adds a signed decision page to the original PDF or JPEG, or upload an already signed JPEG/PDF smaller than 5 MB. The applicant can open that private signed copy from their leave history. Rejection requires a reason shown to the applicant. BPRO and DPRO have a date-filtered leave decision history with the decision time and approver. The drawn signature is a visual mark, not a cryptographic digital certificate. Apply migration 11 after migration 10 before deploying this version.
 
+The pending request card has a staff details view with contact information, block, assignments, leave balance, prior leave decisions and recent attendance. BPRO access is limited to applications from their own block; DPRO can review any block.
+
 ## District conversion
 
 The migration sequence and checks are in [docs/MIGRATIONS.md](docs/MIGRATIONS.md). **A Vercel deployment does not apply SQL.** First run the read-only dry-run SQL and take a database backup. The data-changing migrations are intentionally not run by `npm run deploy`. Non-Panchayati-Raj staff are archived, not physically deleted; historical attendance remains stored. Only one DPRO and one BPRO per block may be active.

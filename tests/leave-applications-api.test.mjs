@@ -15,7 +15,7 @@ await build({
   packages: "external",
   outfile: ".preview/leave-applications-api-test.mjs",
 });
-const { POST } = await import(
+const { GET, POST } = await import(
   pathToFileURL(resolve(".preview/leave-applications-api-test.mjs"))
 );
 process.env.SUPABASE_URL = "https://fixture.supabase.invalid";
@@ -43,15 +43,27 @@ function request({ approve, reason = "", file, mode = "uploaded" }) {
     body: form,
   });
 }
-function fixture(calls, requestBlock = block) {
+function fixture(calls, requestBlock = block, actorRole = "bpro") {
   return async (input, init = {}) => {
     const url = new URL(String(input));
     calls.push({ url, init });
     if (url.pathname === "/auth/v1/user") return Response.json({ id: bpro });
     if (url.pathname === "/rest/v1/profiles")
-      return Response.json([
-        { id: bpro, role: "bpro", block_id: block, active: true },
-      ]);
+      return Response.json(
+        url.searchParams.get("id") === `eq.${staff}`
+          ? [
+              {
+                id: staff,
+                name: "Test Staff",
+                phone: "9876543210",
+                block_id: requestBlock,
+                block: "Other",
+                assignments: [],
+                active: true,
+              },
+            ]
+          : [{ id: bpro, role: actorRole, block_id: block, active: true }],
+      );
     if (url.pathname === "/rest/v1/leave_applications")
       return Response.json([
         {
@@ -65,6 +77,12 @@ function fixture(calls, requestBlock = block) {
       ]);
     if (url.pathname === "/rest/v1/leave_decision_documents")
       return new Response(null, { status: 201 });
+    if (url.pathname === "/rest/v1/attendance") return Response.json([]);
+    if (url.pathname === "/rest/v1/rpc/leave_balance_snapshot")
+      return Response.json({
+        year: 2026,
+        balances: [{ staff_id: staff, cl_left: 15 }],
+      });
     if (url.pathname === "/rest/v1/rpc/decide_leave_application_v2")
       return Response.json({
         id: requestId,
@@ -90,6 +108,42 @@ test("a BPRO cannot decide another block's request or upload its signed copy", a
         call.url.pathname.includes("decide_leave_application"),
       ),
       false,
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("full staff details stay block-scoped for BPRO and are available to DPRO", async () => {
+  const original = globalThis.fetch;
+  const url =
+    process.env.APP_URL + `/api/leave-applications?view=staff&id=${requestId}`;
+  try {
+    globalThis.fetch = fixture([], otherBlock);
+    assert.equal(
+      (
+        await GET(
+          new Request(url, {
+            headers: { cookie: "araria_session=fixture-session" },
+          }),
+        )
+      ).status,
+      403,
+    );
+    const calls = [];
+    globalThis.fetch = fixture(calls, otherBlock, "dpro");
+    const response = await GET(
+      new Request(url, {
+        headers: { cookie: "araria_session=fixture-session" },
+      }),
+    );
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    assert.equal(data.staff.name, "Test Staff");
+    assert.equal(data.staff.phone, "9876543210");
+    assert.equal(data.leaveBalance.cl_left, 15);
+    assert.ok(
+      calls.some((call) => call.url.pathname === "/rest/v1/attendance"),
     );
   } finally {
     globalThis.fetch = original;

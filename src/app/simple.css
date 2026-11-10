@@ -1416,6 +1416,16 @@ img.sp-map {
   background: #fff;
   touch-action: none;
 }
+.sp-staff-review-list {
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px 12px;
+  border: 1px solid #d9e2ec;
+  border-radius: 8px;
+}
+.sp-staff-review-list p {
+  margin: 8px 0;
+}
 .sp-leave-request .sp-actions {
   display: flex;
   flex-wrap: wrap;

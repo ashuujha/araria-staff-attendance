@@ -39,6 +39,57 @@ export async function GET(req: Request) {
     }
     if (profile.role !== "bpro" && profile.role !== "dpro")
       throw new HttpError(403, "Administrator access required.");
+    if (query.get("view") === "staff") {
+      const applicationId = query.get("id") || "";
+      if (!/^[0-9a-f-]{36}$/.test(applicationId))
+        throw new HttpError(400, "Invalid leave application.");
+      const requests = await sb(
+        `/rest/v1/leave_applications?id=eq.${applicationId}&select=id,staff_id,block_id`,
+        {},
+        token,
+      );
+      const selected = requests[0];
+      if (
+        !selected ||
+        (profile.role === "bpro" && selected.block_id !== profile.block_id)
+      )
+        throw new HttpError(403, "This staff member is outside your block.");
+      const [people, attendance, leaveHistory, balances] = await Promise.all([
+        sb(
+          `/rest/v1/profiles?id=eq.${selected.staff_id}&select=id,name,phone,secondary_phones,email,gender,block,block_id,assignments,active`,
+          {},
+          token,
+        ),
+        sb(
+          `/rest/v1/attendance?staff_id=eq.${selected.staff_id}&deleted_at=is.null&select=date,status,phase,panchayat,position,time_in,time_out,leave_type&order=date.desc&limit=30`,
+          {},
+          token,
+        ),
+        sb(
+          `/rest/v1/leave_applications?staff_id=eq.${selected.staff_id}&select=id,date,leave_type,status,created_at,decided_at,rejection_reason,decision_document_path&order=created_at.desc&limit=500`,
+          {},
+          token,
+        ),
+        sb(
+          "/rest/v1/rpc/leave_balance_snapshot",
+          { method: "POST", body: "{}" },
+          token,
+        ),
+      ]);
+      if (!people[0]) throw new HttpError(404, "Staff profile not found.");
+      return json({
+        staff: people[0],
+        attendance,
+        leaveHistory,
+        leaveBalance:
+          balances?.balances?.find(
+            (entry: { staff_id: string }) =>
+              entry.staff_id === selected.staff_id,
+          ) || null,
+        balanceYear: balances?.year || null,
+        today: istDate(),
+      });
+    }
     // RLS enforces BPRO block scope even if a caller changes the URL.
     const requestedBlock = query.get("block_id") || "";
     if (requestedBlock && !/^[0-9a-f-]{36}$/.test(requestedBlock))

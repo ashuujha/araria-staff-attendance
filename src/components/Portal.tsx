@@ -79,6 +79,23 @@ type LeaveApplication = {
   decided_by?: string | null;
   decider?: { name: string; role: string } | null;
 };
+type LeaveStaffDetails = {
+  staff: Profile & { secondary_phones?: string[] };
+  attendance: {
+    date: string;
+    status: string;
+    phase?: string;
+    panchayat: string;
+    position: string;
+    time_in: string | null;
+    time_out: string | null;
+    leave_type?: string | null;
+  }[];
+  leaveHistory: LeaveApplication[];
+  leaveBalance: LeaveBalance | null;
+  balanceYear: number | null;
+  today: string;
+};
 type Bootstrap = {
   profile: Profile;
   date: string;
@@ -1644,6 +1661,9 @@ function Admin({
     application: LeaveApplication;
     approve: boolean;
   } | null>(null);
+  const [leaveStaffDetails, setLeaveStaffDetails] =
+    useState<LeaveStaffDetails | null>(null);
+  const [leaveStaffBusy, setLeaveStaffBusy] = useState(false);
   const [leaveError, setLeaveError] = useState("");
   const [decisionBusy, setDecisionBusy] = useState<string | null>(null);
   const [leaveDocumentLinks, setLeaveDocumentLinks] = useState<
@@ -1783,6 +1803,24 @@ function Admin({
           ? error.message
           : "Signed document could not open.",
       );
+    }
+  }
+  async function showLeaveStaffDetails(application: LeaveApplication) {
+    setLeaveStaffBusy(true);
+    setLeaveError("");
+    try {
+      const data = await api(
+        `/api/leave-applications?view=staff&id=${encodeURIComponent(application.id)}`,
+      );
+      setLeaveStaffDetails(data);
+    } catch (error) {
+      setLeaveError(
+        error instanceof Error
+          ? error.message
+          : "Staff details could not load.",
+      );
+    } finally {
+      setLeaveStaffBusy(false);
     }
   }
   const [filters, setFilters] = useState<
@@ -2337,6 +2375,16 @@ function Admin({
                       </p>
                     </div>
                     <div className="sp-actions">
+                      <button
+                        type="button"
+                        className="sp-button sp-secondary"
+                        disabled={leaveStaffBusy}
+                        onClick={() => void showLeaveStaffDetails(application)}
+                      >
+                        {leaveStaffBusy
+                          ? "Loading…"
+                          : "View full staff details"}
+                      </button>
                       {leaveDocumentLinks[application.id] ? (
                         <a
                           className="sp-button sp-secondary"
@@ -2986,6 +3034,132 @@ function Admin({
               void load(true);
             }}
           />
+        )}
+        {leaveStaffDetails && (
+          <div
+            className="sp-decision-overlay"
+            role="presentation"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget)
+                setLeaveStaffDetails(null);
+            }}
+          >
+            <section
+              className="sp-decision-dialog sp-staff-review"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="leave-staff-details-title"
+            >
+              <div className="sp-dialog-header">
+                <h2 id="leave-staff-details-title">
+                  Staff details / कर्मी विवरण
+                </h2>
+                <button
+                  type="button"
+                  className="sp-button sp-secondary"
+                  onClick={() => setLeaveStaffDetails(null)}
+                >
+                  Close
+                </button>
+              </div>
+              <h3 translate="no">{leaveStaffDetails.staff.name}</h3>
+              <dl className="sp-details">
+                <div>
+                  <dt>Mobile</dt>
+                  <dd>{leaveStaffDetails.staff.phone || "—"}</dd>
+                </div>
+                {!!leaveStaffDetails.staff.secondary_phones?.length && (
+                  <div>
+                    <dt>Other numbers</dt>
+                    <dd>
+                      {leaveStaffDetails.staff.secondary_phones.join(", ")}
+                    </dd>
+                  </div>
+                )}
+                <div>
+                  <dt>Email</dt>
+                  <dd>{leaveStaffDetails.staff.email || "—"}</dd>
+                </div>
+                <div>
+                  <dt>Block</dt>
+                  <dd>{leaveStaffDetails.staff.block}</dd>
+                </div>
+                <div>
+                  <dt>Gender</dt>
+                  <dd>{leaveStaffDetails.staff.gender || "Not set"}</dd>
+                </div>
+                <div>
+                  <dt>Account</dt>
+                  <dd>
+                    {leaveStaffDetails.staff.active ? "Active" : "Inactive"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Today ({leaveStaffDetails.today})</dt>
+                  <dd>
+                    {leaveStaffDetails.attendance.find(
+                      (entry) => entry.date === leaveStaffDetails.today,
+                    )?.status || "Not marked / leave request pending"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Leave left ({leaveStaffDetails.balanceYear || "—"})</dt>
+                  <dd>
+                    <LeaveBalanceDisplay
+                      balance={leaveStaffDetails.leaveBalance || undefined}
+                      gender={leaveStaffDetails.staff.gender}
+                    />
+                  </dd>
+                </div>
+              </dl>
+              <h3>Assignments / आवंटन</h3>
+              {leaveStaffDetails.staff.assignments?.length ? (
+                leaveStaffDetails.staff.assignments.map((assignment, index) => (
+                  <p key={index}>
+                    {assignment.panchayat} • {assignment.position} •{" "}
+                    {assignment.department}
+                  </p>
+                ))
+              ) : (
+                <p>None recorded</p>
+              )}
+              <h3>Previous leave applications</h3>
+              {leaveStaffDetails.leaveHistory.length ? (
+                <div className="sp-staff-review-list">
+                  {leaveStaffDetails.leaveHistory.map((application) => (
+                    <p key={application.id}>
+                      {application.date} • {application.leave_type} •{" "}
+                      {application.status}
+                      {application.decided_at
+                        ? ` • Decided ${new Date(application.decided_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST`
+                        : ""}
+                      {application.rejection_reason
+                        ? ` • Reason: ${application.rejection_reason}`
+                        : ""}
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <p>None recorded</p>
+              )}
+              <h3>Recent attendance</h3>
+              {leaveStaffDetails.attendance.length ? (
+                <div className="sp-staff-review-list">
+                  {leaveStaffDetails.attendance.map((entry) => (
+                    <p key={`${entry.date}-${entry.panchayat}`}>
+                      {entry.date} • {entry.status}
+                      {entry.leave_type ? ` (${entry.leave_type})` : ""} •{" "}
+                      {entry.panchayat} • {entry.position} • In{" "}
+                      {entry.time_in ? time(entry.time_in) : "—"} • Out{" "}
+                      {entry.time_out ? time(entry.time_out) : "—"}
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <p>No recorded attendance</p>
+              )}
+            </section>
+          </div>
         )}
         {decisionTarget && (
           <LeaveDecisionDialog
