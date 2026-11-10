@@ -23,6 +23,12 @@ import {
 import ReportDownload from "./ReportDownload";
 import StaffEditor from "./StaffEditor";
 import { PANCHAYATI_RAJ_DEPARTMENT } from "../lib/district";
+import {
+  directoryChoices,
+  filterDirectoryStaff,
+  matchingAssignments,
+  type DirectoryFilters,
+} from "../lib/staff-directory";
 
 const AdminCaptcha = dynamic(() => import("./AdminCaptcha"));
 const WorkplaceCamera = dynamic(() => import("./WorkplaceCamera"));
@@ -634,9 +640,7 @@ export default function Portal({
               <p className="sp-muted">अपना लॉगिन विवरण और पासवर्ड डालें।</p>
               <form onSubmit={login}>
                 <label className="sp-field">
-                  {adminLogin
-                    ? "ईमेल / Email"
-                    : "मोबाइल नंबर / Mobile number"}
+                  {adminLogin ? "ईमेल / Email" : "मोबाइल नंबर / Mobile number"}
                   <input
                     required
                     type={adminLogin ? "email" : "tel"}
@@ -1456,7 +1460,9 @@ function Admin({
   const [tab, setTab] = useState("attendance"),
     [loading, setLoading] = useState(!initial),
     [busy, setBusy] = useState(false);
-  const [filters, setFilters] = useState<Record<string, string>>({
+  const [filters, setFilters] = useState<
+    DirectoryFilters & { status: string; phase: string }
+  >({
     block: "",
     panchayat: "",
     position: "",
@@ -1604,12 +1610,8 @@ function Admin({
         profiles: person,
         block:
           (current ? person?.block : row.block) || row.block || person?.block,
-        department:
-          (current ? a?.department : row.department) ||
-          row.department ||
-          a?.department,
-        position:
-          (current ? a?.position : row.position) || row.position || a?.position,
+        department: row.department || a?.department,
+        position: row.position || a?.position,
       };
     });
   }, [records, staff]);
@@ -1634,18 +1636,8 @@ function Admin({
             value,
       ),
   );
-  const visibleStaff = (showRemoved ? removedStaff : staff).filter(
-    (person) =>
-      searchMatches(person) &&
-      (person.phone === search.trim() ||
-        ((!filters.block || person.block === filters.block) &&
-          ((!filters.panchayat && !filters.position) ||
-            person.assignments.some(
-              (a) =>
-                (!filters.panchayat || a.panchayat === filters.panchayat) &&
-                (!filters.position || a.position === filters.position),
-            )))),
-  );
+  const directoryPeople = showRemoved ? removedStaff : staff;
+  const visibleStaff = filterDirectoryStaff(directoryPeople, search, filters);
   const [page, setPage] = useState(1);
   const totalRows = visibleRecords.length;
   const pages = Math.max(1, Math.ceil(totalRows / 25));
@@ -1654,7 +1646,25 @@ function Admin({
     setPage(1);
   }, [search, filters, tab, date]);
   const start = (activePage - 1) * 25;
-  const allAssignments = staff.flatMap((person) => person.assignments || []);
+  const directoryOptions = directoryChoices(directoryPeople, filters);
+  const attendanceOptions = normalized.filter(
+    (record) => !filters.block || record.block === filters.block,
+  );
+  const panchayatOptions =
+    tab === "staff"
+      ? directoryOptions.panchayats
+      : unique(attendanceOptions.map((record) => record.panchayat));
+  const positionOptions =
+    tab === "staff"
+      ? directoryOptions.positions
+      : unique(
+          attendanceOptions
+            .filter(
+              (record) =>
+                !filters.panchayat || record.panchayat === filters.panchayat,
+            )
+            .map((record) => record.position),
+        );
   async function openFile(row: RecordRow, kind: string) {
     const fileId = ++fileRequest.current;
     setFileBusy(true);
@@ -1692,7 +1702,13 @@ function Admin({
     }
   }
   function filter(key: string, value: string) {
-    setFilters((previous) => ({ ...previous, [key]: value }));
+    setFilters((previous) =>
+      key === "block"
+        ? { ...previous, block: value, panchayat: "", position: "" }
+        : key === "panchayat"
+          ? { ...previous, panchayat: value, position: "" }
+          : { ...previous, [key]: value },
+    );
   }
   return (
     <Localized>
@@ -1866,26 +1882,20 @@ function Admin({
                     label="प्रखंड / Block"
                     value={filters.block}
                     onChange={(v) => filter("block", v)}
-                    options={unique(staff.map((p) => p.block))}
+                    options={blocks.map((block) => block.name_en)}
                   />
                 )}
                 <SelectField
                   label="पंचायत / Panchayat"
                   value={filters.panchayat}
                   onChange={(v) => filter("panchayat", v)}
-                  options={unique([
-                    ...allAssignments.map((a) => a.panchayat),
-                    ...normalized.map((r) => r.panchayat),
-                  ])}
+                  options={panchayatOptions}
                 />
                 <SelectField
                   label="पद / Position"
                   value={filters.position}
                   onChange={(v) => filter("position", v)}
-                  options={unique([
-                    ...allAssignments.map((a) => a.position),
-                    ...normalized.map((r) => r.position),
-                  ])}
+                  options={positionOptions}
                 />
                 {tab === "attendance" && (
                   <>
@@ -2102,11 +2112,13 @@ function Admin({
                               पंचायत और पद / Assignment
                             </span>
                             <div className="sp-cell-value">
-                              {person.assignments.map((a, i) => (
-                                <small key={i}>
-                                  {a.panchayat} • {a.position}
-                                </small>
-                              ))}
+                              {matchingAssignments(person, filters).map(
+                                (a, i) => (
+                                  <small key={i}>
+                                    {a.panchayat} • {a.position}
+                                  </small>
+                                ),
+                              )}
                             </div>
                           </td>
                           <td>
