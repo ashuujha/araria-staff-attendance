@@ -28,7 +28,7 @@ node --env-file=.env.local scripts/seed-admins.ts
 node --env-file=.env.local scripts/seed-admins.ts --apply
 ```
 
-The first command validates without writing. Repeating `--apply` updates profiles but preserves existing passwords. To rotate passwords deliberately, set new values in the private file and run `--apply --rotate-passwords`. Do not put admin passwords in Git, Vercel client variables, chat, or staff export sheets. If an active DPRO with a different email already exists, the script stops for manual review.
+The first command validates without writing. Repeating `--apply` updates profiles but preserves existing passwords. An existing DPRO with a different email keeps the same account ID; the first apply updates its email and password to the supplied DPRO credentials. If the new email belongs to another account, the script stops for review. To rotate unchanged accounts' passwords deliberately, set new values in the private file and run `--apply --rotate-passwords`. Do not put admin passwords in Git, Vercel client variables, chat, or staff export sheets.
 
 ## Staff import
 

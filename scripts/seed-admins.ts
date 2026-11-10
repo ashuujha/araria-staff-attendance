@@ -100,15 +100,25 @@ const byEmail = new Map(
 const currentDpros = await api(
   "/rest/v1/profiles?role=eq.dpro&active=eq.true&deleted_at=is.null&select=id,login_email",
 );
-if (
-  currentDpros.some(
-    (row: { login_email: string }) =>
-      row.login_email.toLowerCase() !== config.dpro.email.toLowerCase(),
-  )
-)
-  throw Error(
-    "A different active DPRO exists. Review it manually; this script will not replace the super admin.",
+if (currentDpros.length > 1)
+  throw Error("More than one active DPRO exists; review manually.");
+const currentDpro = currentDpros[0];
+const desiredDproEmail = config.dpro.email.toLowerCase();
+if (currentDpro && currentDpro.login_email.toLowerCase() !== desiredDproEmail) {
+  const oldUser = users.find(
+    (candidate: { id: string }) => candidate.id === currentDpro.id,
   );
+  const conflictingUser = byEmail.get(desiredDproEmail);
+  if (!oldUser || (conflictingUser && conflictingUser.id !== currentDpro.id))
+    throw Error("DPRO email belongs to another account; review manually.");
+  await api(`/auth/v1/admin/users/${currentDpro.id}`, "PUT", {
+    email: desiredDproEmail,
+    password: config.dpro.password,
+    email_confirm: true,
+  });
+  byEmail.set(desiredDproEmail, { ...oldUser, email: desiredDproEmail });
+  console.log("Existing DPRO account updated to supplied login details.");
+}
 for (const entry of entries) {
   const email = entry.email.toLowerCase();
   let user = byEmail.get(email);

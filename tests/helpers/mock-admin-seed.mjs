@@ -21,6 +21,10 @@ globalThis.fetch = async (input, init = {}) => {
     method === "PUT"
   ) {
     state.rotations++;
+    const user = state.users.find(
+      (item) => item.id === url.pathname.split("/").at(-1),
+    );
+    if (body.email) user.email = body.email;
     result = {};
   } else if (
     url.pathname === "/rest/v1/profiles" &&
