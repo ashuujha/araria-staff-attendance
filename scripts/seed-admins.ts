@@ -46,7 +46,7 @@ for (const entry of entries) {
     typeof entry.email !== "string" ||
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(entry.email) ||
     typeof entry.password !== "string" ||
-    entry.password.length < 14 ||
+    entry.password.length < 10 ||
     entry.password.includes("REPLACE_WITH") ||
     emails.has(entry.email.toLowerCase())
   )

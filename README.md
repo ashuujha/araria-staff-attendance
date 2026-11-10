@@ -21,7 +21,7 @@ The official district block list spells the fifth block **Kursakanta**. The new 
 
 ## Administrator accounts
 
-Copy `scripts/seed-admins.example.json` to `private/seed-admins.json`, replace all placeholders with the DPRO and nine BPRO credentials supplied by the owner, and keep the file private. Passwords must be at least 14 characters. Then, after applying the SQL migrations:
+Copy `scripts/seed-admins.example.json` to `private/seed-admins.json`, replace all placeholders with the DPRO and nine BPRO credentials supplied by the owner, and keep the file private. Passwords must be at least 10 characters. Then, after applying the SQL migrations:
 
 ```bash
 node --env-file=.env.local scripts/seed-admins.ts

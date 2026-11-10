@@ -24,13 +24,13 @@ test("admin seeding creates one DPRO and nine BPROs and is idempotent", async ()
     dpro: {
       name: "District Admin",
       email: "district@example.invalid",
-      password: "fixture-password-12345",
+      password: "Valid@1234",
     },
     bpros: names.map((block) => ({
       block,
       name: `${block} Officer`,
       email: `${block.toLowerCase()}@example.invalid`,
-      password: "fixture-password-12345",
+      password: "Valid@1234",
     })),
   };
   const state = {
