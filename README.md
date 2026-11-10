@@ -42,6 +42,10 @@ node scripts/import-block-rosters.mjs --apply --blocks=forbesganj,narpatganj
 
 The preview is gitignored under `private/`. These commands leave existing block rosters, Auth accounts, and historical attendance alone. The separate `--replace-araria` option soft archives former Araria staff accounts only when explicitly requested with `--blocks=araria`. The import does not create or distribute new staff credentials. New directory entries may also be added in the authorized BPRO/DPRO dashboard. See [docs/MIGRATIONS.md](docs/MIGRATIONS.md) for the archive and rollback notes.
 
+### Non-Araria staff logins
+
+After reviewing the live directory, run `node scripts/provision-block-staff.mjs` for a read-only count, then `node scripts/provision-block-staff.mjs --apply` to provision eligible staff in the eight non-Araria blocks. The login ID is the staff mobile number and the initial password is `BlockName@last4digits#26`. The script does not change Araria accounts. It links each new Auth profile to its roster entry so the directory does not show that staff member twice, and writes one private XLSX per block to `../STAFF CREDENTIALS/`. `NEEDS_REVIEW.xlsx` lists staff with a missing/invalid mobile, a shared number, or a number already assigned to another account; those records receive no login. The folder and files are restricted to the local user, excluded from Git, and contain passwords. Give each staff member only their own row. If a password is reset later, the saved sheet is a provisioning snapshot and must not be treated as the current password.
+
 ## Environment and verification
 
 Set server-only `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `APP_URL`, `TURNSTILE_SITE_KEY`, and `TURNSTILE_SECRET_KEY` in `.env.local` and the corresponding deployment environment. Set a strong server-only `LOGIN_LIMIT_SECRET` for stable keyed rate-limit identifiers. `APP_URL` must use HTTPS in production. Disable public Supabase sign-ups. The optional `GOOGLE_TRANSLATE_API_KEY`, `PHOTON_REVERSE_URL`, `OSM_TILE_BASE_URL`, and upload scanner variables retain their previous behavior.
