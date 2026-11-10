@@ -7,12 +7,38 @@ import {
   failure,
   HttpError,
   audit,
+  randomUUID,
 } from "../../../lib/server";
 import {
   districtAssignments,
   ownBlock,
   requestedBlock,
 } from "../../../lib/district-scope";
+import { rosterRows } from "../../../lib/roster";
+
+const validPhone = (value: unknown) =>
+  value == null ||
+  value === "" ||
+  (typeof value === "string" && /^[6-9]\d{9}$/.test(value));
+const validGender = (value: unknown) =>
+  value == null || value === "" || value === "female" || value === "male";
+const validEmail = (value: unknown) =>
+  value == null ||
+  value === "" ||
+  (typeof value === "string" &&
+    value.length <= 254 &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value));
+function validateRoster(values: Record<string, unknown>) {
+  if (
+    typeof values.name !== "string" ||
+    values.name.trim().length < 2 ||
+    values.name.length > 150 ||
+    !validPhone(values.phone) ||
+    !validGender(values.gender) ||
+    !validEmail(values.email)
+  )
+    throw new HttpError(400, "Invalid staff details.");
+}
 export async function GET(req: Request) {
   try {
     const { profile, token } = await identity(req);
@@ -21,14 +47,19 @@ export async function GET(req: Request) {
       profile,
       new URL(req.url).searchParams.get("block_id"),
     );
-    const staff = await sb(
-      "/rest/v1/profiles?role=eq.staff&deleted_at=is.null" +
-        (blockId ? `&block_id=eq.${blockId}` : "") +
-        "&select=id,name,phone,email,secondary_phones,assignments,role,block,block_id,active,gender&order=name",
-      {},
-      token,
-    );
-    return json({ staff });
+    const [staff, roster] = await Promise.all([
+      sb(
+        "/rest/v1/profiles?role=eq.staff&deleted_at=is.null" +
+          (blockId ? `&block_id=eq.${blockId}` : "") +
+          "&select=id,name,phone,email,secondary_phones,assignments,role,block,block_id,active,gender&order=name",
+        {},
+        token,
+      ),
+      rosterRows(token, blockId),
+    ]);
+    return json({
+      staff: [...staff, ...roster].sort((a, b) => a.name.localeCompare(b.name)),
+    });
   } catch (e) {
     return failure(e);
   }
@@ -67,91 +98,121 @@ export async function POST(req: Request) {
       );
       if (!blockRows.length)
         throw new HttpError(400, "Choose an active block.");
-      const name = String(b.name || "").trim(),
-        phone = String(b.phone || "").trim(),
-        email = String(b.email || "")
-          .trim()
-          .toLowerCase();
-      if (
-        name.length < 2 ||
-        name.length > 150 ||
-        !/^[6-9]\d{9}$/.test(phone) ||
-        (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) ||
-        email.length > 254 ||
-        !["female", "male"].includes(b.gender)
-      )
-        throw new HttpError(400, "कर्मी विवरण अमान्य है।");
-      const existing = await sb(
-        "/rest/v1/profiles?phone=eq." +
-          phone +
-          "&select=id,name,phone,role,block,block_id,deleted_at",
+      validateRoster(b);
+      const created = await sb(
+        "/rest/v1/staff_roster?select=id,name,phone,email,gender,assignments,block_id,active",
+        {
+          method: "POST",
+          headers: { Prefer: "return=representation" },
+          body: JSON.stringify({
+            id: randomUUID(),
+            block_id: blockId,
+            name: b.name.trim(),
+            phone: b.phone || null,
+            email: b.email || null,
+            gender: b.gender || null,
+            assignments: districtAssignments(b.assignments, blockId),
+          }),
+        },
       );
-      if (existing.length) {
-        const match = existing[0];
-        const inScope =
-          profile.role === "dpro" || profile.block_id === match.block_id;
-        return json(
-          {
-            error:
-              match.role === "staff" && inScope
-                ? match.deleted_at
-                  ? "यह मोबाइल हटाए गए कर्मी के खाते में है। Staff directory में Removed staff देखें और खाता बहाल करें।"
-                  : "यह मोबाइल पहले से दर्ज है। Staff directory में इस नंबर को देखें।"
-                : "यह मोबाइल किसी अन्य खाते में पहले से दर्ज है। जिला प्रशासक से संपर्क करें।",
-            ...(match.role === "staff" && inScope
-              ? {
-                  existing: {
-                    id: match.id,
-                    name: match.name,
-                    phone: match.phone,
-                    removed: !!match.deleted_at,
-                  },
-                }
-              : {}),
-          },
-          409,
-        );
-      }
-      const loginEmail = email || `${phone}@staff.araria.invalid`;
-      const password = `Araria@${phone.slice(-4)}#26`;
-      const user = await sb("/auth/v1/admin/users", {
-        method: "POST",
-        body: JSON.stringify({
-          email: loginEmail,
-          password,
-          email_confirm: true,
-          user_metadata: { name, must_change_password: true },
-        }),
+      await audit(
+        profile.id,
+        "create_roster_staff",
+        created[0].id,
+        reason,
+        null,
+        blockId,
+      );
+      return json({
+        profile: {
+          ...created[0],
+          phone: created[0].phone || "",
+          block: blockRows[0].name_en,
+          role: "staff",
+          roster_only: true,
+        },
       });
-      try {
-        const result = await sb(
-          "/rest/v1/rpc/create_master_staff_with_gender",
-          {
-            method: "POST",
-            body: JSON.stringify({
-              actor_id: profile.id,
-              user_id: user.id,
-              staff_name: name,
-              staff_phone: phone,
-              staff_email: email,
-              auth_email: loginEmail,
-              block_name: blockRows[0].name_en,
-              workplaces: districtAssignments(b.assignments, blockId),
-              reason_text: reason,
-              gender_name: b.gender,
-            }),
-          },
-        );
-        return json({ profile: result, password });
-      } catch (e) {
-        await sb("/auth/v1/admin/users/" + user.id, { method: "DELETE" }).catch(
-          () => {},
-        );
-        throw e;
-      }
     }
     if (typeof b.id !== "string" || !/^[0-9a-f-]{36}$/.test(b.id))
       throw new HttpError(400, "मान्य कर्मी चुनें।");
+    const rosterTarget = await sb(
+      `/rest/v1/staff_roster?id=eq.${b.id}&select=id,block_id,deleted_at`,
+      {},
+      token,
+    );
+    if (rosterTarget.length) {
+      const target = rosterTarget[0];
+      if (profile.role === "bpro" && target.block_id !== profile.block_id)
+        throw new HttpError(403, "This staff member is outside your block.");
+      if (b.action === "reset_password")
+        throw new HttpError(409, "Staff login has not been created yet.");
+      const changes = b.action === "update" ? b.changes : {};
+      if (
+        b.action === "update" &&
+        (!changes || typeof changes !== "object" || Array.isArray(changes))
+      )
+        throw new HttpError(400, "Invalid staff details.");
+      const nextBlock =
+        b.action === "update" && changes.block_id
+          ? ownBlock(profile, changes.block_id)
+          : target.block_id;
+      if (profile.role === "bpro" && nextBlock !== profile.block_id)
+        throw new HttpError(403, "This staff member is outside your block.");
+      const patch: Record<string, unknown> = {
+        updated_at: new Date().toISOString(),
+      };
+      if (b.action === "delete")
+        Object.assign(patch, {
+          deleted_at: new Date().toISOString(),
+          active: false,
+        });
+      else if (b.action === "restore")
+        Object.assign(patch, { deleted_at: null, active: true });
+      else if (b.action === "update") {
+        validateRoster(changes);
+        Object.assign(patch, {
+          block_id: nextBlock,
+          name: changes.name.trim(),
+          phone: changes.phone || null,
+          email: changes.email || null,
+          gender: changes.gender || null,
+          active: changes.active,
+          assignments: districtAssignments(changes.assignments, nextBlock),
+        });
+      }
+      const updated = await sb(
+        `/rest/v1/staff_roster?id=eq.${b.id}&select=id,name,phone,email,gender,assignments,block_id,active,deleted_at`,
+        {
+          method: "PATCH",
+          headers: { Prefer: "return=representation" },
+          body: JSON.stringify(patch),
+        },
+      );
+      if (!updated.length)
+        throw new HttpError(409, "Staff changed. Refresh and try again.");
+      await audit(
+        profile.id,
+        `${b.action}_roster_staff`,
+        b.id,
+        reason,
+        null,
+        target.block_id,
+      );
+      const block = await sb(
+        `/rest/v1/blocks?id=eq.${nextBlock}&select=name_en`,
+        {},
+        token,
+      );
+      return json({
+        profile: {
+          ...updated[0],
+          phone: updated[0].phone || "",
+          block: block[0]?.name_en || "",
+          role: "staff",
+          roster_only: true,
+        },
+      });
+    }
     if (b.action === "delete") {
       // The RPC validates the actor, target role and block in one transaction.
       await sb("/rest/v1/rpc/delete_master_staff", {

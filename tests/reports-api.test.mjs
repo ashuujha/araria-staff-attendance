@@ -29,6 +29,7 @@ function fixture(role, calls) {
     if (url.pathname === "/auth/v1/user") return Response.json({ id });
     if (url.pathname === "/rest/v1/profiles")
       return Response.json([{ id, role, active: true, assignments: [] }]);
+    if (url.pathname === "/rest/v1/staff_roster") return Response.json([]);
     throw Error(`Unexpected report data fetch: ${url.pathname}`);
   };
 }
@@ -109,6 +110,7 @@ test("admin can download a year-specific leave balance report", async () => {
             : [],
         );
       if (url.pathname === "/rest/v1/audit_logs") return Response.json(null);
+      if (url.pathname === "/rest/v1/staff_roster") return Response.json([]);
       throw Error(`Unexpected URL: ${url}`);
     };
     const response = await GET(

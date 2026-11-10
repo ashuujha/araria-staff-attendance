@@ -16,6 +16,7 @@ export type Profile = {
   active: boolean;
   gender?: "female" | "male" | null;
   deleted_at?: string | null;
+  roster_only?: boolean;
 };
 export type LeaveBalance = {
   staff_id: string;

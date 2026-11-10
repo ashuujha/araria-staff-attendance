@@ -77,6 +77,9 @@ await db.exec(
     "utf8",
   ),
 );
+await db.exec(
+  await readFile("supabase/migrations/20261109_09_block_rosters.sql", "utf8"),
+);
 
 test("block catalog and historical Araria backfill", async () => {
   const blocks = (
@@ -101,6 +104,45 @@ test("block catalog and historical Araria backfill", async () => {
     ["bpro", "dpro", "staff"],
   );
   assert.ok(people.every((p) => p.block_id === people[0].block_id));
+});
+
+test("BPRO reads only its block roster; DPRO reads both; authenticated writes are denied", async () => {
+  const araria = (await db.query("select id from blocks where code='araria'"))
+    .rows[0].id;
+  const sikti = (await db.query("select id from blocks where code='sikti'"))
+    .rows[0].id;
+  await db.query(
+    "insert into staff_roster(block_id,name) values($1,'Araria Roster'),($2,'Sikti Roster')",
+    [araria, sikti],
+  );
+  await db.exec("set role authenticated");
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [bpro]);
+  try {
+    assert.deepEqual(
+      (await db.query("select name from staff_roster order by name")).rows.map(
+        (row) => row.name,
+      ),
+      ["Araria Roster"],
+    );
+    await assert.rejects(
+      db.query(
+        "insert into staff_roster(block_id,name) values($1,'Forbidden')",
+        [sikti],
+      ),
+    );
+  } finally {
+    await db.exec("reset role");
+  }
+  await db.exec("set role authenticated");
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [dpro]);
+  try {
+    assert.equal(
+      (await db.query("select count(*)::int n from staff_roster")).rows[0].n,
+      2,
+    );
+  } finally {
+    await db.exec("reset role");
+  }
 });
 
 test("BPRO cannot read another block's staff or attendance through RLS", async () => {
@@ -248,6 +290,7 @@ test("district migrations can be rerun without duplicating the block catalog or 
     "06_login_limits",
     "07_move_staff",
     "08_block_workspaces",
+    "09_block_rosters",
   ])
     await db.exec(
       await readFile(`supabase/migrations/20261109_${number}.sql`, "utf8"),

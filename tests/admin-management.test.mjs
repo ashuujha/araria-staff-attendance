@@ -42,7 +42,7 @@ const request = (body) =>
     headers,
     body: JSON.stringify(body),
   });
-test("admin add/edit/remove uses scoped RPCs, returns only new account password and rejects invalid changes", async () => {
+test("admin creates directory-only staff and keeps existing account edits scoped", async () => {
   const original = globalThis.fetch,
     calls = [];
   let role = "dpro";
@@ -62,6 +62,14 @@ test("admin add/edit/remove uses scoped RPCs, returns only new account password 
     }
     if (url.pathname === "/rest/v1/blocks")
       return Response.json([{ id: blockId, name_en: "Araria" }]);
+    if (url.pathname === "/rest/v1/staff_roster")
+      return Response.json(
+        init.method === "POST"
+          ? [{ id: staff, name: "New Staff", block_id: blockId }]
+          : [],
+      );
+    if (url.pathname === "/rest/v1/audit_logs")
+      return new Response(null, { status: 204 });
     if (url.pathname === "/auth/v1/admin/users")
       return Response.json({ id: staff });
     if (url.pathname.startsWith("/rest/v1/rpc/"))
@@ -87,7 +95,7 @@ test("admin add/edit/remove uses scoped RPCs, returns only new account password 
       }),
     );
     assert.equal(created.status, 200);
-    assert.equal((await created.json()).password, "Araria@0002#26");
+    assert.equal((await created.json()).password, undefined);
     const updated = await POST(
       request({
         action: "update",
@@ -113,11 +121,7 @@ test("admin add/edit/remove uses scoped RPCs, returns only new account password 
       1,
       "Update checks the staff block before the privileged RPC",
     );
-    for (const name of [
-      "create_master_staff_with_gender",
-      "manage_staff_with_gender",
-      "delete_master_staff",
-    ])
+    for (const name of ["manage_staff_with_gender", "delete_master_staff"])
       assert.ok(
         calls.some(
           (c) =>
@@ -130,6 +134,10 @@ test("admin add/edit/remove uses scoped RPCs, returns only new account password 
       assert.equal(typeof call.body.reason_text, "string");
       assert.ok(call.body.reason_text.startsWith("Administrator "));
     }
+    assert.equal(
+      calls.some((c) => c.url.pathname === "/auth/v1/admin/users"),
+      false,
+    );
     const before = calls.filter((c) =>
       c.url.pathname.endsWith("/manage_staff_with_gender"),
     ).length;
@@ -194,6 +202,7 @@ test("admin loading validates JWT through Supabase then starts attendance and di
       directoryStarted = true;
       return Response.json([]);
     }
+    if (url.pathname === "/rest/v1/staff_roster") return Response.json([]);
     throw Error("Unexpected endpoint");
   };
   try {
@@ -201,13 +210,13 @@ test("admin loading validates JWT through Supabase then starts attendance and di
       new Request(process.env.APP_URL + "/api/admin", { headers }),
     );
     assert.equal(response.status, 200);
-    assert.equal(calls.length, 5);
+    assert.equal(calls.length, 7);
   } finally {
     globalThis.fetch = original;
   }
 });
 
-test("removed staff stays discoverable and can be restored in scope", async () => {
+test("removed existing staff can be restored in scope", async () => {
   const original = globalThis.fetch;
   const calls = [];
   let role = "dpro";
@@ -251,26 +260,10 @@ test("removed staff stays discoverable and can be restored in scope", async () =
     }
     if (url.pathname === "/rest/v1/audit_logs")
       return new Response(null, { status: 204 });
+    if (url.pathname === "/rest/v1/staff_roster") return Response.json([]);
     throw Error("Unexpected endpoint " + url.pathname);
   };
   try {
-    const duplicate = await POST(
-      request({
-        action: "create",
-        name: "New Staff",
-        phone: "9000000002",
-        gender: "male",
-        block_id: blockId,
-        assignments: [],
-      }),
-    );
-    assert.equal(duplicate.status, 409);
-    assert.deepEqual((await duplicate.json()).existing, {
-      id: staff,
-      name: "Existing Staff",
-      phone: "9000000002",
-      removed: true,
-    });
     const restored = await POST(request({ action: "restore", id: staff }));
     assert.equal(restored.status, 200);
     assert.ok(calls.some((c) => c.init.method === "PATCH" && c.body.active));

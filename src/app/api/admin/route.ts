@@ -9,6 +9,7 @@ import {
 } from "../../../lib/server";
 import { istDate } from "../../../lib/security.mjs";
 import { requestedBlock } from "../../../lib/district-scope";
+import { rosterRows } from "../../../lib/roster";
 export async function GET(req: Request) {
   try {
     const { profile, token } = await identity(req);
@@ -20,43 +21,55 @@ export async function GET(req: Request) {
     const includeStaff = url.searchParams.get("directory") !== "0";
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
       throw new HttpError(400, "तिथि अमान्य।");
-    const [records, staff, removedStaff, leaveBalances] = await Promise.all([
-      sb(
-        "/rest/v1/attendance?date=eq." +
-          date +
-          blockFilter +
-          "&deleted_at=is.null&select=id,staff_id,date,panchayat,department,position,block,block_id,staff_name,status,phase,deputation_workplace,leave_type,absence_reason,time_in,time_out,latitude,longitude,accuracy,photo_path,leave_path,working_places,profiles(id,name,phone,email,block,block_id,role,active)&order=created_at.desc",
-        {},
-        token,
-      ),
-      includeStaff
-        ? sb(
-            "/rest/v1/profiles?deleted_at=is.null&role=eq.staff" +
-              blockFilter +
-              "&select=id,name,phone,email,assignments,block,block_id,role,active,gender&order=name",
-            {},
-            token,
-          )
-        : Promise.resolve(undefined),
-      includeStaff
-        ? sb(
-            "/rest/v1/profiles?deleted_at=not.is.null&role=eq.staff" +
-              blockFilter +
-              "&select=id,name,phone,email,assignments,block,block_id,role,active,gender,deleted_at&order=name",
-            {},
-            token,
-          )
-        : Promise.resolve(undefined),
-      sb(
-        "/rest/v1/rpc/leave_balance_snapshot",
-        { method: "POST", body: "{}" },
-        token,
-      ),
-    ]);
+    const [records, staff, removedStaff, roster, removedRoster, leaveBalances] =
+      await Promise.all([
+        sb(
+          "/rest/v1/attendance?date=eq." +
+            date +
+            blockFilter +
+            "&deleted_at=is.null&select=id,staff_id,date,panchayat,department,position,block,block_id,staff_name,status,phase,deputation_workplace,leave_type,absence_reason,time_in,time_out,latitude,longitude,accuracy,photo_path,leave_path,working_places,profiles(id,name,phone,email,block,block_id,role,active)&order=created_at.desc",
+          {},
+          token,
+        ),
+        includeStaff
+          ? sb(
+              "/rest/v1/profiles?deleted_at=is.null&role=eq.staff" +
+                blockFilter +
+                "&select=id,name,phone,email,assignments,block,block_id,role,active,gender&order=name",
+              {},
+              token,
+            )
+          : Promise.resolve(undefined),
+        includeStaff
+          ? sb(
+              "/rest/v1/profiles?deleted_at=not.is.null&role=eq.staff" +
+                blockFilter +
+                "&select=id,name,phone,email,assignments,block,block_id,role,active,gender,deleted_at&order=name",
+              {},
+              token,
+            )
+          : Promise.resolve(undefined),
+        includeStaff ? rosterRows(token, blockId) : Promise.resolve(undefined),
+        includeStaff
+          ? rosterRows(token, blockId, true)
+          : Promise.resolve(undefined),
+        sb(
+          "/rest/v1/rpc/leave_balance_snapshot",
+          { method: "POST", body: "{}" },
+          token,
+        ),
+      ]);
     return json({
       records,
       leaveBalances,
-      ...(includeStaff ? { staff, removedStaff } : {}),
+      ...(includeStaff
+        ? {
+            staff: [...staff, ...(roster || [])].sort((a, b) =>
+              a.name.localeCompare(b.name),
+            ),
+            removedStaff: [...removedStaff, ...(removedRoster || [])],
+          }
+        : {}),
     });
   } catch (e) {
     return failure(e);

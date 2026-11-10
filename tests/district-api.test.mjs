@@ -54,6 +54,7 @@ function fixture(role, calls) {
       ]);
     }
     if (url.pathname === "/rest/v1/attendance") return Response.json([]);
+    if (url.pathname === "/rest/v1/staff_roster") return Response.json([]);
     if (url.pathname === "/rest/v1/blocks")
       return Response.json([{ id: blockB, name_en: "Sikti" }]);
     if (

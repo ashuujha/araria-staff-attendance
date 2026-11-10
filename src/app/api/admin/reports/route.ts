@@ -40,6 +40,20 @@ async function allPages(path: string, token: string) {
   throw new HttpError(413, "Report is too large. Choose a shorter range.");
 }
 
+async function rosterReportRows(token: string, blockId: string | null) {
+  const rows = await allPages(
+    `/rest/v1/staff_roster?deleted_at=is.null&active=eq.true&linked_profile_id=is.null${blockId ? `&block_id=eq.${blockId}` : ""}&select=id,name,phone,email,gender,assignments,block_id,active,created_at,blocks(name_en)&order=id.asc`,
+    token,
+  );
+  return rows.map((row) => ({
+    ...row,
+    phone: row.phone || "",
+    role: "staff",
+    block: (row.blocks as { name_en: string }).name_en,
+    deleted_at: null,
+  }));
+}
+
 export async function GET(req: Request) {
   try {
     const { profile, token } = await identity(req);
@@ -119,7 +133,7 @@ export async function GET(req: Request) {
       const onlyWithLeave = query.get("leave_only") === "1";
       const first = `${year}-01-01`;
       const last = `${year}-12-31`;
-      const [records, profiles] = await Promise.all([
+      const [records, profiles, roster] = await Promise.all([
         allPages(
           `/rest/v1/attendance?date=gte.${first}&date=lte.${last}&status=eq.leave&deleted_at=is.null${blockFilter}&select=id,staff_id,date,staff_name,block,block_id,department,panchayat,position,status,leave_type,version&order=date.asc,staff_id.asc,id.asc`,
           token,
@@ -130,9 +144,10 @@ export async function GET(req: Request) {
             "&select=id,name,phone,block,block_id,assignments,gender,role,active,deleted_at&order=id.asc",
           token,
         ),
+        rosterReportRows(token, blockId),
       ]);
       const summary = makeLeaveReport({
-        profiles,
+        profiles: [...profiles, ...roster],
         records,
         year,
         month,
@@ -184,9 +199,10 @@ export async function GET(req: Request) {
       "/rest/v1/profiles?role=eq.staff" +
       blockFilter +
       "&select=id,name,phone,secondary_phones,email,block,block_id,assignments,role,active,created_at,deleted_at&order=id.asc";
-    const [records, profiles, holidays] = await Promise.all([
+    const [records, profiles, roster, holidays] = await Promise.all([
       allPages(recordsPath, token),
       allPages(profilesPath, token),
+      rosterReportRows(token, blockId),
       sb(
         `/rest/v1/office_holidays?date=gte.${start}&date=lte.${end}${blockId ? `&or=(block_id.is.null,block_id.eq.${blockId})` : ""}&select=date,reason,block_id&order=date.asc`,
         {},
@@ -194,7 +210,7 @@ export async function GET(req: Request) {
       ),
     ]);
     const report = makeAttendanceReport({
-      profiles,
+      profiles: [...profiles, ...roster],
       records,
       holidays,
       start,

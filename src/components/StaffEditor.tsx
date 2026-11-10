@@ -299,7 +299,7 @@ export default function StaffEditor({
                     <label className="sp-field">
                       मोबाइल नंबर / Mobile number
                       <input
-                        required
+                        required={!!person && !person.roster_only}
                         type="tel"
                         pattern="[6-9][0-9]{9}"
                         maxLength={10}
@@ -319,7 +319,7 @@ export default function StaffEditor({
                     <label className="sp-field">
                       लिंग / Gender (SL eligibility)
                       <select
-                        required
+                        required={!!person && !person.roster_only}
                         value={gender}
                         onChange={(event) =>
                           setGender(
@@ -334,7 +334,9 @@ export default function StaffEditor({
                     </label>
                     {person && (
                       <label className="sp-field">
-                        खाता स्थिति / Account status
+                        {person.roster_only
+                          ? "सूची स्थिति / Directory status"
+                          : "खाता स्थिति / Account status"}
                         <select
                           value={active ? "active" : "inactive"}
                           onChange={(e) =>

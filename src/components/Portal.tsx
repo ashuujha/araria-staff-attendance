@@ -2129,12 +2129,16 @@ function Admin({
                               अवकाश शेष / Leave left
                             </span>
                             <div className="sp-cell-value">
-                              <LeaveBalanceDisplay
-                                balance={leaveBalances?.balances.find(
-                                  (entry) => entry.staff_id === person.id,
-                                )}
-                                gender={person.gender}
-                              />
+                              {person.roster_only ? (
+                                "Login pending / लॉगिन बाकी"
+                              ) : (
+                                <LeaveBalanceDisplay
+                                  balance={leaveBalances?.balances.find(
+                                    (entry) => entry.staff_id === person.id,
+                                  )}
+                                  gender={person.gender}
+                                />
+                              )}
                             </div>
                           </td>
                           <td>

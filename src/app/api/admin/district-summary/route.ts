@@ -9,7 +9,7 @@ export async function GET(req: Request) {
     const date = new URL(req.url).searchParams.get("date") || istDate();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
       throw new HttpError(400, "Invalid date.");
-    const [blocks, staff, records] = await Promise.all([
+    const [blocks, staff, roster, records] = await Promise.all([
       sb(
         "/rest/v1/blocks?active=eq.true&select=id,name_en&order=name_en",
         {},
@@ -21,13 +21,18 @@ export async function GET(req: Request) {
         token,
       ),
       sb(
+        "/rest/v1/staff_roster?active=eq.true&deleted_at=is.null&linked_profile_id=is.null&select=id,block_id&limit=1000",
+        {},
+        token,
+      ),
+      sb(
         `/rest/v1/attendance?date=eq.${date}&deleted_at=is.null&department_archived=eq.false&select=staff_id,block_id,status&limit=1000`,
         {},
         token,
       ),
     ]);
     const summary = blocks.map((block: { id: string; name_en: string }) => {
-      const people = staff.filter(
+      const people = [...staff, ...roster].filter(
         (person: { block_id: string }) => person.block_id === block.id,
       );
       const ids = new Set(people.map((person: { id: string }) => person.id));
