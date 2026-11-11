@@ -15,14 +15,12 @@ import DepartmentBrand from "./DepartmentBrand";
 import { useOfficeFeed, NoticeBoard, OfficeSettings } from "./OfficeBoard";
 import { officeClosure, type OfficeFeed } from "../lib/office-types";
 import { prepareWorkplacePhoto } from "../lib/photo-upload";
+import { uploadWithProgress } from "../lib/upload-progress";
 import {
   googleMapsUrl,
   openStreetMapEmbedUrl,
   type CameraLocation,
 } from "../lib/osm-camera";
-import ReportDownload from "./ReportDownload";
-import LeaveDecisionDialog from "./LeaveDecisionDialog";
-import StaffEditor from "./StaffEditor";
 import { PANCHAYATI_RAJ_DEPARTMENT } from "../lib/district";
 import {
   directoryChoices,
@@ -33,6 +31,9 @@ import {
 
 const AdminCaptcha = dynamic(() => import("./AdminCaptcha"));
 const WorkplaceCamera = dynamic(() => import("./WorkplaceCamera"));
+const ReportDownload = dynamic(() => import("./ReportDownload"));
+const LeaveDecisionDialog = dynamic(() => import("./LeaveDecisionDialog"));
+const StaffEditor = dynamic(() => import("./StaffEditor"));
 
 type RecordRow = {
   id: string;
@@ -282,7 +283,12 @@ function RecordDetails({
     ["स्थिति / Status", statusLabels[row.status] || row.status],
     ["ड्यूटी स्थान / Duty location", row.deputation_workplace],
     ["अवकाश / Leave", row.leave_type],
-    [row.status === "on_duty" ? "ड्यूटी का कारण / On-duty reason" : "अनुपस्थिति का कारण / Absence reason", row.absence_reason],
+    [
+      row.status === "on_duty"
+        ? "ड्यूटी का कारण / On-duty reason"
+        : "अनुपस्थिति का कारण / Absence reason",
+      row.absence_reason,
+    ],
     ["आने का समय / In time", time(row.time_in)],
     ["जाने का समय / Out time", time(row.time_out)],
   ];
@@ -800,7 +806,7 @@ function Staff({
   fail: (err: unknown) => void;
   notify: (message: string) => void;
 }) {
-  const office = useOfficeFeed(initial?.office, revisions);
+  const office = useOfficeFeed(initial?.office, revisions, false);
   const closure = office.feed
     ? officeClosure(office.feed.today, office.feed.holidays)
     : null;
@@ -810,12 +816,15 @@ function Staff({
   const [leaveApplication, setLeaveApplication] =
     useState<LeaveApplication | null>(null);
   const [leaveHistory, setLeaveHistory] = useState<LeaveApplication[]>([]);
-  const [leaveUsage, setLeaveUsage] = useState<{ date: string; leave_type: string | null }[]>([]);
+  const [leaveUsage, setLeaveUsage] = useState<
+    { date: string; leave_type: string | null }[]
+  >([]);
   const [staffDecisionLinks, setStaffDecisionLinks] = useState<
     Record<string, string>
   >({});
   const [loading, setLoading] = useState(!initial),
     [busy, setBusy] = useState(false);
+  const [saveProgress, setSaveProgress] = useState("");
   const [loadError, setLoadError] = useState(false);
   const department = PANCHAYATI_RAJ_DEPARTMENT;
   const [panchayat, setPanchayat] = useState(""),
@@ -881,6 +890,7 @@ function Staff({
       try {
         const data = await api("/api/attendance-workflow");
         if (alive.current && requestId === staffRequestId.current) {
+          if (data.office) office.accept(data.office);
           if (retryLoad.current) clearTimeout(retryLoad.current);
           setRecord(
             (data.records || []).find(
@@ -914,7 +924,7 @@ function Staff({
           setLoading(false);
       }
     },
-    [fail],
+    [fail, office.accept],
   );
   useEffect(() => {
     alive.current = true;
@@ -999,19 +1009,30 @@ function Staff({
       throw new Error(
         "फ़ाइल 5 MB से कम होनी चाहिए। / File must be smaller than 5 MB.",
       );
-    if (purpose === "workplace_photo") file = await prepareWorkplacePhoto(file);
+    setSaveProgress("फ़ोटो तैयार हो रही है… / Preparing file…");
+    // The built-in camera already creates a bounded JPEG. Avoid decoding and
+    // encoding the geotagged photo for a second time on a mobile device.
+    if (
+      purpose === "workplace_photo" &&
+      !(
+        file instanceof File &&
+        file.name.startsWith("araria-workplace-") &&
+        file.type === "image/jpeg"
+      )
+    )
+      file = await prepareWorkplacePhoto(file);
+    setSaveProgress(
+      "सुरक्षित अपलोड तैयार हो रहा है… / Preparing secure upload…",
+    );
     const signed = await api("/api/upload", {
       type: file.type,
       size: file.size,
       purpose,
     });
-    const result = await fetch(signed.url, {
-      method: "PUT",
-      headers: { "Content-Type": file.type },
-      body: file,
-      signal: AbortSignal.timeout(45000),
+    await uploadWithProgress(signed.url, file, (percent) => {
+      if (alive.current)
+        setSaveProgress(`फ़ाइल अपलोड हो रही है… / Uploading file… ${percent}%`);
     });
-    if (!result.ok) throw new Error("फ़ाइल अपलोड विफल। फिर कोशिश करें।");
     return signed.path;
   }
   async function save(event?: React.FormEvent, complete = false) {
@@ -1019,6 +1040,7 @@ function Staff({
     if (savingRef.current) return;
     savingRef.current = true;
     setBusy(true);
+    setSaveProgress("");
     notify("");
     try {
       if (!office.feed || office.error || closure)
@@ -1043,10 +1065,17 @@ function Staff({
         position: selectedWorkspace?.position || position,
         status,
         deputation_workplace:
-          status === "deputation" || status === "on_duty" ? deputation.trim() : null,
+          status === "deputation" || status === "on_duty"
+            ? deputation.trim()
+            : null,
         leave_type: status === "leave" ? leaveType : null,
         leave_detail: status === "leave" ? leaveDetail.trim() : null,
-        absence_reason: status === "absent" ? absenceReason.trim() : status === "on_duty" ? dutyReason.trim() : null,
+        absence_reason:
+          status === "absent"
+            ? absenceReason.trim()
+            : status === "on_duty"
+              ? dutyReason.trim()
+              : null,
       };
       if (complete) {
         body.id = record?.id;
@@ -1079,8 +1108,10 @@ function Staff({
             body.latitude = capturedLocation.latitude;
             body.longitude = capturedLocation.longitude;
             body.accuracy = capturedLocation.accuracy;
-          }
-          else throw new Error("GPS camera location is required. Take a fresh photo.");
+          } else
+            throw new Error(
+              "GPS camera location is required. Take a fresh photo.",
+            );
         }
         if (status === "leave") {
           if (
@@ -1095,6 +1126,7 @@ function Staff({
           body.leave_upload_path = await upload(leave);
         }
       }
+      setSaveProgress("उपस्थिति दर्ज हो रही है… / Saving attendance…");
       const saved = await api("/api/attendance-workflow", body);
       if (!alive.current) return;
       if (saved.application?.id) {
@@ -1129,7 +1161,10 @@ function Staff({
       if (alive.current) fail(err);
     } finally {
       savingRef.current = false;
-      if (alive.current) setBusy(false);
+      if (alive.current) {
+        setBusy(false);
+        setSaveProgress("");
+      }
     }
   }
   return (
@@ -1320,7 +1355,10 @@ function Staff({
                       <div className="sp-status-options">
                         {Object.entries(statusLabels).map(([value, label]) => (
                           <label className="sp-status-option" key={value}>
-                            <input type="radio" name="work-status" value={value}
+                            <input
+                              type="radio"
+                              name="work-status"
+                              value={value}
                               checked={status === value}
                               onChange={() => {
                                 setStatus(value);
@@ -1328,12 +1366,15 @@ function Staff({
                                 setCapturedLocation(null);
                                 setCameraOpen(false);
                                 setLeave(null);
-                              }} />
+                              }}
+                            />
                             <span>{label}</span>
                           </label>
                         ))}
                       </div>
-                      <small className="sp-status-hint">← Swipe to see all work statuses →</small>
+                      <small className="sp-status-hint">
+                        ← Swipe to see all work statuses →
+                      </small>
                     </fieldset>
                     {(status === "deputation" || status === "on_duty") && (
                       <label className="sp-field">
@@ -1347,15 +1388,27 @@ function Staff({
                       </label>
                     )}
                     {status === "on_duty" && (
-                      <label className="sp-field">ड्यूटी का कारण / On-duty reason
-                        <textarea required minLength={3} maxLength={1000} rows={3}
-                          value={dutyReason} onChange={(event) => setDutyReason(event.target.value)} />
+                      <label className="sp-field">
+                        ड्यूटी का कारण / On-duty reason
+                        <textarea
+                          required
+                          minLength={3}
+                          maxLength={1000}
+                          rows={3}
+                          value={dutyReason}
+                          onChange={(event) =>
+                            setDutyReason(event.target.value)
+                          }
+                        />
                       </label>
                     )}
-                    {(["present", "deputation", "on_duty"].includes(status)) && (
+                    {["present", "deputation", "on_duty"].includes(status) && (
                       <div className="sp-field" key={status}>
                         <strong>OpenStreetMap GPS camera photo</strong>
-                        <small>Capture a fresh photo with your current location. Allow camera and location when your browser asks.</small>
+                        <small>
+                          Capture a fresh photo with your current location.
+                          Allow camera and location when your browser asks.
+                        </small>
                         <button
                           type="button"
                           className="sp-button sp-secondary"
@@ -1418,16 +1471,36 @@ function Staff({
                             {profile.gender === "female" && (
                               <option value="SL">SL / बीमारी अवकाश</option>
                             )}
-                            {profile.gender === "female" && <option value="MATERNITY">Maternity leave (180 days reference)</option>}
-                            {profile.gender === "male" && <option value="PATERNITY">Paternity leave (15 days reference)</option>}
+                            {profile.gender === "female" && (
+                              <option value="MATERNITY">
+                                Maternity leave (180 days reference)
+                              </option>
+                            )}
+                            {profile.gender === "male" && (
+                              <option value="PATERNITY">
+                                Paternity leave (15 days reference)
+                              </option>
+                            )}
                             <option value="OTHER">Other leave</option>
                           </select>
                         </label>
-                        {["MATERNITY", "PATERNITY", "OTHER"].includes(leaveType) && (
+                        {["MATERNITY", "PATERNITY", "OTHER"].includes(
+                          leaveType,
+                        ) && (
                           <label className="sp-field">
-                            {leaveType === "OTHER" ? "Type and reason for other leave" : "Reason for leave"}
-                            <textarea required minLength={3} maxLength={500} rows={3}
-                              value={leaveDetail} onChange={(event) => setLeaveDetail(event.target.value)} />
+                            {leaveType === "OTHER"
+                              ? "Type and reason for other leave"
+                              : "Reason for leave"}
+                            <textarea
+                              required
+                              minLength={3}
+                              maxLength={500}
+                              rows={3}
+                              value={leaveDetail}
+                              onChange={(event) =>
+                                setLeaveDetail(event.target.value)
+                              }
+                            />
                           </label>
                         )}
                         <label className="sp-field">
@@ -1479,12 +1552,21 @@ function Staff({
                   <button className="sp-button sp-primary" disabled={busy}>
                     {busy
                       ? "सहेजा जा रहा है…"
-                      : status === "leave" ? "अवकाश आवेदन भेजें / Submit leave application"
-                      : ["present", "deputation", "on_duty"].includes(status)
-                        ? "GPS फोटो सहित आगमन सहेजें / Save arrival draft"
-                        : "अनुपस्थिति सहेजें / Save absence"}
+                      : status === "leave"
+                        ? "अवकाश आवेदन भेजें / Submit leave application"
+                        : ["present", "deputation", "on_duty"].includes(status)
+                          ? "GPS फोटो सहित आगमन सहेजें / Save arrival draft"
+                          : "अनुपस्थिति सहेजें / Save absence"}
                   </button>
-                  <p className="sp-note">Submit once and wait for the confirmation above. Your staff login saves only your own attendance.</p>
+                  {busy && saveProgress && (
+                    <p role="status" aria-live="polite" className="sp-note">
+                      {saveProgress}
+                    </p>
+                  )}
+                  <p className="sp-note">
+                    Submit once and wait for the confirmation above. Your staff
+                    login saves only your own attendance.
+                  </p>
                   <p className="sp-note">
                     समय अपने आप दर्ज होगा।
                     {["present", "deputation", "on_duty"].includes(status)
@@ -1499,10 +1581,19 @@ function Staff({
         {(leaveHistory.length > 0 || leaveUsage.length > 0) && (
           <section className="sp-card sp-leave-history">
             <h2>मेरे अवकाश आवेदन / My leave applications</h2>
-            <p>{leaveUsage.length} leave days recorded this year. Your approved leave dates and application decisions are below.</p>
-            {leaveUsage.length > 0 && <div className="sp-leave-request-list">
-              {leaveUsage.map((entry) => <p key={`${entry.date}-${entry.leave_type}`}>{entry.date} • {entry.leave_type || "Leave"}</p>)}
-            </div>}
+            <p>
+              {leaveUsage.length} leave days recorded this year. Your approved
+              leave dates and application decisions are below.
+            </p>
+            {leaveUsage.length > 0 && (
+              <div className="sp-leave-request-list">
+                {leaveUsage.map((entry) => (
+                  <p key={`${entry.date}-${entry.leave_type}`}>
+                    {entry.date} • {entry.leave_type || "Leave"}
+                  </p>
+                ))}
+              </div>
+            )}
             <div className="sp-leave-request-list">
               {leaveHistory.map((application) => (
                 <article key={application.id} className="sp-leave-request">
@@ -1517,8 +1608,17 @@ function Staff({
                           ? "अस्वीकृत / Rejected"
                           : "लंबित / Pending"}
                     </p>
-                    {application.leave_detail && <p>Reason/type: {application.leave_detail}</p>}
-                    <p className="sp-muted">Applied: {new Date(application.created_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST</p>
+                    {application.leave_detail && (
+                      <p>Reason/type: {application.leave_detail}</p>
+                    )}
+                    <p className="sp-muted">
+                      Applied:{" "}
+                      {new Date(application.created_at).toLocaleString(
+                        "en-IN",
+                        { timeZone: "Asia/Kolkata" },
+                      )}{" "}
+                      IST
+                    </p>
                     {application.decided_at && (
                       <p className="sp-muted">
                         Decision:{" "}
@@ -2278,7 +2378,9 @@ function Admin({
                           ? "Approved"
                           : "Rejected"}
                       </p>
-                      {application.leave_detail && <p>Reason/type: {application.leave_detail}</p>}
+                      {application.leave_detail && (
+                        <p>Reason/type: {application.leave_detail}</p>
+                      )}
                       {application.decided_at && (
                         <p>
                           Decision:{" "}
@@ -2598,7 +2700,9 @@ function Admin({
                               </span>
                               <div className="sp-cell-value">
                                 <strong translate="no">
-                                  {row.profiles?.name || row.staff_name || "कर्मी"}
+                                  {row.profiles?.name ||
+                                    row.staff_name ||
+                                    "कर्मी"}
                                 </strong>
                                 <small>
                                   {row.profiles?.phone || ""} •{" "}
@@ -3119,7 +3223,9 @@ function Admin({
                     <p key={application.id}>
                       {application.date} • {application.leave_type} •{" "}
                       {application.status}
-                      {application.leave_detail ? ` • ${application.leave_detail}` : ""}
+                      {application.leave_detail
+                        ? ` • ${application.leave_detail}`
+                        : ""}
                       {application.decided_at
                         ? ` • Decided ${new Date(application.decided_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST`
                         : ""}

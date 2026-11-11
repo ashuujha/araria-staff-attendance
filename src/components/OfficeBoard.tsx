@@ -6,6 +6,7 @@ import type { OfficeFeed, OfficeNotice } from "../lib/office-types";
 export function useOfficeFeed(
   initial?: OfficeFeed,
   revisions?: { holidays: number; notices: number; today: string } | null,
+  loadOnMount = true,
 ) {
   const [feed, setFeed] = useState<OfficeFeed | null>(initial || null);
   const [error, setError] = useState("");
@@ -44,15 +45,22 @@ export function useOfficeFeed(
       return false;
     }
   }, []);
+  const accept = useCallback((value: OfficeFeed) => {
+    if (retry.current) clearTimeout(retry.current);
+    generation.current++;
+    hasFeed.current = true;
+    setFeed(value);
+    setError("");
+  }, []);
   useEffect(() => {
     alive.current = true;
-    if (!initial) void reload();
+    if (!initial && loadOnMount) void reload();
     return () => {
       alive.current = false;
       generation.current++;
       if (retry.current) clearTimeout(retry.current);
     };
-  }, [reload]);
+  }, [reload, loadOnMount]);
   useEffect(() => {
     if (revisions) return;
     const update = () => {
@@ -87,7 +95,7 @@ export function useOfficeFeed(
       void reload();
     }
   }, [revisions?.holidays, revisions?.notices, revisions?.today, reload]);
-  return { feed, error, reload };
+  return { feed, error, reload, accept };
 }
 
 export function NoticeBoard({ notices }: { notices: OfficeNotice[] }) {

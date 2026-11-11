@@ -23,10 +23,15 @@ export async function GET(req: Request) {
     const scope = blockId
       ? `&or=(block_id.is.null,block_id.eq.${blockId})`
       : "";
+    const today = istDate();
+    // Staff need only today's closure. Keep the full calendar for admin views.
+    const holidayWindow = profile.role === "staff" ? `&date=eq.${today}` : "";
+    const noticeLimit = profile.role === "staff" ? 20 : 100;
     const [holidays, notices] = await Promise.all([
       sb(
         "/rest/v1/office_holidays?select=date,reason,block_id" +
           scope +
+          holidayWindow +
           "&order=date",
         {},
         token,
@@ -34,12 +39,12 @@ export async function GET(req: Request) {
       sb(
         "/rest/v1/office_notices?deleted_at=is.null" +
           scope +
-          "&select=id,title,body,created_at,block_id&order=created_at.desc,id.desc&limit=100",
+          `&select=id,title,body,created_at,block_id&order=created_at.desc,id.desc&limit=${noticeLimit}`,
         {},
         token,
       ),
     ]);
-    return json({ holidays, notices, today: istDate() });
+    return json({ holidays, notices, today });
   } catch (error) {
     return failure(error);
   }

@@ -4,7 +4,8 @@
 
 - Staff mobile login performs an indexed phone lookup (`profiles.phone` is unique), login limit check, Supabase password authentication, a scoped profile read, and a limit reset. Admin login also checks CAPTCHA and writes an audit record. The limit reset and audit write run together after authorization.
 - Login and session restore return only the verified profile. They no longer wait for `portal_bootstrap`, which aggregated the full admin directory, daily attendance, notices, holidays, and leave balances.
-- Staff attendance, office notices, and revision counters load separately after the session is usable. The admin daily attendance request skips directory and leave-balance aggregation; those requests load independently. Directory reads remain role/block scoped by RLS.
+- Staff attendance, today's holiday, and the 20 newest notices load in one request after the session is usable. The independent office request no longer blocks the attendance form. Revision counters and leave history load separately. The admin daily attendance request skips directory and leave-balance aggregation; those requests load independently. Directory reads remain role/block scoped by RLS.
+- The built-in GPS camera already produces a bounded JPEG, so the upload path skips a second browser image encode. Direct private-storage uploads show byte progress before the final attendance save. Admin-only dialogs and report controls load as separate client chunks.
 - `Server-Timing` reports total login and its upstream stages, session restore, admin attendance/directory/balances, and staff dashboard time. Browser developer tools can show these timings without logging credentials or staff data.
 
 ## Capacity evidence

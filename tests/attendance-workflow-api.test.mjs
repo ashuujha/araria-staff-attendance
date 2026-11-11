@@ -15,7 +15,7 @@ await build({
   packages: "external",
   outfile: ".preview/attendance-workflow-api-test.mjs",
 });
-const { POST } = await import(
+const { GET, POST } = await import(
   pathToFileURL(resolve(".preview/attendance-workflow-api-test.mjs"))
 );
 process.env.SUPABASE_URL = "https://fixture.supabase.invalid";
@@ -25,6 +25,53 @@ process.env.APP_URL = "https://portal.example.test";
 const user = "11111111-1111-4111-8111-111111111111";
 const blockId = "22222222-2222-4222-8222-222222222222";
 const path = `${blockId}/${user}/${istDate()}/leave.pdf`;
+test("staff startup returns attendance and today's office feed in one request", async () => {
+  const original = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    calls.push(url);
+    if (url.pathname === "/auth/v1/user") return Response.json({ id: user });
+    if (url.pathname === "/rest/v1/profiles")
+      return Response.json([
+        {
+          id: user,
+          role: "staff",
+          active: true,
+          block_id: blockId,
+          assignments: [],
+        },
+      ]);
+    if (url.pathname === "/rest/v1/attendance") return Response.json([]);
+    if (url.pathname === "/rest/v1/leave_applications")
+      return Response.json([]);
+    if (url.pathname === "/rest/v1/office_holidays") return Response.json([]);
+    if (url.pathname === "/rest/v1/office_notices") return Response.json([]);
+    throw Error(`Unexpected ${url.pathname}`);
+  };
+  try {
+    const response = await GET(
+      new Request(process.env.APP_URL + "/api/attendance-workflow", {
+        headers: { cookie: "araria_session=fixture-session" },
+      }),
+    );
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.equal(result.office.today, istDate());
+    assert.deepEqual(result.records, []);
+    assert.equal(result.application, null);
+    const holiday = calls.find(
+      (url) => url.pathname === "/rest/v1/office_holidays",
+    );
+    assert.equal(holiday.searchParams.get("date"), `eq.${istDate()}`);
+    assert.equal(
+      calls.filter((url) => url.pathname === "/rest/v1/profiles").length,
+      1,
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+});
 const jpeg = await sharp({
   create: { width: 640, height: 480, channels: 3, background: "#456789" },
 })
@@ -96,8 +143,14 @@ function fixture(
     if (url.pathname === "/storage/v1/object/attendance-private")
       return Response.json([]);
     if (url.pathname === "/rest/v1/rpc/save_attendance_with_evidence") {
-      assert.equal(new Headers(init.headers).get("authorization"), "Bearer fixture-session");
-      assert.equal(new Headers(init.headers).get("apikey"), process.env.SUPABASE_PUBLISHABLE_KEY);
+      assert.equal(
+        new Headers(init.headers).get("authorization"),
+        "Bearer fixture-session",
+      );
+      assert.equal(
+        new Headers(init.headers).get("apikey"),
+        process.env.SUPABASE_PUBLISHABLE_KEY,
+      );
       const body = JSON.parse(init.body);
       for (const field of [
         "device_hash",
@@ -126,7 +179,13 @@ test("arrival requires GPS and departure does not repeat GPS or device cookie", 
     for (const patch of [
       { latitude: 26, longitude: 87, accuracy: 20 },
       { action: "complete", photo_upload_path: null },
-      { status: "deputation", deputation_workplace: "District office", latitude: 26, longitude: 87, accuracy: 20 },
+      {
+        status: "deputation",
+        deputation_workplace: "District office",
+        latitude: 26,
+        longitude: 87,
+        accuracy: 20,
+      },
     ]) {
       const response = await POST(request(patch));
       assert.equal(response.status, 200);
@@ -192,19 +251,33 @@ test("camera coordinates are passed only for a valid arrival photo", async () =>
   }
 });
 test("On Duty needs a place and reason and sends both to the attendance RPC", async () => {
-  const original = globalThis.fetch, calls = [];
+  const original = globalThis.fetch,
+    calls = [];
   globalThis.fetch = fixture(calls);
   try {
-    const base = { status: "on_duty", deputation_workplace: "District office", latitude: 26, longitude: 87, accuracy: 20 };
+    const base = {
+      status: "on_duty",
+      deputation_workplace: "District office",
+      latitude: 26,
+      longitude: 87,
+      accuracy: 20,
+    };
     assert.equal((await POST(request(base))).status, 400);
-    const response = await POST(request({ ...base, absence_reason: "District review" }));
+    const response = await POST(
+      request({ ...base, absence_reason: "District review" }),
+    );
     assert.equal(response.status, 200);
-    const rpc = calls.find((call) => call.url.pathname === "/rest/v1/rpc/save_attendance_with_evidence");
+    const rpc = calls.find(
+      (call) =>
+        call.url.pathname === "/rest/v1/rpc/save_attendance_with_evidence",
+    );
     const body = JSON.parse(rpc.init.body);
     assert.equal(body.status_name, "on_duty");
     assert.equal(body.workplace_name, "District office");
     assert.equal(body.absence_reason, "District review");
-  } finally { globalThis.fetch = original; }
+  } finally {
+    globalThis.fetch = original;
+  }
 });
 test("assignment, status and deputation validation still apply", async () => {
   const original = globalThis.fetch,

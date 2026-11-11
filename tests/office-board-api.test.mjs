@@ -73,6 +73,16 @@ test("office feed requires login and uses authenticated RLS for shared notices",
     assert.equal(response.status, 200);
     const data = await response.json();
     assert.equal(data.notices[0].title, "Office notice");
+    const holiday = calls.find(
+      (x) => x.url.pathname === "/rest/v1/office_holidays",
+    );
+    assert.equal(holiday.url.searchParams.get("date"), `eq.${data.today}`);
+    assert.equal(
+      calls
+        .find((x) => x.url.pathname === "/rest/v1/office_notices")
+        .url.searchParams.get("limit"),
+      "20",
+    );
     assert.equal(response.headers.get("cache-control"), "no-store");
     for (const call of calls.filter((x) =>
       ["/rest/v1/office_holidays", "/rest/v1/office_notices"].includes(

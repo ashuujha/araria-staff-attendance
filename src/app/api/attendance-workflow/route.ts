@@ -26,15 +26,33 @@ export async function GET(req: Request) {
   const started = performance.now();
   try {
     const { profile, token } = await identity(req);
-    const [records, applications] = await Promise.all([
+    const today = istDate();
+    const officeScope = profile.block_id
+      ? `&or=(block_id.is.null,block_id.eq.${profile.block_id})`
+      : "";
+    const [records, applications, holidays, notices] = await Promise.all([
       sb(
-        `/rest/v1/attendance?staff_id=eq.${profile.id}&date=eq.${istDate()}&deleted_at=is.null&select=*`,
+        `/rest/v1/attendance?staff_id=eq.${profile.id}&date=eq.${today}&deleted_at=is.null&select=*`,
         {},
         token,
       ),
       profile.role === "staff"
         ? sb(
-            `/rest/v1/leave_applications?staff_id=eq.${profile.id}&date=eq.${istDate()}&select=id,date,leave_type,leave_detail,status,created_at,decided_at,panchayat,position,rejection_reason,decision_document_path&order=created_at.desc&limit=1`,
+            `/rest/v1/leave_applications?staff_id=eq.${profile.id}&date=eq.${today}&select=id,date,leave_type,leave_detail,status,created_at,decided_at,panchayat,position,rejection_reason,decision_document_path&order=created_at.desc&limit=1`,
+            {},
+            token,
+          )
+        : Promise.resolve([]),
+      profile.role === "staff"
+        ? sb(
+            `/rest/v1/office_holidays?date=eq.${today}${officeScope}&select=date,reason,block_id`,
+            {},
+            token,
+          )
+        : Promise.resolve([]),
+      profile.role === "staff"
+        ? sb(
+            `/rest/v1/office_notices?deleted_at=is.null${officeScope}&select=id,title,body,created_at,block_id&order=created_at.desc,id.desc&limit=20`,
             {},
             token,
           )
@@ -44,6 +62,7 @@ export async function GET(req: Request) {
       {
         records,
         application: applications[0] || null,
+        office: { holidays, notices, today },
       },
       200,
       {
@@ -110,17 +129,44 @@ export async function POST(req: Request) {
           body.deputation_workplace.length > 200)
       )
         throw new HttpError(400, "प्रतिनियुक्ति कार्यस्थल का नाम आवश्यक है।");
-      if (body.status === "leave" && !["CL", "SL", "MATERNITY", "PATERNITY", "OTHER"].includes(body.leave_type))
+      if (
+        body.status === "leave" &&
+        !["CL", "SL", "MATERNITY", "PATERNITY", "OTHER"].includes(
+          body.leave_type,
+        )
+      )
         throw new HttpError(400, "CL या SL चुनें।");
-      if (body.status === "leave" && (
-        (body.leave_type === "SL" || body.leave_type === "MATERNITY") && profile.gender !== "female" ||
-        body.leave_type === "PATERNITY" && profile.gender !== "male"
-      )) throw new HttpError(403, "This leave type is not available for this staff account.");
-      if (body.status === "leave" && ["MATERNITY", "PATERNITY", "OTHER"].includes(body.leave_type) &&
-        (typeof body.leave_detail !== "string" || body.leave_detail.trim().length < 3 || body.leave_detail.length > 500))
-        throw new HttpError(400, "Enter the leave type/reason (3–500 characters).");
-      if (body.status === "on_duty" && (typeof body.absence_reason !== "string" || body.absence_reason.trim().length < 3 || body.absence_reason.length > 1000))
-        throw new HttpError(400, "Enter the on-duty reason (3–1000 characters).");
+      if (
+        body.status === "leave" &&
+        (((body.leave_type === "SL" || body.leave_type === "MATERNITY") &&
+          profile.gender !== "female") ||
+          (body.leave_type === "PATERNITY" && profile.gender !== "male"))
+      )
+        throw new HttpError(
+          403,
+          "This leave type is not available for this staff account.",
+        );
+      if (
+        body.status === "leave" &&
+        ["MATERNITY", "PATERNITY", "OTHER"].includes(body.leave_type) &&
+        (typeof body.leave_detail !== "string" ||
+          body.leave_detail.trim().length < 3 ||
+          body.leave_detail.length > 500)
+      )
+        throw new HttpError(
+          400,
+          "Enter the leave type/reason (3–500 characters).",
+        );
+      if (
+        body.status === "on_duty" &&
+        (typeof body.absence_reason !== "string" ||
+          body.absence_reason.trim().length < 3 ||
+          body.absence_reason.length > 1000)
+      )
+        throw new HttpError(
+          400,
+          "Enter the on-duty reason (3–1000 characters).",
+        );
       if (body.status === "leave" && !body.leave_upload_path)
         throw new HttpError(
           400,
@@ -143,7 +189,9 @@ export async function POST(req: Request) {
           "पंचायत, विभाग और पद नियुक्ति के अनुसार चुनें।",
         );
       if (
-        !["present", "absent", "leave", "deputation", "on_duty"].includes(body.status) ||
+        !["present", "absent", "leave", "deputation", "on_duty"].includes(
+          body.status,
+        ) ||
         draft !== ["present", "deputation", "on_duty"].includes(body.status)
       )
         throw new HttpError(400, "स्थिति अमान्य।");
@@ -274,36 +322,41 @@ export async function POST(req: Request) {
       cleanup.length = 0;
       return json({ application });
     }
-    const record = await sb("/rest/v1/rpc/save_attendance_with_evidence", {
-      method: "POST",
-      body: JSON.stringify({
-        user_id: profile.id,
-        action_name: body.action,
-        panchayat_name: body.panchayat ?? null,
-        department_name: body.department ?? null,
-        position_name: body.position ?? null,
-        status_name: body.status ?? null,
-        workplace_name: body.deputation_workplace ?? null,
-        leave_kind: body.leave_type ?? null,
-        device_hash: null,
-        photo_path:
-          body.action === "save_draft" ? body.photo_upload_path : null,
-        leave_path: body.leave_upload_path || null,
-        lat: locationProvided ? body.latitude : null,
-        lng: locationProvided ? body.longitude : null,
-        acc: locationProvided ? body.accuracy : null,
-        capture_id: null,
-        image_hash: null,
-        perceptual_hash: null,
-        absence_reason:
-          ["absent", "on_duty"].includes(body.status) ? body.absence_reason?.trim() : null,
-        request_ip:
-          req.headers.get("x-vercel-forwarded-for") ||
-          req.headers.get("x-forwarded-for") ||
-          null,
-        request_agent: req.headers.get("user-agent")?.slice(0, 500) || "",
-      }),
-    }, token);
+    const record = await sb(
+      "/rest/v1/rpc/save_attendance_with_evidence",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          user_id: profile.id,
+          action_name: body.action,
+          panchayat_name: body.panchayat ?? null,
+          department_name: body.department ?? null,
+          position_name: body.position ?? null,
+          status_name: body.status ?? null,
+          workplace_name: body.deputation_workplace ?? null,
+          leave_kind: body.leave_type ?? null,
+          device_hash: null,
+          photo_path:
+            body.action === "save_draft" ? body.photo_upload_path : null,
+          leave_path: body.leave_upload_path || null,
+          lat: locationProvided ? body.latitude : null,
+          lng: locationProvided ? body.longitude : null,
+          acc: locationProvided ? body.accuracy : null,
+          capture_id: null,
+          image_hash: null,
+          perceptual_hash: null,
+          absence_reason: ["absent", "on_duty"].includes(body.status)
+            ? body.absence_reason?.trim()
+            : null,
+          request_ip:
+            req.headers.get("x-vercel-forwarded-for") ||
+            req.headers.get("x-forwarded-for") ||
+            null,
+          request_agent: req.headers.get("user-agent")?.slice(0, 500) || "",
+        }),
+      },
+      token,
+    );
     cleanup.length = 0;
     return json({ record });
   } catch (e) {
