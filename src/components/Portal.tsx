@@ -17,6 +17,7 @@ import { officeClosure, type OfficeFeed } from "../lib/office-types";
 import { prepareWorkplacePhoto } from "../lib/photo-upload";
 import { uploadWithProgress } from "../lib/upload-progress";
 import { staffLeaveBalance } from "../lib/staff-leave-balance";
+import { dailyAttendanceSummary } from "../lib/daily-attendance-summary";
 import {
   googleMapsUrl,
   openStreetMapEmbedUrl,
@@ -46,6 +47,7 @@ type RecordRow = {
   position?: string;
   panchayat: string;
   block?: string;
+  block_id: string;
   status: string;
   phase?: string;
   deputation_workplace?: string | null;
@@ -227,6 +229,12 @@ const statusLabels: Record<string, string> = {
   deputation: "प्रतिनियुक्ति / Deputation",
   on_duty: "ड्यूटी पर / On Duty",
 };
+const staffStatusOptions = [
+  "present",
+  "leave",
+  "deputation",
+  "on_duty",
+] as const;
 function phase(row: RecordRow) {
   return row.phase === "submitted"
     ? "completed"
@@ -941,7 +949,6 @@ function Staff({
   const [departureLocation, setDepartureLocation] =
     useState<CameraLocation | null>(null);
   const [departureCameraOpen, setDepartureCameraOpen] = useState(false);
-  const [absenceReason, setAbsenceReason] = useState("");
   const [photoPreview, setPhotoPreview] = useState("");
   useEffect(() => {
     if (!workplacePhoto) {
@@ -1189,12 +1196,7 @@ function Staff({
             : null,
         leave_type: status === "leave" ? leaveType : null,
         leave_detail: status === "leave" ? leaveDetail.trim() : null,
-        absence_reason:
-          status === "absent"
-            ? absenceReason.trim()
-            : status === "on_duty"
-              ? dutyReason.trim()
-              : null,
+        absence_reason: status === "on_duty" ? dutyReason.trim() : null,
       };
       if (complete) {
         body.id = record?.id;
@@ -1218,14 +1220,6 @@ function Staff({
       } else {
         if (!consent)
           throw new Error("उपस्थिति की जानकारी साझा करने की सहमति दें।");
-        if (
-          status === "absent" &&
-          (absenceReason.trim().length < 3 ||
-            absenceReason.trim().length > 1000)
-        )
-          throw new Error(
-            "अनुपस्थिति का कारण लिखें (3–1000 अक्षर)। / Enter an absence reason (3–1000 characters).",
-          );
         if (["present", "deputation", "on_duty"].includes(status)) {
           if (
             !workplacePhoto ||
@@ -1318,10 +1312,7 @@ function Staff({
           <div>
             <span className="sp-eyebrow">कर्मी / STAFF</span>
             <h1>आज की उपस्थिति</h1>
-            <p className="sp-muted">
-              {dateToday()} • आने पर जानकारी सहेजें, जाते समय आउट टाइम दर्ज
-              करें।
-            </p>
+            <p className="sp-muted">{today}</p>
           </div>
           <button
             className="sp-button sp-secondary"
@@ -1334,7 +1325,9 @@ function Staff({
             रीफ़्रेश / Refresh
           </button>
         </div>
-        {office.feed && <NoticeBoard notices={office.feed.notices} />}
+        {!!office.feed?.notices.length && (
+          <NoticeBoard notices={office.feed.notices} />
+        )}
         <section className="sp-card">
           <div className="sp-identity">
             <div>
@@ -1375,13 +1368,8 @@ function Staff({
                 <h2>आज की सहेजी गई जानकारी</h2>
                 <span className="sp-badge">{phaseLabel(record)}</span>
               </div>
-              <RecordDetails row={{ ...record, profiles: profile }} />
               {phase(record) === "draft" ? (
                 <div className="sp-finish">
-                  <p>
-                    आपका इन टाइम सहेजा गया है और प्रशासक को दिखाई देता है।
-                    कार्यस्थल छोड़ते समय नई GPS फोटो लें, फिर आउट टाइम सहेजें।
-                  </p>
                   <button
                     type="button"
                     className="sp-button sp-secondary"
@@ -1437,6 +1425,10 @@ function Staff({
                   आज की उपस्थिति पूरी हो गई है।
                 </p>
               )}
+              <details className="sp-staff-details">
+                <summary>आज का विवरण / Today’s details</summary>
+                <RecordDetails row={{ ...record, profiles: profile }} />
+              </details>
             </>
           ) : leaveApplication?.status === "pending" ? (
             <div role="status" className="sp-alert sp-holiday">
@@ -1444,10 +1436,6 @@ function Staff({
               <p>
                 {leaveApplication.leave_type} • {leaveApplication.date} •{" "}
                 {leaveApplication.panchayat}
-              </p>
-              <p>
-                BPRO या DPRO के निर्णय के बाद अवकाश दर्ज होगा और शेष अवकाश
-                बदलेगा।
               </p>
             </div>
           ) : !assignments.length ? (
@@ -1481,11 +1469,6 @@ function Staff({
                         <strong id="workspace-label">
                           आज का कार्यस्थल / Today’s workspace
                         </strong>
-                        <small>
-                          केवल एक कार्यस्थल पर टिक करें। दोबारा दबाकर चयन हटा
-                          सकते हैं। / Tick one workspace for this attendance.
-                          Tap it again to untick.
-                        </small>
                         <div className="sp-workspace-options">
                           {workspaceOptions.map((assignment) => {
                             const key = workspaceKey(assignment);
@@ -1537,7 +1520,7 @@ function Staff({
                     <fieldset className="sp-status-group">
                       <legend>कार्य स्थिति / Work status</legend>
                       <div className="sp-status-options">
-                        {Object.entries(statusLabels).map(([value, label]) => (
+                        {staffStatusOptions.map((value) => (
                           <label className="sp-status-option" key={value}>
                             <input
                               type="radio"
@@ -1552,13 +1535,10 @@ function Staff({
                                 setLeave(null);
                               }}
                             />
-                            <span>{label}</span>
+                            <span>{statusLabels[value]}</span>
                           </label>
                         ))}
                       </div>
-                      <small className="sp-status-hint">
-                        ← Swipe to see all work statuses →
-                      </small>
                     </fieldset>
                     {(status === "deputation" || status === "on_duty") && (
                       <label className="sp-field">
@@ -1587,12 +1567,11 @@ function Staff({
                       </label>
                     )}
                     {["present", "deputation", "on_duty"].includes(status) && (
-                      <div className="sp-field" key={status}>
+                      <div
+                        className="sp-field sp-attendance-camera"
+                        key={status}
+                      >
                         <strong>OpenStreetMap GPS camera photo</strong>
-                        <small>
-                          Capture a fresh photo with your current location.
-                          Allow camera and location when your browser asks.
-                        </small>
                         <button
                           type="button"
                           className="sp-button sp-secondary"
@@ -1627,21 +1606,6 @@ function Staff({
                           </small>
                         )}
                       </div>
-                    )}
-                    {status === "absent" && (
-                      <label className="sp-field">
-                        अनुपस्थिति का कारण / Absence reason
-                        <textarea
-                          required
-                          minLength={3}
-                          maxLength={1000}
-                          rows={3}
-                          value={absenceReason}
-                          onChange={(event) =>
-                            setAbsenceReason(event.target.value)
-                          }
-                        />
-                      </label>
                     )}
                     {status === "leave" && (
                       <>
@@ -1728,9 +1692,8 @@ function Staff({
                       required
                     />
                     <span>
-                      मैं उपस्थिति की जानकारी कार्यालय के प्रशासक के साथ साझा
-                      करने की सहमति देता/देती हूँ। कैमरा चुनने पर फोटो और उसका
-                      स्थान भी साझा होगा।
+                      मैं अपनी उपस्थिति, फोटो और स्थान कार्यालय के साथ साझा करने
+                      की सहमति देता/देती हूँ।
                     </span>
                   </label>
                   <button className="sp-button sp-primary" disabled={busy}>
@@ -1738,32 +1701,20 @@ function Staff({
                       ? "सहेजा जा रहा है…"
                       : status === "leave"
                         ? "अवकाश आवेदन भेजें / Submit leave application"
-                        : ["present", "deputation", "on_duty"].includes(status)
-                          ? "GPS फोटो सहित आगमन सहेजें / Save arrival draft"
-                          : "अनुपस्थिति सहेजें / Save absence"}
+                        : "GPS फोटो सहित आगमन सहेजें / Save arrival draft"}
                   </button>
                   {busy && saveProgress && (
                     <p role="status" aria-live="polite" className="sp-note">
                       {saveProgress}
                     </p>
                   )}
-                  <p className="sp-note">
-                    Submit once and wait for the confirmation above. Your staff
-                    login saves only your own attendance.
-                  </p>
-                  <p className="sp-note">
-                    समय अपने आप दर्ज होगा।
-                    {["present", "deputation", "on_duty"].includes(status)
-                      ? " ड्राफ़्ट तुरंत प्रशासक को दिखाई देगा।"
-                      : " अनुपस्थिति और अवकाश के लिए इन/आउट टाइम नहीं लगेगा।"}
-                  </p>
                 </fieldset>
               </form>
             </>
           )}
         </section>
-        <section className="sp-card sp-leave-history">
-          <h2>अवकाश शेष और इतिहास / Leave balance and history</h2>
+        <details className="sp-card sp-leave-history">
+          <summary>अवकाश शेष और इतिहास / Leave balance and history</summary>
           {leaveHistoryLoading ? (
             <p role="status">
               अवकाश जानकारी लोड हो रही है… / Loading leave information…
@@ -1781,16 +1732,8 @@ function Staff({
                   gender={profile.gender}
                 />
               </p>
-              <p className="sp-note">
-                Only approved leave days count against CL/SL. Pending
-                applications do not reduce your balance. Maternity, paternity
-                and other leave are subject to admin approval.
-              </p>
               <h3>पहले दर्ज अवकाश / Recorded leave days</h3>
-              <p>
-                {yearLeaves.length} recorded this year • {leaveUsage.length}{" "}
-                shown across years
-              </p>
+              <p>{yearLeaves.length} recorded this year</p>
             </>
           )}
           {leaveUsage.length > 0 && (
@@ -1870,7 +1813,7 @@ function Staff({
               </article>
             ))}
           </div>
-        </section>
+        </details>
       </>
     </Localized>
   );
@@ -1917,6 +1860,7 @@ function Admin({
   } | null>(null);
   const [records, setRecords] = useState<RecordRow[]>(initial?.records || []),
     [staff, setStaff] = useState<Profile[]>(initial?.staff || []);
+  const [directoryLoaded, setDirectoryLoaded] = useState(!!initial);
   const [leaveBalances, setLeaveBalances] =
     useState<LeaveBalanceSnapshot | null>(initial?.leaveBalances || null);
   useEffect(() => {
@@ -1924,6 +1868,11 @@ function Admin({
   }, [initial?.leaveBalances]);
   const [date, setDate] = useState(initial?.date || dateToday()),
     [search, setSearch] = useState("");
+  const [recordScope, setRecordScope] = useState({
+    date: initial?.date || "",
+    blockId: "",
+  });
+  const [unmarkedSearch, setUnmarkedSearch] = useState("");
   useEffect(() => {
     if (role !== "dpro") return;
     void api(`/api/admin/district-summary?date=${encodeURIComponent(date)}`)
@@ -2129,6 +2078,7 @@ function Admin({
       .then((data) => {
         if (!active) return;
         setStaff(data.staff || []);
+        setDirectoryLoaded(true);
       })
       .catch(fail);
     return () => {
@@ -2163,6 +2113,7 @@ function Admin({
         if (alive.current && id === requestId.current) {
           if (retryAdmin.current) clearTimeout(retryAdmin.current);
           setRecords(data.records || []);
+          setRecordScope({ date, blockId: filterBlockId });
         }
       } catch (err) {
         if (alive.current && id === requestId.current) {
@@ -2296,6 +2247,32 @@ function Admin({
       ),
   );
   const directoryPeople = staff;
+  const selectedSummaryBlockId =
+    role === "bpro"
+      ? adminBlockId
+      : filters.block
+        ? blocks.find((block) => block.name_en === filters.block)?.id || ""
+        : "";
+  const dailySummary = useMemo(
+    () =>
+      dailyAttendanceSummary(
+        staff,
+        records,
+        date,
+        selectedSummaryBlockId || undefined,
+      ),
+    [staff, records, date, selectedSummaryBlockId],
+  );
+  const summaryReady =
+    directoryLoaded &&
+    !loading &&
+    recordScope.date === date &&
+    recordScope.blockId === (role === "dpro" ? selectedSummaryBlockId : "");
+  const unmarkedMatches = dailySummary.unmarked.filter((person) =>
+    `${person.name} ${person.phone || ""} ${person.block || ""}`
+      .toLocaleLowerCase()
+      .includes(unmarkedSearch.trim().toLocaleLowerCase()),
+  );
   const visibleStaff = useMemo(
     () => filterDirectoryStaff(directoryPeople, search, filters),
     [directoryPeople, search, filters],
@@ -2862,6 +2839,97 @@ function Admin({
                   </>
                 )}
               </div>
+              {tab === "attendance" && (
+                <section
+                  className="sp-daily-summary"
+                  aria-label="Daily attendance summary"
+                >
+                  <h2>दैनिक उपस्थिति / Daily attendance • {date}</h2>
+                  {summaryReady ? (
+                    <>
+                      <div className="sp-daily-counts">
+                        <div>
+                          <span>कुल कर्मी / Total staff</span>
+                          <strong>{dailySummary.total}</strong>
+                        </div>
+                        <div>
+                          <span>उपस्थिति दर्ज / Marked</span>
+                          <strong>{dailySummary.marked}</strong>
+                        </div>
+                        <div>
+                          <span>उपस्थिति बाकी / Not marked</span>
+                          <strong>{dailySummary.unmarked.length}</strong>
+                        </div>
+                      </div>
+                      <details className="sp-unmarked-details">
+                        <summary>
+                          किसने उपस्थिति दर्ज नहीं की / View staff not marked (
+                          {dailySummary.unmarked.length})
+                        </summary>
+                        {dailySummary.unmarked.length ? (
+                          <>
+                            <label className="sp-field">
+                              नाम या मोबाइल खोजें / Search name or mobile
+                              <input
+                                type="search"
+                                value={unmarkedSearch}
+                                onChange={(event) =>
+                                  setUnmarkedSearch(event.target.value)
+                                }
+                              />
+                            </label>
+                            <div className="sp-unmarked-list">
+                              {unmarkedMatches.map((person) => (
+                                <div
+                                  className="sp-unmarked-person"
+                                  key={person.id}
+                                >
+                                  <div>
+                                    <strong translate="no">
+                                      {person.name}
+                                    </strong>
+                                    <small translate="no">
+                                      {person.phone ||
+                                        "मोबाइल उपलब्ध नहीं / No mobile"}
+                                    </small>
+                                  </div>
+                                  <div>
+                                    <span translate="no">{person.block}</span>
+                                    <small translate="no">
+                                      {person.assignments?.[0]?.panchayat ||
+                                        "—"}
+                                      {person.assignments?.[0]?.position
+                                        ? ` • ${person.assignments[0].position}`
+                                        : ""}
+                                    </small>
+                                  </div>
+                                  {person.roster_only && (
+                                    <small>लॉगिन लंबित / Login pending</small>
+                                  )}
+                                </div>
+                              ))}
+                              {!unmarkedMatches.length && (
+                                <p className="sp-muted">
+                                  कोई मेल नहीं / No matches
+                                </p>
+                              )}
+                            </div>
+                          </>
+                        ) : (
+                          <p className="sp-muted">
+                            सभी कर्मियों ने उपस्थिति दर्ज की है। / All staff
+                            have marked attendance.
+                          </p>
+                        )}
+                      </details>
+                    </>
+                  ) : (
+                    <p role="status" className="sp-muted">
+                      सारांश लोड हो रहा है… / Loading summary…
+                    </p>
+                  )}
+                </section>
+              )}
               <div className="sp-list-caption">
                 <p>
                   {tab === "attendance"

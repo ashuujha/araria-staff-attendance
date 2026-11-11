@@ -199,11 +199,6 @@ export default function WorkplaceCamera({
 
   return (
     <div className="sp-capture sp-workplace-camera">
-      <p>
-        कैमरा और स्थान की अनुमति दें। फ़ोटो लेने पर ताज़ा स्थान माँगा जाएगा। /
-        Allow camera and location. A fresh position is requested when you take
-        the photo.
-      </p>
       <video
         ref={video}
         className="sp-camera"
