@@ -858,6 +858,7 @@ function Staff({
     [consent, setConsent] = useState(false);
   const alive = useRef(true);
   const staffRequestId = useRef(0);
+  const initialLoadPending = useRef(!initial);
   const retryLoad = useRef<ReturnType<typeof setTimeout> | null>(null);
   const assignments = (profile.assignments || []).filter(
     (a) => a.panchayat?.trim() && a.position?.trim(),
@@ -899,11 +900,13 @@ function Staff({
           );
           setLeaveApplication(data.application || null);
           setLoadError(false);
+          initialLoadPending.current = false;
         }
       } catch (err) {
         if (alive.current && requestId === staffRequestId.current) {
           if (
             !background ||
+            initialLoadPending.current ||
             (err instanceof RequestError && err.status === 401)
           ) {
             setLoadError(true);
@@ -916,11 +919,7 @@ function Staff({
           }, 5000);
         }
       } finally {
-        if (
-          !background &&
-          alive.current &&
-          requestId === staffRequestId.current
-        )
+        if (alive.current && requestId === staffRequestId.current)
           setLoading(false);
       }
     },
@@ -981,6 +980,8 @@ function Staff({
   });
   useEffect(() => {
     const prior = lastAttendanceRevision.current;
+    const firstRevision =
+      prior.attendance === undefined && prior.today === undefined;
     if (
       prior.attendance !== revisions?.attendance ||
       prior.today !== revisions?.today
@@ -989,7 +990,7 @@ function Staff({
         attendance: revisions?.attendance,
         today: revisions?.today,
       };
-      void load(true);
+      if (!firstRevision) void load(true);
     }
   }, [revisions?.attendance, revisions?.today, load]);
   useEffect(() => {

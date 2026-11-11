@@ -82,6 +82,10 @@ export function useOfficeFeed(
   });
   useEffect(() => {
     const prior = last.current;
+    const firstRevision =
+      prior.holidays === undefined &&
+      prior.notices === undefined &&
+      prior.today === undefined;
     if (
       prior.holidays !== revisions?.holidays ||
       prior.notices !== revisions?.notices ||
@@ -92,7 +96,7 @@ export function useOfficeFeed(
         notices: revisions?.notices,
         today: revisions?.today,
       };
-      void reload();
+      if (!firstRevision) void reload();
     }
   }, [revisions?.holidays, revisions?.notices, revisions?.today, reload]);
   return { feed, error, reload, accept };
