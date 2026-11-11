@@ -31,6 +31,7 @@ function currentPosition(): Promise<GeolocationPosition> {
 function photoFromVideo(
   video: HTMLVideoElement,
   location: CameraLocation,
+  mode: "arrival" | "departure",
 ): Promise<File> {
   if (!video.videoWidth || !video.videoHeight)
     throw new Error("कैमरा तैयार नहीं है। / Camera is not ready.");
@@ -62,7 +63,9 @@ function photoFromVideo(
     second: "2-digit",
   });
   const lines = [
-    "ARARIA STAFF • WORKPLACE CAMERA",
+    mode === "departure"
+      ? "ARARIA STAFF • DEPARTURE GPS CAMERA"
+      : "ARARIA STAFF • ARRIVAL GPS CAMERA",
     `Lat ${location.latitude.toFixed(6)}°   Lon ${location.longitude.toFixed(6)}°`,
     `Device accuracy ±${Math.round(location.accuracy)} m`,
     `${recorded} IST`,
@@ -98,9 +101,11 @@ function photoFromVideo(
 export default function WorkplaceCamera({
   onUse,
   onClose,
+  mode = "arrival",
 }: {
   onUse: (file: File, location: CameraLocation) => void;
   onClose: () => void;
+  mode?: "arrival" | "departure";
 }) {
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
@@ -169,7 +174,7 @@ export default function WorkplaceCamera({
       const position = await currentPosition();
       const location = cameraLocation(position);
       if (!active.current || !video.current) return;
-      const file = await photoFromVideo(video.current, location);
+      const file = await photoFromVideo(video.current, location, mode);
       if (!file.size || file.size >= 5 * 1024 * 1024)
         throw new Error(
           "फोटो 5 MB से बड़ी है। फिर कोशिश करें। / Photo exceeds 5 MB. Retake it.",

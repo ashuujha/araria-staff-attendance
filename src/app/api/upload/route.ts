@@ -25,7 +25,17 @@ export async function POST(req: Request) {
     const b = await req.json();
     if (!b || typeof b !== "object" || Array.isArray(b))
       throw new HttpError(400, "अनुरोध अमान्य।");
-    const workplace = b.purpose === "workplace_photo";
+    if (
+      !["workplace_photo", "departure_photo", "leave_document"].includes(
+        b.purpose,
+      )
+    )
+      throw new HttpError(
+        400,
+        "अपलोड प्रकार अमान्य। / Invalid upload purpose.",
+      );
+    const workplace =
+      b.purpose === "workplace_photo" || b.purpose === "departure_photo";
     if (
       !(
         workplace

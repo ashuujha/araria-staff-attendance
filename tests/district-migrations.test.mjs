@@ -14,7 +14,12 @@ await db.exec(
   ),
 );
 for (const name of (await readdir("supabase/migrations")).sort()) {
-  if (name.startsWith("20261109") || name.startsWith("20261110") || name.startsWith("20261111")) continue;
+  if (
+    name.startsWith("20261109") ||
+    name.startsWith("20261110") ||
+    name.startsWith("20261111")
+  )
+    continue;
   await db.exec(await readFile("supabase/migrations/" + name, "utf8"));
 }
 const dpro = "11111111-1111-4111-8111-111111111111";
@@ -90,7 +95,16 @@ await db.exec(
   ),
 );
 await db.exec(
-  await readFile("supabase/migrations/20261111_12_staff_status_leave_types.sql", "utf8"),
+  await readFile(
+    "supabase/migrations/20261111_12_staff_status_leave_types.sql",
+    "utf8",
+  ),
+);
+await db.exec(
+  await readFile(
+    "supabase/migrations/20261112_13_departure_gps_photo.sql",
+    "utf8",
+  ),
 );
 
 test("block catalog and historical Araria backfill", async () => {
@@ -565,78 +579,264 @@ test("district RPC migration tolerates an older attendance function being absent
       "utf8",
     ),
   );
-  await db.exec(await readFile("supabase/migrations/20261111_12_staff_status_leave_types.sql", "utf8"));
+  await db.exec(
+    await readFile(
+      "supabase/migrations/20261111_12_staff_status_leave_types.sql",
+      "utf8",
+    ),
+  );
 });
 
 test("On Duty requires a reason and stores a GPS arrival draft", async () => {
   const actor = "66666666-6666-4666-8666-666666666666";
-  const today = (await db.query("select (now() at time zone 'Asia/Kolkata')::date::text d")).rows[0].d;
-  const block = (await db.query("select block_id from profiles where id=$1", [staff])).rows[0].block_id;
+  const today = (
+    await db.query("select (now() at time zone 'Asia/Kolkata')::date::text d")
+  ).rows[0].d;
+  const block = (
+    await db.query("select block_id from profiles where id=$1", [staff])
+  ).rows[0].block_id;
   await db.query("insert into auth.users values($1)", [actor]);
-  await db.query("insert into profiles(id,name,phone,login_email,role,block,block_id,assignments) select $1,'On Duty Test','9000000066','duty@test.invalid','staff',block,block_id,assignments from profiles where id=$2", [actor, staff]);
+  await db.query(
+    "insert into profiles(id,name,phone,login_email,role,block,block_id,assignments) select $1,'On Duty Test','9000000066','duty@test.invalid','staff',block,block_id,assignments from profiles where id=$2",
+    [actor, staff],
+  );
   const path = `${block}/${actor}/${today}/duty.jpg`;
-  await db.query("insert into pending_uploads(path,staff_id,block_id) values($1,$2,$3)", [path, actor, block]);
+  await db.query(
+    "insert into pending_uploads(path,staff_id,block_id) values($1,$2,$3)",
+    [path, actor, block],
+  );
   await db.exec("set role authenticated");
-  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [actor]);
-  const args = [actor, "save_draft", "Office", "पंचायती राज विभाग", "Staff", "on_duty", "District office", null, null, path, null, 26, 87, 20, null, null, null, null, null];
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+    actor,
+  ]);
+  const args = [
+    actor,
+    "save_draft",
+    "Office",
+    "पंचायती राज विभाग",
+    "Staff",
+    "on_duty",
+    "District office",
+    null,
+    null,
+    path,
+    null,
+    26,
+    87,
+    20,
+    null,
+    null,
+    null,
+    null,
+    null,
+  ];
   try {
-    await assert.rejects(db.query(`select save_attendance_with_evidence(${args.map((_, i) => `$${i + 1}`).join(",")},$20)`, [...args, null]), /कारण/);
-    const saved = (await db.query(`select save_attendance_with_evidence(${args.map((_, i) => `$${i + 1}`).join(",")},$20) as row`, [...args, "District review"])).rows[0].row;
+    await assert.rejects(
+      db.query(
+        `select save_attendance_with_evidence(${args.map((_, i) => `$${i + 1}`).join(",")},$20)`,
+        [...args, null],
+      ),
+      /कारण/,
+    );
+    const saved = (
+      await db.query(
+        `select save_attendance_with_evidence(${args.map((_, i) => `$${i + 1}`).join(",")},$20) as row`,
+        [...args, "District review"],
+      )
+    ).rows[0].row;
     assert.equal(saved.status, "on_duty");
     assert.equal(saved.phase, "draft");
     assert.equal(saved.absence_reason, "District review");
     assert.equal(saved.deputation_workplace, "District office");
     assert.ok(saved.time_in);
-  } finally { await db.exec("reset role"); }
+  } finally {
+    await db.exec("reset role");
+  }
 });
 
 test("new leave types enforce gender and preserve the supplied reason", async () => {
   const actor = "77777777-7777-4777-8777-777777777777";
-  const today = (await db.query("select (now() at time zone 'Asia/Kolkata')::date::text d")).rows[0].d;
-  const block = (await db.query("select block_id from profiles where id=$1", [staff])).rows[0].block_id;
+  const today = (
+    await db.query("select (now() at time zone 'Asia/Kolkata')::date::text d")
+  ).rows[0].d;
+  const block = (
+    await db.query("select block_id from profiles where id=$1", [staff])
+  ).rows[0].block_id;
   await db.query("insert into auth.users values($1)", [actor]);
-  await db.query("insert into profiles(id,name,phone,login_email,role,block,block_id,assignments,gender) select $1,'Leave Test','9000000077','leave@test.invalid','staff',block,block_id,assignments,'female' from profiles where id=$2", [actor, staff]);
+  await db.query(
+    "insert into profiles(id,name,phone,login_email,role,block,block_id,assignments,gender) select $1,'Leave Test','9000000077','leave@test.invalid','staff',block,block_id,assignments,'female' from profiles where id=$2",
+    [actor, staff],
+  );
   const path = `${block}/${actor}/${today}/leave.pdf`;
-  await db.query("insert into pending_uploads(path,staff_id,block_id) values($1,$2,$3)", [path, actor, block]);
+  await db.query(
+    "insert into pending_uploads(path,staff_id,block_id) values($1,$2,$3)",
+    [path, actor, block],
+  );
   await db.exec("set role authenticated");
-  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [actor]);
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+    actor,
+  ]);
   try {
-    await assert.rejects(db.query("select submit_leave_application_v2('Office','Staff','PATERNITY',$1,'Family care')", [path]), /Paternity/);
-    await assert.rejects(db.query("select submit_leave_application_v2('Office','Staff','MATERNITY',$1,'')", [path]), /reason/);
-    const saved = (await db.query("select submit_leave_application_v2('Office','Staff','MATERNITY',$1,'Maternity care') as row", [path])).rows[0].row;
+    await assert.rejects(
+      db.query(
+        "select submit_leave_application_v2('Office','Staff','PATERNITY',$1,'Family care')",
+        [path],
+      ),
+      /Paternity/,
+    );
+    await assert.rejects(
+      db.query(
+        "select submit_leave_application_v2('Office','Staff','MATERNITY',$1,'')",
+        [path],
+      ),
+      /reason/,
+    );
+    const saved = (
+      await db.query(
+        "select submit_leave_application_v2('Office','Staff','MATERNITY',$1,'Maternity care') as row",
+        [path],
+      )
+    ).rows[0].row;
     assert.equal(saved.leave_type, "MATERNITY");
     assert.equal(saved.leave_detail, "Maternity care");
     assert.equal(saved.status, "pending");
-  } finally { await db.exec("reset role"); }
+  } finally {
+    await db.exec("reset role");
+  }
 });
 
 test("staff cannot retrieve remaining leave balances through the RPC", async () => {
   await db.exec("set role authenticated");
   try {
-    await db.query("select set_config('request.jwt.claim.sub',$1,false)", [staff]);
-    const own = (await db.query("select leave_balance_snapshot() as value")).rows[0].value;
+    await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+      staff,
+    ]);
+    const own = (await db.query("select leave_balance_snapshot() as value"))
+      .rows[0].value;
     assert.deepEqual(own.balances, []);
-    await db.query("select set_config('request.jwt.claim.sub',$1,false)", [dpro]);
-    const district = (await db.query("select leave_balance_snapshot() as value")).rows[0].value;
+    await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+      dpro,
+    ]);
+    const district = (
+      await db.query("select leave_balance_snapshot() as value")
+    ).rows[0].value;
     assert.ok(district.balances.length > 0);
-  } finally { await db.exec("reset role"); }
+  } finally {
+    await db.exec("reset role");
+  }
 });
 
 test("Araria BPRO and DPRO retain access to attendance from an archived Araria staff account", async () => {
   const former = "88888888-8888-4888-8888-888888888888";
-  const araria = (await db.query("select id from blocks where code='araria'")).rows[0].id;
+  const araria = (await db.query("select id from blocks where code='araria'"))
+    .rows[0].id;
   await db.query("insert into auth.users values($1)", [former]);
-  await db.query("insert into profiles(id,name,phone,login_email,role,block,block_id,assignments) values($1,'Former Araria Staff','9000000088','former@test.invalid','staff','Araria',$2,'[]')", [former, araria]);
-  await db.query("insert into attendance(staff_id,panchayat,date,status,department,block,block_id,staff_name) values($1,'Office','2026-01-06','present','पंचायती राज विभाग','Araria',$2,'Former Araria Staff')", [former, araria]);
-  await db.query("update profiles set active=false,deleted_at=now() where id=$1", [former]);
+  await db.query(
+    "insert into profiles(id,name,phone,login_email,role,block,block_id,assignments) values($1,'Former Araria Staff','9000000088','former@test.invalid','staff','Araria',$2,'[]')",
+    [former, araria],
+  );
+  await db.query(
+    "insert into attendance(staff_id,panchayat,date,status,department,block,block_id,staff_name) values($1,'Office','2026-01-06','present','पंचायती राज विभाग','Araria',$2,'Former Araria Staff')",
+    [former, araria],
+  );
+  await db.query(
+    "update profiles set active=false,deleted_at=now() where id=$1",
+    [former],
+  );
   for (const viewer of [bpro, dpro]) {
     await db.exec("set role authenticated");
-    await db.query("select set_config('request.jwt.claim.sub',$1,false)", [viewer]);
+    await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+      viewer,
+    ]);
     try {
-      const rows = (await db.query("select staff_name,block_id from attendance where staff_id=$1 and date='2026-01-06'", [former])).rows;
+      const rows = (
+        await db.query(
+          "select staff_name,block_id from attendance where staff_id=$1 and date='2026-01-06'",
+          [former],
+        )
+      ).rows;
       assert.equal(rows.length, 1);
       assert.equal(rows[0].staff_name, "Former Araria Staff");
       assert.equal(rows[0].block_id, araria);
-    } finally { await db.exec("reset role"); }
+    } finally {
+      await db.exec("reset role");
+    }
   }
+});
+
+test("departure requires a fresh owned photo and stores GPS with out time atomically", async () => {
+  const actor = "99999999-9999-4999-8999-999999999999";
+  const today = (
+    await db.query("select (now() at time zone 'Asia/Kolkata')::date::text d")
+  ).rows[0].d;
+  const araria = (await db.query("select id from blocks where code='araria'"))
+    .rows[0].id;
+  const photo = `${araria}/${actor}/${today}/departure.jpg`;
+  await db.query("insert into auth.users values($1)", [actor]);
+  await db.query(
+    "insert into profiles(id,name,phone,login_email,role,block,block_id,assignments) values($1,'Departure Test','9000000099','departure@test.invalid','staff','Araria',$2,'[]')",
+    [actor, araria],
+  );
+  await db.query(
+    "insert into attendance(staff_id,panchayat,date,status,phase,time_in,department,block,block_id,staff_name) values($1,'Office',$2,'present','draft',now(),'पंचायती राज विभाग','Araria',$3,'Departure Test')",
+    [actor, today, araria],
+  );
+  await db.query(
+    "insert into pending_uploads(path,staff_id,block_id) values($1,$2,$3)",
+    [photo, actor, araria],
+  );
+  await db.exec("set role authenticated");
+  try {
+    await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+      staff,
+    ]);
+    await assert.rejects(
+      db.query(
+        "select complete_attendance_with_out_photo($1,$2,26.1,87.2,15)",
+        [actor, photo],
+      ),
+    );
+    await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+      actor,
+    ]);
+    await assert.rejects(
+      db.query(
+        "select complete_attendance_with_out_photo($1,$2,26.1,87.2,15)",
+        [actor, photo.replace("departure.jpg", "wrong.jpg")],
+      ),
+    );
+    await assert.rejects(
+      db.query(
+        "select save_attendance_with_evidence($1,'complete',null,null,null,null,null,null,null)",
+        [actor],
+      ),
+      /GPS/,
+    );
+    const saved = (
+      await db.query(
+        "select complete_attendance_with_out_photo($1,$2,26.1,87.2,15) as row",
+        [actor, photo],
+      )
+    ).rows[0].row;
+    assert.equal(saved.phase, "submitted");
+    assert.equal(saved.out_photo_path, photo);
+    assert.equal(saved.out_location.latitude, 26.1);
+    assert.ok(saved.time_out);
+    await assert.rejects(
+      db.query(
+        "select complete_attendance_with_out_photo($1,$2,26.1,87.2,15)",
+        [actor, photo],
+      ),
+    );
+  } finally {
+    await db.exec("reset role");
+  }
+  assert.equal(
+    (
+      await db.query("select consumed from pending_uploads where path=$1", [
+        photo,
+      ])
+    ).rows[0].consumed,
+    true,
+  );
 });

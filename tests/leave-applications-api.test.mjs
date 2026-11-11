@@ -94,6 +94,31 @@ function fixture(calls, requestBlock = block, actorRole = "bpro") {
   };
 }
 
+test("staff leave history includes earlier years for personal balance and records", async () => {
+  const original = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = fixture(calls, block, "staff");
+  try {
+    const response = await GET(
+      new Request(
+        process.env.APP_URL + "/api/leave-applications?view=history",
+        {
+          headers: { cookie: "araria_session=fixture-session" },
+        },
+      ),
+    );
+    assert.equal(response.status, 200);
+    const attendanceQuery = calls.find(
+      (call) => call.url.pathname === "/rest/v1/attendance",
+    ).url.searchParams;
+    assert.equal(attendanceQuery.has("date"), false);
+    assert.equal(attendanceQuery.get("limit"), "1000");
+    assert.equal(attendanceQuery.get("staff_id"), `eq.${bpro}`);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
 test("a BPRO cannot decide another block's request or upload its signed copy", async () => {
   const original = globalThis.fetch,
     calls = [];

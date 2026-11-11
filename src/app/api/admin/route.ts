@@ -63,7 +63,7 @@ export async function GET(req: Request) {
           "/rest/v1/attendance?date=eq." +
             date +
             blockFilter +
-            "&deleted_at=is.null&select=id,staff_id,date,panchayat,department,position,block,block_id,staff_name,status,phase,deputation_workplace,leave_type,absence_reason,time_in,time_out,latitude,longitude,accuracy,photo_path,leave_path,working_places,profiles(id,name,phone,email,block,block_id,role,active)&order=created_at.desc",
+            "&deleted_at=is.null&select=id,staff_id,date,panchayat,department,position,block,block_id,staff_name,status,phase,deputation_workplace,leave_type,absence_reason,time_in,time_out,latitude,longitude,accuracy,photo_path,out_photo_path,out_location,leave_path,working_places,profiles(id,name,phone,email,block,block_id,role,active)&order=created_at.desc",
           {},
           token,
         ),

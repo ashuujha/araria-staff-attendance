@@ -211,14 +211,14 @@ export async function POST(req: Request) {
           "अनुपस्थिति का कारण लिखें (3–1000 अक्षर)। / Enter an absence reason (3–1000 characters).",
         );
     }
-    // The camera must supply a fresh browser position for arrival drafts.
+    // The camera must supply a fresh browser position on arrival and departure.
     const locationProvided =
       body.latitude != null || body.longitude != null || body.accuracy != null;
-    if (draft && !locationProvided)
+    if ((draft || body.action === "complete") && !locationProvided)
       throw new HttpError(400, "A fresh GPS camera location is required.");
     if (
       locationProvided &&
-      (!draft ||
+      (!(draft || body.action === "complete") ||
         ![body.latitude, body.longitude, body.accuracy].every(
           (value) => typeof value === "number" && Number.isFinite(value),
         ) ||
@@ -233,77 +233,98 @@ export async function POST(req: Request) {
       );
     if (
       body.action === "complete" &&
-      (body.leave_upload_path || body.photo_upload_path)
+      (body.leave_upload_path || !body.photo_upload_path)
     )
-      throw new HttpError(400, "आउट समय के लिए नया दस्तावेज आवश्यक नहीं।");
+      throw new HttpError(
+        400,
+        "आउट समय की GPS फोटो आवश्यक है। / A fresh departure GPS photo is required.",
+      );
     if (body.action !== "complete") {
       if (!draft && body.photo_upload_path)
         throw new HttpError(400, "फोटो केवल कार्यस्थल उपस्थिति के लिए है।");
       if (body.status !== "leave" && body.leave_upload_path)
         throw new HttpError(400, "दस्तावेज केवल अवकाश के लिए है।");
-      if (body.photo_upload_path || body.leave_upload_path)
-        releaseEvidence = await reserveEvidenceSlot();
-      for (const [path, isPhoto] of [
-        [body.photo_upload_path, true],
-        [body.leave_upload_path, false],
-      ] as [unknown, boolean][]) {
-        if (path == null || path === "") continue;
-        if (
-          typeof path !== "string" ||
-          !path.startsWith(`${profile.block_id}/${profile.id}/${istDate()}/`) ||
-          !/^[-a-zA-Z0-9/_.]+$/.test(path)
-        )
-          throw new HttpError(400, "अपलोड सत्यापन अमान्य।");
-        const pending = await sb(
-          `/rest/v1/pending_uploads?path=eq.${encodeURIComponent(path)}&staff_id=eq.${profile.id}&block_id=eq.${profile.block_id}&select=*`,
-        );
-        if (
-          !pending[0] ||
-          pending[0].consumed ||
-          Date.now() > new Date(pending[0].expires_at).getTime()
-        )
-          throw new HttpError(400, "अपलोड समय सीमा समाप्त। फिर कोशिश करें।");
-        cleanup.push(path);
-        const stored = await fetch(
+    }
+    if (body.photo_upload_path || body.leave_upload_path)
+      releaseEvidence = await reserveEvidenceSlot();
+    for (const [path, isPhoto] of [
+      [body.photo_upload_path, true],
+      [body.leave_upload_path, false],
+    ] as [unknown, boolean][]) {
+      if (path == null || path === "") continue;
+      if (
+        typeof path !== "string" ||
+        !path.startsWith(`${profile.block_id}/${profile.id}/${istDate()}/`) ||
+        !/^[-a-zA-Z0-9/_.]+$/.test(path)
+      )
+        throw new HttpError(400, "अपलोड सत्यापन अमान्य।");
+      const pending = await sb(
+        `/rest/v1/pending_uploads?path=eq.${encodeURIComponent(path)}&staff_id=eq.${profile.id}&block_id=eq.${profile.block_id}&select=*`,
+      );
+      if (
+        !pending[0] ||
+        pending[0].consumed ||
+        Date.now() > new Date(pending[0].expires_at).getTime()
+      )
+        throw new HttpError(400, "अपलोड समय सीमा समाप्त। फिर कोशिश करें।");
+      cleanup.push(path);
+      const stored = await fetch(
+        `${process.env.SUPABASE_URL}/storage/v1/object/attendance-private/${path}`,
+        {
+          headers: { apikey: process.env.SUPABASE_SECRET_KEY! },
+          signal: AbortSignal.timeout(15000),
+        },
+      );
+      if (!stored.ok) throw new HttpError(400, "अपलोड पूरा नहीं हुआ।");
+      const bytes = await readBoundedUpload(stored);
+      const kind = isPhoto
+        ? validateWorkplacePhotoBytes(bytes)
+        : validateUploadBytes(bytes);
+      await scanIfConfigured(bytes, kind);
+      let sanitized: Uint8Array | null = null;
+      if (isPhoto) sanitized = await sanitizeWorkplacePhoto(bytes);
+      else if (kind === "image/jpeg") {
+        sanitized = await sanitizeLeaveJpeg(bytes);
+      }
+      if (sanitized) {
+        validateUploadBytes(sanitized, isPhoto);
+        const upload = await fetch(
           `${process.env.SUPABASE_URL}/storage/v1/object/attendance-private/${path}`,
           {
-            headers: { apikey: process.env.SUPABASE_SECRET_KEY! },
+            method: "POST",
+            headers: {
+              apikey: process.env.SUPABASE_SECRET_KEY!,
+              "Content-Type": isPhoto ? "image/jpeg" : kind,
+              "x-upsert": "true",
+            },
+            body: new Uint8Array(sanitized).buffer,
             signal: AbortSignal.timeout(15000),
           },
         );
-        if (!stored.ok) throw new HttpError(400, "अपलोड पूरा नहीं हुआ।");
-        const bytes = await readBoundedUpload(stored);
-        const kind = isPhoto
-          ? validateWorkplacePhotoBytes(bytes)
-          : validateUploadBytes(bytes);
-        await scanIfConfigured(bytes, kind);
-        let sanitized: Uint8Array | null = null;
-        if (isPhoto) sanitized = await sanitizeWorkplacePhoto(bytes);
-        else if (kind === "image/jpeg") {
-          sanitized = await sanitizeLeaveJpeg(bytes);
-        }
-        if (sanitized) {
-          validateUploadBytes(sanitized, isPhoto);
-          const upload = await fetch(
-            `${process.env.SUPABASE_URL}/storage/v1/object/attendance-private/${path}`,
-            {
-              method: "POST",
-              headers: {
-                apikey: process.env.SUPABASE_SECRET_KEY!,
-                "Content-Type": isPhoto ? "image/jpeg" : kind,
-                "x-upsert": "true",
-              },
-              body: new Uint8Array(sanitized).buffer,
-              signal: AbortSignal.timeout(15000),
-            },
-          );
-          if (!upload.ok)
-            throw new HttpError(502, "फोटो सुरक्षित नहीं हुई। फिर कोशिश करें।");
-        }
+        if (!upload.ok)
+          throw new HttpError(502, "फोटो सुरक्षित नहीं हुई। फिर कोशिश करें।");
       }
     }
     releaseEvidence?.();
     releaseEvidence = undefined;
+    if (body.action === "complete") {
+      const record = await sb(
+        "/rest/v1/rpc/complete_attendance_with_out_photo",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            user_id: profile.id,
+            photo_path: body.photo_upload_path,
+            lat: body.latitude,
+            lng: body.longitude,
+            acc: body.accuracy,
+          }),
+        },
+        token,
+      );
+      cleanup.length = 0;
+      return json({ record });
+    }
     if (body.status === "leave") {
       const application = await sb(
         "/rest/v1/rpc/submit_leave_application_v2",

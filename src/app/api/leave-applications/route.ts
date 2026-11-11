@@ -36,14 +36,16 @@ export async function GET(req: Request) {
         ),
         history
           ? sb(
-              `/rest/v1/attendance?staff_id=eq.${profile.id}&status=eq.leave&date=gte.${istDate().slice(0, 4)}-01-01&deleted_at=is.null&select=date,leave_type&order=date.desc&limit=366`,
+              `/rest/v1/attendance?staff_id=eq.${profile.id}&status=eq.leave&deleted_at=is.null&select=date,leave_type&order=date.desc&limit=1000`,
               {},
               token,
             )
           : Promise.resolve([]),
       ]);
       return json(
-        history ? { history: rows, leaveUsage } : { application: rows[0] || null },
+        history
+          ? { history: rows, leaveUsage }
+          : { application: rows[0] || null },
       );
     }
     if (profile.role !== "bpro" && profile.role !== "dpro")

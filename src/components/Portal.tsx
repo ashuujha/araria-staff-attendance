@@ -16,6 +16,7 @@ import { useOfficeFeed, NoticeBoard, OfficeSettings } from "./OfficeBoard";
 import { officeClosure, type OfficeFeed } from "../lib/office-types";
 import { prepareWorkplacePhoto } from "../lib/photo-upload";
 import { uploadWithProgress } from "../lib/upload-progress";
+import { staffLeaveBalance } from "../lib/staff-leave-balance";
 import {
   googleMapsUrl,
   openStreetMapEmbedUrl,
@@ -56,6 +57,12 @@ type RecordRow = {
   longitude: number | null;
   accuracy: number | null;
   photo_path?: string | null;
+  out_photo_path?: string | null;
+  out_location?: {
+    latitude: number;
+    longitude: number;
+    accuracy?: number;
+  } | null;
   leave_path?: string | null;
   profiles?: Profile;
   working_places?: Assignment[];
@@ -466,6 +473,91 @@ function SavedAttendanceEvidence({ row }: { row: RecordRow }) {
   );
 }
 
+function SavedDepartureEvidence({ row }: { row: RecordRow }) {
+  const [photoUrl, setPhotoUrl] = useState("");
+  const [error, setError] = useState("");
+  const [refresh, setRefresh] = useState(0);
+  useEffect(() => {
+    if (!row.out_photo_path) return;
+    let cancelled = false;
+    setPhotoUrl("");
+    setError("");
+    void api(`/api/files?id=${encodeURIComponent(row.id)}&kind=out_photo_path`)
+      .then((result) => {
+        if (!cancelled) setPhotoUrl(result.url);
+      })
+      .catch((cause) => {
+        if (!cancelled)
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : "Departure photo unavailable",
+          );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [row.id, row.out_photo_path, refresh]);
+  if (!row.out_photo_path) return null;
+  const location = row.out_location;
+  const hasLocation =
+    location &&
+    Number.isFinite(location.latitude) &&
+    Number.isFinite(location.longitude);
+  return (
+    <section
+      className="sp-saved-gps"
+      aria-label="Departure GPS photo and location"
+    >
+      <h3>जाने के समय की GPS फोटो / Departure GPS photo</h3>
+      {photoUrl ? (
+        <a href={photoUrl} target="_blank" rel="noopener noreferrer">
+          <img
+            className="sp-saved-photo"
+            src={photoUrl}
+            alt="Staff departure photo with GPS and time stamp"
+            onError={() => {
+              setPhotoUrl("");
+              setError("Photo link expired. Reload it.");
+            }}
+          />
+        </a>
+      ) : error ? (
+        <p role="alert" className="sp-alert sp-error">
+          {error}
+        </p>
+      ) : (
+        <p role="status">फोटो लोड हो रही है… / Loading photo…</p>
+      )}
+      <button
+        type="button"
+        className="sp-button sp-secondary"
+        onClick={() => setRefresh((value) => value + 1)}
+      >
+        फोटो फिर से लोड करें / Reload photo
+      </button>
+      {hasLocation && (
+        <p className="sp-note">
+          Departure location: {location.latitude.toFixed(6)},{" "}
+          {location.longitude.toFixed(6)}
+          {Number.isFinite(location.accuracy) &&
+            ` • ±${Math.round(location.accuracy!)} m`}{" "}
+          <a
+            href={googleMapsUrl({
+              latitude: location.latitude,
+              longitude: location.longitude,
+            })}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            View on Google Maps
+          </a>
+        </p>
+      )}
+    </section>
+  );
+}
+
 export default function Portal({
   loginRole = "staff",
 }: {
@@ -819,6 +911,8 @@ function Staff({
   const [leaveUsage, setLeaveUsage] = useState<
     { date: string; leave_type: string | null }[]
   >([]);
+  const [leaveHistoryLoading, setLeaveHistoryLoading] = useState(true);
+  const [leaveHistoryError, setLeaveHistoryError] = useState("");
   const [staffDecisionLinks, setStaffDecisionLinks] = useState<
     Record<string, string>
   >({});
@@ -843,6 +937,10 @@ function Staff({
   const [capturedLocation, setCapturedLocation] =
     useState<CameraLocation | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [departurePhoto, setDeparturePhoto] = useState<File | null>(null);
+  const [departureLocation, setDepartureLocation] =
+    useState<CameraLocation | null>(null);
+  const [departureCameraOpen, setDepartureCameraOpen] = useState(false);
   const [absenceReason, setAbsenceReason] = useState("");
   const [photoPreview, setPhotoPreview] = useState("");
   useEffect(() => {
@@ -854,6 +952,16 @@ function Staff({
     setPhotoPreview(url);
     return () => URL.revokeObjectURL(url);
   }, [workplacePhoto]);
+  const [departurePreview, setDeparturePreview] = useState("");
+  useEffect(() => {
+    if (!departurePhoto) {
+      setDeparturePreview("");
+      return;
+    }
+    const url = URL.createObjectURL(departurePhoto);
+    setDeparturePreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [departurePhoto]);
   const [leave, setLeave] = useState<File | null>(null),
     [consent, setConsent] = useState(false);
   const alive = useRef(true);
@@ -955,15 +1063,25 @@ function Staff({
     return () => clearInterval(timer);
   }, [leaveApplication?.status, load]);
   useEffect(() => {
+    setLeaveHistoryLoading(true);
     void api("/api/leave-applications?view=history")
       .then((data) => {
         if (alive.current) {
           setLeaveHistory(data.history || []);
           setLeaveUsage(data.leaveUsage || []);
+          setLeaveHistoryError("");
         }
       })
-      .catch(() => {});
-  }, [leaveApplication?.status]);
+      .catch(() => {
+        if (alive.current)
+          setLeaveHistoryError(
+            "अवकाश इतिहास लोड नहीं हुआ। रीफ़्रेश करें। / Leave history could not load. Refresh.",
+          );
+      })
+      .finally(() => {
+        if (alive.current) setLeaveHistoryLoading(false);
+      });
+  }, [leaveApplication?.status, revisions?.attendance]);
   async function showStaffDecision(id: string) {
     try {
       const result = await api(
@@ -1014,7 +1132,7 @@ function Staff({
     // The built-in camera already creates a bounded JPEG. Avoid decoding and
     // encoding the geotagged photo for a second time on a mobile device.
     if (
-      purpose === "workplace_photo" &&
+      (purpose === "workplace_photo" || purpose === "departure_photo") &&
       !(
         file instanceof File &&
         file.name.startsWith("araria-workplace-") &&
@@ -1080,6 +1198,23 @@ function Staff({
       };
       if (complete) {
         body.id = record?.id;
+        if (
+          !departurePhoto ||
+          !departureLocation ||
+          departurePhoto.type !== "image/jpeg" ||
+          !departurePhoto.size ||
+          departurePhoto.size >= 5 * 1024 * 1024
+        )
+          throw new Error(
+            "आउट समय के लिए नई GPS फोटो लें (5 MB से कम)। / Take a fresh departure GPS photo under 5 MB.",
+          );
+        body.photo_upload_path = await upload(
+          departurePhoto,
+          "departure_photo",
+        );
+        body.latitude = departureLocation.latitude;
+        body.longitude = departureLocation.longitude;
+        body.accuracy = departureLocation.accuracy;
       } else {
         if (!consent)
           throw new Error("उपस्थिति की जानकारी साझा करने की सहमति दें।");
@@ -1153,6 +1288,9 @@ function Staff({
       setWorkplacePhoto(null);
       setCapturedLocation(null);
       setCameraOpen(false);
+      setDeparturePhoto(null);
+      setDepartureLocation(null);
+      setDepartureCameraOpen(false);
       notify(
         complete
           ? "जाने का समय सहेज दिया गया।"
@@ -1168,6 +1306,11 @@ function Staff({
       }
     }
   }
+  const today = dateToday();
+  const yearLeaves = leaveUsage.filter((entry) =>
+    entry.date.startsWith(today.slice(0, 4)),
+  );
+  const staffBalance = staffLeaveBalance(profile, leaveUsage, today);
   return (
     <Localized>
       <>
@@ -1237,17 +1380,57 @@ function Staff({
                 <div className="sp-finish">
                   <p>
                     आपका इन टाइम सहेजा गया है और प्रशासक को दिखाई देता है।
-                    कार्यस्थल छोड़ते समय नीचे दबाएँ।
+                    कार्यस्थल छोड़ते समय नई GPS फोटो लें, फिर आउट टाइम सहेजें।
                   </p>
                   <button
-                    className="sp-button sp-primary"
+                    type="button"
+                    className="sp-button sp-secondary"
                     disabled={busy}
+                    onClick={() => setDepartureCameraOpen((open) => !open)}
+                  >
+                    {departureCameraOpen
+                      ? "कैमरा बंद करें / Close camera"
+                      : "आउट समय की GPS फोटो लें / Take departure GPS photo"}
+                  </button>
+                  {departureCameraOpen && (
+                    <WorkplaceCamera
+                      mode="departure"
+                      onClose={() => setDepartureCameraOpen(false)}
+                      onUse={(file, location) => {
+                        setDeparturePhoto(file);
+                        setDepartureLocation(location);
+                      }}
+                    />
+                  )}
+                  {departurePreview && departureLocation && (
+                    <div className="sp-camera-review">
+                      <img
+                        className="sp-camera"
+                        src={departurePreview}
+                        alt="Departure GPS camera photo preview"
+                      />
+                      <p>
+                        Departure location:{" "}
+                        {departureLocation.latitude.toFixed(6)},{" "}
+                        {departureLocation.longitude.toFixed(6)} • ±
+                        {Math.round(departureLocation.accuracy)} m
+                      </p>
+                    </div>
+                  )}
+                  <button
+                    className="sp-button sp-primary"
+                    disabled={busy || !departurePhoto || !departureLocation}
                     onClick={() => save(undefined, true)}
                   >
                     {busy
                       ? "सहेजा जा रहा है…"
-                      : "आउट टाइम सहेजें / Save out time & finish"}
+                      : "GPS फोटो सहित आउट टाइम सहेजें / Save out time with GPS photo"}
                   </button>
+                  {busy && saveProgress && (
+                    <p role="status" aria-live="polite" className="sp-note">
+                      {saveProgress}
+                    </p>
+                  )}
                 </div>
               ) : (
                 <p className="sp-alert sp-success">
@@ -1579,85 +1762,115 @@ function Staff({
             </>
           )}
         </section>
-        {(leaveHistory.length > 0 || leaveUsage.length > 0) && (
-          <section className="sp-card sp-leave-history">
-            <h2>मेरे अवकाश आवेदन / My leave applications</h2>
-            <p>
-              {leaveUsage.length} leave days recorded this year. Your approved
-              leave dates and application decisions are below.
+        <section className="sp-card sp-leave-history">
+          <h2>अवकाश शेष और इतिहास / Leave balance and history</h2>
+          {leaveHistoryLoading ? (
+            <p role="status">
+              अवकाश जानकारी लोड हो रही है… / Loading leave information…
             </p>
-            {leaveUsage.length > 0 && (
-              <div className="sp-leave-request-list">
-                {leaveUsage.map((entry) => (
-                  <p key={`${entry.date}-${entry.leave_type}`}>
-                    {entry.date} • {entry.leave_type || "Leave"}
-                  </p>
-                ))}
-              </div>
-            )}
+          ) : leaveHistoryError ? (
+            <p role="alert" className="sp-alert sp-error">
+              {leaveHistoryError}
+            </p>
+          ) : (
+            <>
+              <p>
+                <strong>{today.slice(0, 4)} balance:</strong>{" "}
+                <LeaveBalanceDisplay
+                  balance={staffBalance}
+                  gender={profile.gender}
+                />
+              </p>
+              <p className="sp-note">
+                Only approved leave days count against CL/SL. Pending
+                applications do not reduce your balance. Maternity, paternity
+                and other leave are subject to admin approval.
+              </p>
+              <h3>पहले दर्ज अवकाश / Recorded leave days</h3>
+              <p>
+                {yearLeaves.length} recorded this year • {leaveUsage.length}{" "}
+                shown across years
+              </p>
+            </>
+          )}
+          {leaveUsage.length > 0 && (
             <div className="sp-leave-request-list">
-              {leaveHistory.map((application) => (
-                <article key={application.id} className="sp-leave-request">
-                  <div>
-                    <strong>
-                      {application.leave_type} • {application.date}
-                    </strong>
-                    <p>
-                      {application.status === "approved"
-                        ? "स्वीकृत / Approved"
-                        : application.status === "rejected"
-                          ? "अस्वीकृत / Rejected"
-                          : "लंबित / Pending"}
-                    </p>
-                    {application.leave_detail && (
-                      <p>Reason/type: {application.leave_detail}</p>
-                    )}
+              {leaveUsage.map((entry) => (
+                <p key={`${entry.date}-${entry.leave_type}`}>
+                  {entry.date} • {entry.leave_type || "Leave"}
+                </p>
+              ))}
+            </div>
+          )}
+          {!leaveHistoryLoading &&
+            !leaveHistoryError &&
+            leaveUsage.length === 0 && (
+              <p className="sp-muted">
+                कोई दर्ज अवकाश नहीं। / No recorded leave days yet.
+              </p>
+            )}
+          <h3>अवकाश आवेदन / Leave applications</h3>
+          <div className="sp-leave-request-list">
+            {leaveHistory.map((application) => (
+              <article key={application.id} className="sp-leave-request">
+                <div>
+                  <strong>
+                    {application.leave_type} • {application.date}
+                  </strong>
+                  <p>
+                    {application.status === "approved"
+                      ? "स्वीकृत / Approved"
+                      : application.status === "rejected"
+                        ? "अस्वीकृत / Rejected"
+                        : "लंबित / Pending"}
+                  </p>
+                  {application.leave_detail && (
+                    <p>Reason/type: {application.leave_detail}</p>
+                  )}
+                  <p className="sp-muted">
+                    Applied:{" "}
+                    {new Date(application.created_at).toLocaleString("en-IN", {
+                      timeZone: "Asia/Kolkata",
+                    })}{" "}
+                    IST
+                  </p>
+                  {application.decided_at && (
                     <p className="sp-muted">
-                      Applied:{" "}
-                      {new Date(application.created_at).toLocaleString(
+                      Decision:{" "}
+                      {new Date(application.decided_at).toLocaleString(
                         "en-IN",
                         { timeZone: "Asia/Kolkata" },
                       )}{" "}
                       IST
                     </p>
-                    {application.decided_at && (
-                      <p className="sp-muted">
-                        Decision:{" "}
-                        {new Date(application.decided_at).toLocaleString(
-                          "en-IN",
-                          { timeZone: "Asia/Kolkata" },
-                        )}{" "}
-                        IST
-                      </p>
-                    )}
-                    {application.rejection_reason && (
-                      <p>Reason: {application.rejection_reason}</p>
-                    )}
-                  </div>
-                  {application.decision_document_path &&
-                    (staffDecisionLinks[application.id] ? (
-                      <a
-                        className="sp-button sp-secondary"
-                        href={staffDecisionLinks[application.id]}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        Open signed document
-                      </a>
-                    ) : (
-                      <button
-                        type="button"
-                        className="sp-button sp-secondary"
-                        onClick={() => void showStaffDecision(application.id)}
-                      >
-                        Get signed document
-                      </button>
-                    ))}
-                </article>
-              ))}
-            </div>
-          </section>
-        )}
+                  )}
+                  {application.rejection_reason && (
+                    <p>Reason: {application.rejection_reason}</p>
+                  )}
+                </div>
+                {application.decision_document_path &&
+                  (staffDecisionLinks[application.id] ? (
+                    <a
+                      className="sp-button sp-secondary"
+                      href={staffDecisionLinks[application.id]}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Open signed document
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      className="sp-button sp-secondary"
+                      onClick={() => void showStaffDecision(application.id)}
+                    >
+                      Get signed document
+                    </button>
+                  ))}
+              </article>
+            ))}
+          </div>
+        </section>
       </>
     </Localized>
   );
@@ -3014,6 +3227,10 @@ function Admin({
                 </p>
                 <RecordDetails row={detail} showCameraLocation={false} />
                 <SavedAttendanceEvidence key={detail.id} row={detail} />
+                <SavedDepartureEvidence
+                  key={`${detail.id}-departure`}
+                  row={detail}
+                />
                 <div className="sp-actions">
                   {detail.leave_path && (
                     <button

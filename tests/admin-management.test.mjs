@@ -189,6 +189,8 @@ test("admin loading validates JWT through Supabase then starts attendance and di
       ]);
     if (url.pathname === "/rest/v1/attendance") {
       assert.ok(url.searchParams.get("select").includes("latitude"));
+      assert.ok(url.searchParams.get("select").includes("out_photo_path"));
+      assert.ok(url.searchParams.get("select").includes("out_location"));
       await new Promise((r) => setTimeout(r, 0));
       assert.ok(
         directoryStarted,

@@ -54,6 +54,12 @@ export type Attendance = {
   longitude: number | null;
   accuracy: number | null;
   photo_path: string | null;
+  out_photo_path?: string | null;
+  out_location?: {
+    latitude: number;
+    longitude: number;
+    accuracy?: number;
+  } | null;
   leave_path: string | null;
   flags: string[];
   profiles?: Profile;

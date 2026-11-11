@@ -166,19 +166,32 @@ function fixture(
         phase: body.action === "complete" ? "submitted" : "draft",
       });
     }
+    if (url.pathname === "/rest/v1/rpc/complete_attendance_with_out_photo") {
+      assert.equal(
+        new Headers(init.headers).get("authorization"),
+        "Bearer fixture-session",
+      );
+      const body = JSON.parse(init.body);
+      assert.equal(body.user_id, user);
+      return Response.json({
+        id: "same-record",
+        staff_id: user,
+        phase: "submitted",
+        out_photo_path: body.photo_path,
+      });
+    }
     if (url.pathname === "/rest/v1/rpc/submit_leave_application_v2")
       return Response.json({ id: "pending-leave", status: "pending" });
     throw Error("Unexpected request " + url.pathname);
   };
 }
-test("arrival requires GPS and departure does not repeat GPS or device cookie", async () => {
+test("arrival and departure each require their own GPS photo", async () => {
   const original = globalThis.fetch,
     calls = [];
   globalThis.fetch = fixture(calls);
   try {
     for (const patch of [
       { latitude: 26, longitude: 87, accuracy: 20 },
-      { action: "complete", photo_upload_path: null },
       {
         status: "deputation",
         deputation_workplace: "District office",
@@ -192,6 +205,26 @@ test("arrival requires GPS and departure does not repeat GPS or device cookie", 
       assert.equal((await response.json()).record.id, "same-record");
     }
     assert.equal(
+      (await POST(request({ action: "complete", photo_upload_path: null })))
+        .status,
+      400,
+    );
+    const departure = await POST(
+      request({
+        action: "complete",
+        latitude: 26,
+        longitude: 87,
+        accuracy: 20,
+      }),
+    );
+    assert.equal(departure.status, 200);
+    assert.equal((await departure.json()).record.phase, "submitted");
+    const departureCall = calls.find(
+      (c) =>
+        c.url.pathname === "/rest/v1/rpc/complete_attendance_with_out_photo",
+    );
+    assert.equal(JSON.parse(departureCall.init.body).lat, 26);
+    assert.equal(
       calls.some(
         (c) =>
           c.url.pathname.includes("bind_device") ||
@@ -203,9 +236,9 @@ test("arrival requires GPS and departure does not repeat GPS or device cookie", 
       (c) => c.url.pathname === "/rest/v1/rpc/save_attendance_with_evidence",
     )) {
       const body = JSON.parse(call.init.body);
-      assert.equal(body.lat, body.action_name === "complete" ? null : 26);
-      assert.equal(body.lng, body.action_name === "complete" ? null : 87);
-      assert.equal(body.acc, body.action_name === "complete" ? null : 20);
+      assert.equal(body.lat, 26);
+      assert.equal(body.lng, 87);
+      assert.equal(body.acc, 20);
     }
   } finally {
     globalThis.fetch = original;
@@ -246,6 +279,60 @@ test("camera coordinates are passed only for a valid arrival photo", async () =>
     ]) {
       assert.equal((await POST(request(patch))).status, 400);
     }
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+test("checkout rejects a consumed or cross-block departure upload", async () => {
+  const original = globalThis.fetch;
+  try {
+    const consumedCalls = [];
+    globalThis.fetch = fixture(consumedCalls, { consumed: true });
+    assert.equal(
+      (
+        await POST(
+          request({
+            action: "complete",
+            latitude: 26,
+            longitude: 87,
+            accuracy: 20,
+          }),
+        )
+      ).status,
+      400,
+    );
+    assert.equal(
+      consumedCalls.some(
+        (call) =>
+          call.url.pathname ===
+          "/rest/v1/rpc/complete_attendance_with_out_photo",
+      ),
+      false,
+    );
+    const crossBlockCalls = [];
+    globalThis.fetch = fixture(crossBlockCalls);
+    assert.equal(
+      (
+        await POST(
+          request({
+            action: "complete",
+            photo_upload_path: "other-block/other-user/photo.jpg",
+            latitude: 26,
+            longitude: 87,
+            accuracy: 20,
+          }),
+        )
+      ).status,
+      400,
+    );
+    assert.equal(
+      crossBlockCalls.some(
+        (call) =>
+          call.url.pathname ===
+          "/rest/v1/rpc/complete_attendance_with_out_photo",
+      ),
+      false,
+    );
   } finally {
     globalThis.fetch = original;
   }
@@ -403,7 +490,12 @@ test("working-day lookup uses the verified staff block", async () => {
   };
   try {
     const response = await POST(
-      request({ action: "complete", photo_upload_path: null }),
+      request({
+        action: "complete",
+        latitude: 26,
+        longitude: 87,
+        accuracy: 20,
+      }),
     );
     assert.equal(response.status, 200);
     assert.equal(holidayStartedBeforeProfileFinished, false);
