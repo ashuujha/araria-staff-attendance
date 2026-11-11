@@ -38,14 +38,14 @@ export type Attendance = {
   staff_id: string;
   date: string;
   panchayat: string;
-  status: "present" | "absent" | "leave" | "deputation";
+  status: "present" | "absent" | "leave" | "deputation" | "on_duty";
   phase?: "draft" | "submitted";
   department?: string | null;
   position?: string | null;
   block?: string | null;
   staff_name?: string | null;
   deputation_workplace?: string | null;
-  leave_type?: "CL" | "SL" | null;
+  leave_type?: "CL" | "SL" | "MATERNITY" | "PATERNITY" | "OTHER" | null;
   deleted_at?: string | null;
   working_places?: Assignment[];
   time_in: string | null;

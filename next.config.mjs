@@ -6,6 +6,7 @@ export default {
   serverExternalPackages: ["exceljs", "pdfkit"],
   outputFileTracingIncludes: {
     "/api/admin/reports": ["./assets/report-fonts/**/*"],
+    "/api/staff/export": ["./assets/report-fonts/**/*"],
   },
   // TypeScript 5 supports the compiler API without spawning a second CLI.
   experimental: { useTypeScriptCli: false },
@@ -25,6 +26,10 @@ export default {
   },
   async headers() {
     return [
+      ...["/", "/bpro", "/dpro", "/admin"].map((source) => ({
+        source,
+        headers: [{ key: "Cache-Control", value: "no-store" }],
+      })),
       {
         source: "/:path*",
         headers: [

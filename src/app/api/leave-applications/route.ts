@@ -20,7 +20,7 @@ import { makeSignedLeavePdf } from "../../../lib/leave-decision-document";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 const fields =
-  "id,staff_id,staff_name,block_id,date,panchayat,position,leave_type,status,created_at,decided_at,decided_by,rejection_reason,leave_path,decision_document_path,decision_method,blocks(name_en),decider:profiles!leave_applications_decided_by_fkey(name,role)";
+  "id,staff_id,staff_name,block_id,date,panchayat,position,leave_type,leave_detail,status,created_at,decided_at,decided_by,rejection_reason,leave_path,decision_document_path,decision_method,blocks(name_en),decider:profiles!leave_applications_decided_by_fkey(name,role)";
 
 export async function GET(req: Request) {
   try {
@@ -28,13 +28,22 @@ export async function GET(req: Request) {
     const query = new URL(req.url).searchParams;
     const history = query.get("view") === "history";
     if (profile.role === "staff") {
-      const rows = await sb(
-        `/rest/v1/leave_applications?staff_id=eq.${profile.id}${history ? "" : `&date=eq.${istDate()}`}&select=${fields}&order=created_at.desc&limit=${history ? 500 : 1}`,
-        {},
-        token,
-      );
+      const [rows, leaveUsage] = await Promise.all([
+        sb(
+          `/rest/v1/leave_applications?staff_id=eq.${profile.id}${history ? "" : `&date=eq.${istDate()}`}&select=${fields}&order=created_at.desc&limit=${history ? 500 : 1}`,
+          {},
+          token,
+        ),
+        history
+          ? sb(
+              `/rest/v1/attendance?staff_id=eq.${profile.id}&status=eq.leave&date=gte.${istDate().slice(0, 4)}-01-01&deleted_at=is.null&select=date,leave_type&order=date.desc&limit=366`,
+              {},
+              token,
+            )
+          : Promise.resolve([]),
+      ]);
       return json(
-        history ? { history: rows } : { application: rows[0] || null },
+        history ? { history: rows, leaveUsage } : { application: rows[0] || null },
       );
     }
     if (profile.role !== "bpro" && profile.role !== "dpro")
@@ -66,7 +75,7 @@ export async function GET(req: Request) {
           token,
         ),
         sb(
-          `/rest/v1/leave_applications?staff_id=eq.${selected.staff_id}&select=id,date,leave_type,status,created_at,decided_at,rejection_reason,decision_document_path&order=created_at.desc&limit=500`,
+          `/rest/v1/leave_applications?staff_id=eq.${selected.staff_id}&select=id,date,leave_type,leave_detail,status,created_at,decided_at,rejection_reason,decision_document_path&order=created_at.desc&limit=500`,
           {},
           token,
         ),

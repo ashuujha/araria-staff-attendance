@@ -33,13 +33,6 @@ const user = {
   assignments: [],
 };
 const token = `header.${Buffer.from(JSON.stringify({ sub: user.id })).toString("base64url")}.signature`;
-const dashboard = {
-  profile: user,
-  date: "2026-10-15",
-  records: [],
-  staff: [],
-  office: { today: "2026-10-15", holidays: [], notices: [] },
-};
 const request = () =>
   new Request(process.env.APP_URL + "/api/auth/login", {
     method: "POST",
@@ -53,14 +46,21 @@ const request = () =>
       role: "staff",
     }),
   });
-test("staff login includes initial dashboard data and checks the login limit", async () => {
+test("staff login returns only the verified profile and checks the login limit", async () => {
   const original = globalThis.fetch,
     calls = [];
   globalThis.fetch = async (input, init = {}) => {
     const url = new URL(input);
     calls.push(url.pathname);
-    if (url.pathname === "/rest/v1/profiles")
-      return Response.json([{ login_email: "staff@fixture.invalid" }]);
+    if (url.pathname === "/rest/v1/profiles") {
+      if (url.searchParams.has("phone"))
+        return Response.json([{ login_email: "staff@fixture.invalid" }]);
+      assert.equal(
+        new Headers(init.headers).get("authorization"),
+        "Bearer " + token,
+      );
+      return Response.json([user]);
+    }
     if (url.pathname === "/rest/v1/rpc/login_limit_status")
       return Response.json(true);
     if (url.pathname === "/rest/v1/rpc/clear_login_account")
@@ -71,37 +71,31 @@ test("staff login includes initial dashboard data and checks the login limit", a
         user: { id: user.id },
         expires_in: 3600,
       });
-    if (url.pathname === "/rest/v1/rpc/portal_bootstrap") {
-      assert.equal(
-        new Headers(init.headers).get("authorization"),
-        "Bearer " + token,
-      );
-      return Response.json(dashboard);
-    }
     throw Error("Unexpected " + url.pathname);
   };
   try {
     const response = await login.POST(request());
     assert.equal(response.status, 200);
     const data = await response.json();
-    assert.deepEqual(data.bootstrap, dashboard);
+    assert.deepEqual(data, { profile: user });
+    assert.ok(!calls.includes("/rest/v1/rpc/portal_bootstrap"));
     assert.equal(calls.length, 5);
     assert.equal(response.headers.get("cache-control"), "no-store");
   } finally {
     globalThis.fetch = original;
   }
 });
-test("authenticated restoration uses one verified RPC and never caches private session responses", async () => {
+test("session restoration reads only the verified profile and never caches it", async () => {
   const original = globalThis.fetch;
   let calls = 0;
   globalThis.fetch = async (input, init) => {
     calls++;
-    assert.equal(new URL(input).pathname, "/rest/v1/rpc/portal_bootstrap");
+    assert.equal(new URL(input).pathname, "/rest/v1/profiles");
     assert.equal(
       new Headers(init.headers).get("authorization"),
       "Bearer " + token,
     );
-    return Response.json(dashboard);
+    return Response.json([user]);
   };
   try {
     const response = await session.GET(
@@ -110,7 +104,7 @@ test("authenticated restoration uses one verified RPC and never caches private s
       }),
     );
     assert.equal(response.status, 200);
-    assert.deepEqual((await response.json()).bootstrap, dashboard);
+    assert.deepEqual((await response.json()).profile, user);
     assert.equal(calls, 1);
     assert.equal(response.headers.get("cache-control"), "no-store");
     assert.equal(
@@ -123,17 +117,12 @@ test("authenticated restoration uses one verified RPC and never caches private s
     globalThis.fetch = original;
   }
 });
-test("missing fast-start RPC falls back during rollout; rejected tokens never fall back", async () => {
+test("session does not depend on bootstrap SQL and rejected tokens stay rejected", async () => {
   const original = globalThis.fetch;
   let calls = [];
   globalThis.fetch = async (input) => {
     const path = new URL(input).pathname;
     calls.push(path);
-    if (path === "/rest/v1/rpc/portal_bootstrap")
-      return Response.json(
-        { code: "PGRST202", message: "Function missing" },
-        { status: 404 },
-      );
     if (path === "/rest/v1/profiles") return Response.json([user]);
     throw Error("Unexpected");
   };
@@ -144,7 +133,7 @@ test("missing fast-start RPC falls back during rollout; rejected tokens never fa
     const response = await session.GET(req);
     assert.equal(response.status, 200);
     assert.equal((await response.json()).profile.id, user.id);
-    assert.equal(calls.length, 2);
+    assert.deepEqual(calls, ["/rest/v1/profiles"]);
     calls = [];
     globalThis.fetch = async (input) => {
       calls.push(new URL(input).pathname);

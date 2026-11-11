@@ -116,7 +116,7 @@ export default function WorkplaceCamera({
     let cancelled = false;
     if (!navigator.mediaDevices?.getUserMedia) {
       setError(
-        "कैमरा इस ब्राउज़र में उपलब्ध नहीं है। HTTPS पर साइट खोलें या फ़ाइल अपलोड करें। / Camera unavailable. Use HTTPS or upload a file.",
+        "कैमरा इस ब्राउज़र में उपलब्ध नहीं है। HTTPS पर साइट खोलें। / Camera unavailable. Open this site over HTTPS.",
       );
       return;
     }
@@ -140,7 +140,7 @@ export default function WorkplaceCamera({
       .catch(() => {
         if (!cancelled)
           setError(
-            "कैमरा अनुमति दें या फ़ाइल अपलोड करें। / Allow camera access or upload a file.",
+            "कैमरा अनुमति दें और फिर कोशिश करें। / Allow camera access and retry.",
           );
       });
     return () => {
@@ -182,10 +182,10 @@ export default function WorkplaceCamera({
             cause !== null &&
             "code" in cause &&
             cause.code === 1
-            ? "स्थान की अनुमति दें या फ़ाइल अपलोड करें। / Allow location access or upload a file."
+            ? "स्थान की अनुमति दें और फिर कोशिश करें। / Allow location access and retry."
             : cause instanceof Error
               ? cause.message
-              : "स्थान नहीं मिला। फिर कोशिश करें या फ़ाइल अपलोड करें। / Location unavailable. Retry or upload a file.",
+              : "स्थान नहीं मिला। फिर कोशिश करें। / Location unavailable. Retry.",
         );
     } finally {
       if (active.current) setBusy(false);

@@ -7,7 +7,6 @@ import {
   failure,
   HttpError,
   audit,
-  randomUUID,
 } from "../../../lib/server";
 import {
   districtAssignments,
@@ -15,6 +14,7 @@ import {
   requestedBlock,
 } from "../../../lib/district-scope";
 import { rosterRows } from "../../../lib/roster";
+import { randomBytes } from "node:crypto";
 
 const validPhone = (value: unknown) =>
   value == null ||
@@ -74,9 +74,7 @@ export async function POST(req: Request) {
       !b ||
       typeof b !== "object" ||
       Array.isArray(b) ||
-      !["create", "update", "delete", "restore", "reset_password"].includes(
-        b.action,
-      )
+      !["create", "update", "delete", "reset_password"].includes(b.action)
     )
       throw new HttpError(400, "कार्रवाई अमान्य।");
     // Audit the authenticated actor and operation without asking for a reason.
@@ -84,11 +82,8 @@ export async function POST(req: Request) {
       create: "Administrator added a staff account",
       update: "Administrator updated staff details",
       delete: "Administrator removed a staff account",
-      restore: "Administrator restored a staff account",
       reset_password: "Administrator reset the staff password",
-    }[
-      b.action as "create" | "update" | "delete" | "restore" | "reset_password"
-    ];
+    }[b.action as "create" | "update" | "delete" | "reset_password"];
     if (b.action === "create") {
       const blockId = ownBlock(profile, b.block_id);
       const blockRows = await sb(
@@ -99,39 +94,86 @@ export async function POST(req: Request) {
       if (!blockRows.length)
         throw new HttpError(400, "Choose an active block.");
       validateRoster(b);
-      const created = await sb(
-        "/rest/v1/staff_roster?select=id,name,phone,email,gender,assignments,block_id,active",
-        {
-          method: "POST",
-          headers: { Prefer: "return=representation" },
-          body: JSON.stringify({
-            id: randomUUID(),
-            block_id: blockId,
+      if (!/^[6-9]\d{9}$/.test(b.phone || ""))
+        throw new HttpError(
+          400,
+          "A mobile number is required to create a staff login.",
+        );
+      const assignments = districtAssignments(b.assignments, blockId);
+      const [existingProfile, existingRoster] = await Promise.all([
+        sb(`/rest/v1/profiles?phone=eq.${b.phone}&select=id`, {}, token),
+        sb(
+          `/rest/v1/staff_roster?phone=eq.${b.phone}&deleted_at=is.null&select=id`,
+          {},
+          token,
+        ),
+      ]);
+      if (existingProfile.length || existingRoster.length)
+        throw new HttpError(
+          409,
+          "This mobile number is already in the staff directory.",
+        );
+      const loginEmail = `${b.phone}@staff.araria.invalid`;
+      const password = `${randomBytes(18).toString("base64url")}#aA1`;
+      const user = await sb("/auth/v1/admin/users", {
+        method: "POST",
+        body: JSON.stringify({
+          email: loginEmail,
+          password,
+          email_confirm: true,
+          user_metadata: {
             name: b.name.trim(),
-            phone: b.phone || null,
-            email: b.email || null,
-            gender: b.gender || null,
-            assignments: districtAssignments(b.assignments, blockId),
-          }),
-        },
-      );
-      await audit(
-        profile.id,
-        "create_roster_staff",
-        created[0].id,
-        reason,
-        null,
-        blockId,
-      );
-      return json({
-        profile: {
-          ...created[0],
-          phone: created[0].phone || "",
-          block: blockRows[0].name_en,
-          role: "staff",
-          roster_only: true,
-        },
+            provisioned_by: "admin_dashboard",
+          },
+        }),
       });
+      try {
+        const created = await sb(
+          "/rest/v1/profiles?select=id,name,phone,email,gender,assignments,block,block_id,role,active",
+          {
+            method: "POST",
+            headers: { Prefer: "return=representation" },
+            body: JSON.stringify({
+              id: user.id,
+              block_id: blockId,
+              block: blockRows[0].name_en,
+              name: b.name.trim(),
+              phone: b.phone,
+              email: b.email || null,
+              login_email: loginEmail,
+              gender: b.gender || null,
+              assignments,
+              role: "staff",
+              active: true,
+            }),
+          },
+        );
+        try {
+          await audit(
+            profile.id,
+            "create_staff",
+            user.id,
+            reason,
+            null,
+            blockId,
+          );
+        } catch {
+          // The login is already provisioned; never invite a duplicate retry.
+          console.error("Staff creation audit write failed");
+        }
+        return json({ profile: created[0], password });
+      } catch (error) {
+        try {
+          const existing = await sb(
+            `/rest/v1/profiles?id=eq.${user.id}&select=id`,
+          );
+          if (!existing.length)
+            await sb(`/auth/v1/admin/users/${user.id}`, { method: "DELETE" });
+        } catch {
+          console.error("Staff provisioning cleanup failed");
+        }
+        throw error;
+      }
     }
     if (typeof b.id !== "string" || !/^[0-9a-f-]{36}$/.test(b.id))
       throw new HttpError(400, "मान्य कर्मी चुनें।");
@@ -142,6 +184,8 @@ export async function POST(req: Request) {
     );
     if (rosterTarget.length) {
       const target = rosterTarget[0];
+      if (target.deleted_at)
+        throw new HttpError(404, "Staff is not in the directory.");
       if (profile.role === "bpro" && target.block_id !== profile.block_id)
         throw new HttpError(403, "This staff member is outside your block.");
       if (b.action === "reset_password")
@@ -166,8 +210,6 @@ export async function POST(req: Request) {
           deleted_at: new Date().toISOString(),
           active: false,
         });
-      else if (b.action === "restore")
-        Object.assign(patch, { deleted_at: null, active: true });
       else if (b.action === "update") {
         validateRoster(changes);
         Object.assign(patch, {
@@ -179,6 +221,18 @@ export async function POST(req: Request) {
           active: changes.active,
           assignments: districtAssignments(changes.assignments, nextBlock),
         });
+      }
+      if (b.action === "delete") {
+        await audit(
+          profile.id,
+          "delete_roster_staff",
+          b.id,
+          reason,
+          null,
+          target.block_id,
+        );
+        await sb(`/rest/v1/staff_roster?id=eq.${b.id}`, { method: "DELETE" });
+        return json({ success: true });
       }
       const updated = await sb(
         `/rest/v1/staff_roster?id=eq.${b.id}&select=id,name,phone,email,gender,assignments,block_id,active,deleted_at`,
@@ -313,34 +367,6 @@ export async function POST(req: Request) {
       throw new HttpError(403, "कर्मी प्रबंधन की अनुमति नहीं।");
     if (profile.role === "bpro" && target.block_id !== profile.block_id)
       throw new HttpError(403, "कर्मी प्रबंधन की अनुमति नहीं।");
-    if (b.action === "restore") {
-      if (!target.deleted_at)
-        throw new HttpError(409, "यह कर्मी पहले से सक्रिय सूची में है।");
-      const restored = await sb(
-        "/rest/v1/profiles?id=eq." +
-          b.id +
-          "&deleted_at=not.is.null&select=id,name,phone,email,assignments,role,block,active,gender",
-        {
-          method: "PATCH",
-          headers: { Prefer: "return=representation" },
-          body: JSON.stringify({ deleted_at: null, active: true }),
-        },
-      );
-      if (!restored.length)
-        throw new HttpError(
-          409,
-          "खाता पहले ही बहाल हो चुका है। रीफ़्रेश करें।",
-        );
-      try {
-        await audit(profile.id, "restore_staff", target.id, reason, {
-          prior_deleted_at: target.deleted_at,
-        });
-      } catch {
-        // Restoration has already committed; never report it as failed.
-        console.error("Staff restore audit write failed");
-      }
-      return json({ profile: restored[0] });
-    }
     if (b.action === "reset_password") {
       if (profile.role !== "dpro")
         throw new HttpError(403, "Super Admin आवश्यक।");

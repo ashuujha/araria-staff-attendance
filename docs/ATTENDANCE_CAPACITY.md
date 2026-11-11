@@ -18,7 +18,7 @@ Apply the **contents** of `supabase/migrations/20261015_workplace_evidence.sql` 
 - Per-user database advisory locks and the active-day unique index prevent duplicate daily records; staff identity and assignment checks remain server-side.
 - Upstream login throttling or outages are reported as busy/unavailable, rather than misleading password errors. The removed application five-attempt/15-minute lockout is not reinstated.
 
-`npm run check:capacity` runs the real route handlers against simulated Supabase responses for 250 parallel staff logins, 250 session views and 250 attendance views, including cross-user identity checks and evidence memory admission. The result is saved in `docs/CAPACITY_CHECK.json`. This is an application concurrency regression check, **not** proof of 250 simultaneous users on the deployed Vercel/Supabase service. Its simulated elapsed time is not a real-world response-time measurement.
+`npm run check:capacity` runs the real route handlers against simulated Supabase responses for 700 parallel staff logins, 700 session views and 700 attendance views, including cross-user identity checks. Evidence memory admission runs in waves of 100 because the per-instance queue is intentionally bounded. The result is saved in `docs/CAPACITY_CHECK.json`. This is an application concurrency regression check, **not** proof of 700 simultaneous users on the deployed Vercel/Supabase service. Its simulated elapsed time is not a real-world response-time measurement.
 
 ## Live rollout requirements
 

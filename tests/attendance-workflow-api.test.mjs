@@ -111,20 +111,20 @@ function fixture(
         phase: body.action === "complete" ? "submitted" : "draft",
       });
     }
-    if (url.pathname === "/rest/v1/rpc/submit_leave_application")
+    if (url.pathname === "/rest/v1/rpc/submit_leave_application_v2")
       return Response.json({ id: "pending-leave", status: "pending" });
     throw Error("Unexpected request " + url.pathname);
   };
 }
-test("arrival and departure work without camera location or device cookie", async () => {
+test("arrival requires GPS and departure does not repeat GPS or device cookie", async () => {
   const original = globalThis.fetch,
     calls = [];
   globalThis.fetch = fixture(calls);
   try {
     for (const patch of [
-      {},
+      { latitude: 26, longitude: 87, accuracy: 20 },
       { action: "complete", photo_upload_path: null },
-      { status: "deputation", deputation_workplace: "District office" },
+      { status: "deputation", deputation_workplace: "District office", latitude: 26, longitude: 87, accuracy: 20 },
     ]) {
       const response = await POST(request(patch));
       assert.equal(response.status, 200);
@@ -142,9 +142,9 @@ test("arrival and departure work without camera location or device cookie", asyn
       (c) => c.url.pathname === "/rest/v1/rpc/save_attendance_with_evidence",
     )) {
       const body = JSON.parse(call.init.body);
-      assert.equal(body.lat, null);
-      assert.equal(body.lng, null);
-      assert.equal(body.acc, null);
+      assert.equal(body.lat, body.action_name === "complete" ? null : 26);
+      assert.equal(body.lng, body.action_name === "complete" ? null : 87);
+      assert.equal(body.acc, body.action_name === "complete" ? null : 20);
     }
   } finally {
     globalThis.fetch = original;
@@ -189,6 +189,21 @@ test("camera coordinates are passed only for a valid arrival photo", async () =>
     globalThis.fetch = original;
   }
 });
+test("On Duty needs a place and reason and sends both to the attendance RPC", async () => {
+  const original = globalThis.fetch, calls = [];
+  globalThis.fetch = fixture(calls);
+  try {
+    const base = { status: "on_duty", deputation_workplace: "District office", latitude: 26, longitude: 87, accuracy: 20 };
+    assert.equal((await POST(request(base))).status, 400);
+    const response = await POST(request({ ...base, absence_reason: "District review" }));
+    assert.equal(response.status, 200);
+    const rpc = calls.find((call) => call.url.pathname === "/rest/v1/rpc/save_attendance_with_evidence");
+    const body = JSON.parse(rpc.init.body);
+    assert.equal(body.status_name, "on_duty");
+    assert.equal(body.workplace_name, "District office");
+    assert.equal(body.absence_reason, "District review");
+  } finally { globalThis.fetch = original; }
+});
 test("assignment, status and deputation validation still apply", async () => {
   const original = globalThis.fetch,
     calls = [];
@@ -227,14 +242,14 @@ test("leave PDF remains owned, bounded and scanned when configured", async () =>
         action: "save_status",
         photo_upload_path: null,
         status: "leave",
-        leave_type: "SL",
+        leave_type: "CL",
         leave_upload_path: path,
       }),
     );
     assert.equal(response.status, 200);
     assert.ok(calls.some((c) => c.url.hostname === "scanner.example.test"));
     const rpc = calls.find(
-      (c) => c.url.pathname === "/rest/v1/rpc/submit_leave_application",
+      (c) => c.url.pathname === "/rest/v1/rpc/submit_leave_application_v2",
     );
     assert.equal(JSON.parse(rpc.init.body).document_path, path);
     assert.equal((await response.json()).application.status, "pending");

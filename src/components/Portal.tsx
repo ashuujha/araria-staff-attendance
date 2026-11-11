@@ -68,7 +68,8 @@ type LeaveApplication = {
   date: string;
   panchayat: string;
   position: string;
-  leave_type: "CL" | "SL";
+  leave_type: "CL" | "SL" | "MATERNITY" | "PATERNITY" | "OTHER";
+  leave_detail?: string | null;
   status: "pending" | "approved" | "rejected";
   created_at: string;
   decided_at?: string | null;
@@ -216,6 +217,7 @@ const statusLabels: Record<string, string> = {
   absent: "अनुपस्थित / Absent",
   leave: "अवकाश / On leave",
   deputation: "प्रतिनियुक्ति / Deputation",
+  on_duty: "ड्यूटी पर / On Duty",
 };
 function phase(row: RecordRow) {
   return row.phase === "submitted"
@@ -278,9 +280,9 @@ function RecordDetails({
     ["पंचायत / Panchayat", row.panchayat],
     ["पद / Position", row.position || assignment?.position],
     ["स्थिति / Status", statusLabels[row.status] || row.status],
-    ["प्रतिनियुक्ति स्थान / Deputation workplace", row.deputation_workplace],
+    ["ड्यूटी स्थान / Duty location", row.deputation_workplace],
     ["अवकाश / Leave", row.leave_type],
-    ["अनुपस्थिति का कारण / Absence reason", row.absence_reason],
+    [row.status === "on_duty" ? "ड्यूटी का कारण / On-duty reason" : "अनुपस्थिति का कारण / Absence reason", row.absence_reason],
     ["आने का समय / In time", time(row.time_in)],
     ["जाने का समय / Out time", time(row.time_out)],
   ];
@@ -299,7 +301,7 @@ function RecordDetails({
                       "प्रखंड / Block",
                       "पंचायत / Panchayat",
                       "पद / Position",
-                      "प्रतिनियुक्ति स्थान / Deputation workplace",
+                      "ड्यूटी स्थान / Duty location",
                     ].includes(label || "")
                       ? "no"
                       : undefined
@@ -573,7 +575,7 @@ export default function Portal({
     }
   }
   useEffect(() => {
-    if (!profile || !revisions) return;
+    if (!profile) return;
     let active = true;
     let pending = false;
     const generation = sessionGeneration.current;
@@ -625,6 +627,7 @@ export default function Portal({
     const visible = () => {
       if (document.visibilityState === "visible") void probe();
     };
+    visible();
     const timer = setInterval(visible, 30000);
     window.addEventListener("focus", visible);
     window.addEventListener("online", visible);
@@ -638,7 +641,7 @@ export default function Portal({
       window.removeEventListener("araria:changed", visible);
       document.removeEventListener("visibilitychange", visible);
     };
-  }, [profile?.id, !!revisions, loginRole]);
+  }, [profile?.id, loginRole]);
   return (
     <Localized>
       <div className="simple-portal">
@@ -776,16 +779,6 @@ export default function Portal({
         </main>
         <footer className="sp-footer">
           <span>अररिया • कर्मचारी उपस्थिति पोर्टल</span>
-          <span className="sp-footer-credit" translate="no">
-            Built by{" "}
-            <a
-              href="https://github.com/ashuujha"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Ashutosh Jha
-            </a>
-          </span>
         </footer>
       </div>
     </Localized>
@@ -817,14 +810,10 @@ function Staff({
   const [leaveApplication, setLeaveApplication] =
     useState<LeaveApplication | null>(null);
   const [leaveHistory, setLeaveHistory] = useState<LeaveApplication[]>([]);
+  const [leaveUsage, setLeaveUsage] = useState<{ date: string; leave_type: string | null }[]>([]);
   const [staffDecisionLinks, setStaffDecisionLinks] = useState<
     Record<string, string>
   >({});
-  const [leaveBalances, setLeaveBalances] =
-    useState<LeaveBalanceSnapshot | null>(initial?.leaveBalances || null);
-  useEffect(() => {
-    if (initial?.leaveBalances) setLeaveBalances(initial.leaveBalances);
-  }, [initial?.leaveBalances]);
   const [loading, setLoading] = useState(!initial),
     [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -835,6 +824,9 @@ function Staff({
   const [status, setStatus] = useState("present"),
     [deputation, setDeputation] = useState(""),
     [leaveType, setLeaveType] = useState("CL");
+  const [dutyReason, setDutyReason] = useState("");
+  const [leaveDetail, setLeaveDetail] = useState("");
+  const savingRef = useRef(false);
   useEffect(() => {
     if (profile.gender !== "female" && leaveType === "SL") setLeaveType("CL");
   }, [profile.gender, leaveType]);
@@ -895,7 +887,6 @@ function Staff({
               (row: RecordRow) => row.date === dateToday(),
             ) || null,
           );
-          if (data.leaveBalances) setLeaveBalances(data.leaveBalances);
           setLeaveApplication(data.application || null);
           setLoadError(false);
         }
@@ -957,7 +948,10 @@ function Staff({
   useEffect(() => {
     void api("/api/leave-applications?view=history")
       .then((data) => {
-        if (alive.current) setLeaveHistory(data.history || []);
+        if (alive.current) {
+          setLeaveHistory(data.history || []);
+          setLeaveUsage(data.leaveUsage || []);
+        }
       })
       .catch(() => {});
   }, [leaveApplication?.status]);
@@ -1022,6 +1016,8 @@ function Staff({
   }
   async function save(event?: React.FormEvent, complete = false) {
     event?.preventDefault();
+    if (savingRef.current) return;
+    savingRef.current = true;
     setBusy(true);
     notify("");
     try {
@@ -1039,7 +1035,7 @@ function Staff({
       const body: { [key: string]: unknown } = {
         action: complete
           ? "complete"
-          : status === "present" || status === "deputation"
+          : ["present", "deputation", "on_duty"].includes(status)
             ? "save_draft"
             : "save_status",
         panchayat: selectedWorkspace?.panchayat || panchayat,
@@ -1047,9 +1043,10 @@ function Staff({
         position: selectedWorkspace?.position || position,
         status,
         deputation_workplace:
-          status === "deputation" ? deputation.trim() : null,
+          status === "deputation" || status === "on_duty" ? deputation.trim() : null,
         leave_type: status === "leave" ? leaveType : null,
-        absence_reason: status === "absent" ? absenceReason.trim() : null,
+        leave_detail: status === "leave" ? leaveDetail.trim() : null,
+        absence_reason: status === "absent" ? absenceReason.trim() : status === "on_duty" ? dutyReason.trim() : null,
       };
       if (complete) {
         body.id = record?.id;
@@ -1064,7 +1061,7 @@ function Staff({
           throw new Error(
             "अनुपस्थिति का कारण लिखें (3–1000 अक्षर)। / Enter an absence reason (3–1000 characters).",
           );
-        if (status === "present" || status === "deputation") {
+        if (["present", "deputation", "on_duty"].includes(status)) {
           if (
             !workplacePhoto ||
             !["image/jpeg", "image/png"].includes(workplacePhoto.type) ||
@@ -1072,7 +1069,7 @@ function Staff({
             workplacePhoto.size >= 5 * 1024 * 1024
           )
             throw new Error(
-              "कार्यस्थल की JPEG/PNG फोटो दें, 5 MB से कम। / Upload a workplace JPEG/PNG photo smaller than 5 MB.",
+              "GPS कैमरे से फोटो लें, 5 MB से कम। / Take a GPS camera photo smaller than 5 MB.",
             );
           body.photo_upload_path = await upload(
             workplacePhoto,
@@ -1083,6 +1080,7 @@ function Staff({
             body.longitude = capturedLocation.longitude;
             body.accuracy = capturedLocation.accuracy;
           }
+          else throw new Error("GPS camera location is required. Take a fresh photo.");
         }
         if (status === "leave") {
           if (
@@ -1116,7 +1114,6 @@ function Staff({
         );
       staffRequestId.current++;
       setRecord(saved.record);
-      if (saved.leaveBalances) setLeaveBalances(saved.leaveBalances);
       setLoading(false);
       setLoadError(false);
       setLeave(null);
@@ -1131,6 +1128,7 @@ function Staff({
     } catch (err) {
       if (alive.current) fail(err);
     } finally {
+      savingRef.current = false;
       if (alive.current) setBusy(false);
     }
   }
@@ -1167,20 +1165,6 @@ function Staff({
             <div>
               <span className="sp-muted">प्रखंड / Block</span>
               <strong>{profile.block || "कार्यालय से संपर्क करें"}</strong>
-            </div>
-            <div>
-              <span className="sp-muted">
-                अवकाश शेष / Leave left (
-                {leaveBalances?.year || new Date().getFullYear()})
-              </span>
-              <strong>
-                <LeaveBalanceDisplay
-                  balance={leaveBalances?.balances.find(
-                    (entry) => entry.staff_id === profile.id,
-                  )}
-                  gender={profile.gender}
-                />
-              </strong>
             </div>
           </div>
           {loading ? (
@@ -1331,28 +1315,29 @@ function Staff({
                         />
                       </>
                     )}
-                    <label className="sp-field">
-                      कार्य स्थिति / Work status
-                      <select
-                        value={status}
-                        onChange={(e) => {
-                          setStatus(e.target.value);
-                          setWorkplacePhoto(null);
-                          setCapturedLocation(null);
-                          setCameraOpen(false);
-                          setLeave(null);
-                        }}
-                      >
+                    <fieldset className="sp-status-group">
+                      <legend>कार्य स्थिति / Work status</legend>
+                      <div className="sp-status-options">
                         {Object.entries(statusLabels).map(([value, label]) => (
-                          <option key={value} value={value}>
-                            {label}
-                          </option>
+                          <label className="sp-status-option" key={value}>
+                            <input type="radio" name="work-status" value={value}
+                              checked={status === value}
+                              onChange={() => {
+                                setStatus(value);
+                                setWorkplacePhoto(null);
+                                setCapturedLocation(null);
+                                setCameraOpen(false);
+                                setLeave(null);
+                              }} />
+                            <span>{label}</span>
+                          </label>
                         ))}
-                      </select>
-                    </label>
-                    {status === "deputation" && (
+                      </div>
+                      <small className="sp-status-hint">← Swipe to see all work statuses →</small>
+                    </fieldset>
+                    {(status === "deputation" || status === "on_duty") && (
                       <label className="sp-field">
-                        प्रतिनियुक्ति कार्यस्थल का नाम / Workplace name
+                        ड्यूटी स्थान / Duty location
                         <input
                           required
                           maxLength={200}
@@ -1361,44 +1346,16 @@ function Staff({
                         />
                       </label>
                     )}
-                    {(status === "present" || status === "deputation") && (
+                    {status === "on_duty" && (
+                      <label className="sp-field">ड्यूटी का कारण / On-duty reason
+                        <textarea required minLength={3} maxLength={1000} rows={3}
+                          value={dutyReason} onChange={(event) => setDutyReason(event.target.value)} />
+                      </label>
+                    )}
+                    {(["present", "deputation", "on_duty"].includes(status)) && (
                       <div className="sp-field" key={status}>
-                        <label htmlFor="workplace-photo">
-                          कार्यस्थल की फोटो / Workplace photo
-                        </label>
-                        <input
-                          id="workplace-photo"
-                          type="file"
-                          accept="image/jpeg,image/png,.jpg,.jpeg,.png"
-                          onChange={(event) => {
-                            const file = event.target.files?.[0];
-                            if (
-                              file &&
-                              (!["image/jpeg", "image/png"].includes(
-                                file.type,
-                              ) ||
-                                !file.size ||
-                                file.size >= 5 * 1024 * 1024)
-                            ) {
-                              event.target.value = "";
-                              setWorkplacePhoto(null);
-                              setCapturedLocation(null);
-                              fail(
-                                new Error(
-                                  "JPEG/PNG फोटो चुनें, 5 MB से कम। / Choose a JPEG/PNG photo smaller than 5 MB.",
-                                ),
-                              );
-                            } else {
-                              setWorkplacePhoto(file || null);
-                              setCapturedLocation(null);
-                              setCameraOpen(false);
-                            }
-                          }}
-                        />
-                        <small>
-                          JPEG / PNG • 5 MB से कम / Smaller than 5 MB. या कैमरे
-                          से नई फोटो लें / Or take a new photo.
-                        </small>
+                        <strong>OpenStreetMap GPS camera photo</strong>
+                        <small>Capture a fresh photo with your current location. Allow camera and location when your browser asks.</small>
                         <button
                           type="button"
                           className="sp-button sp-secondary"
@@ -1414,10 +1371,6 @@ function Staff({
                             onUse={(file, location) => {
                               setWorkplacePhoto(file);
                               setCapturedLocation(location);
-                              const input = document.getElementById(
-                                "workplace-photo",
-                              ) as HTMLInputElement | null;
-                              if (input) input.value = "";
                             }}
                           />
                         )}
@@ -1465,10 +1418,20 @@ function Staff({
                             {profile.gender === "female" && (
                               <option value="SL">SL / बीमारी अवकाश</option>
                             )}
+                            {profile.gender === "female" && <option value="MATERNITY">Maternity leave (180 days reference)</option>}
+                            {profile.gender === "male" && <option value="PATERNITY">Paternity leave (15 days reference)</option>}
+                            <option value="OTHER">Other leave</option>
                           </select>
                         </label>
+                        {["MATERNITY", "PATERNITY", "OTHER"].includes(leaveType) && (
+                          <label className="sp-field">
+                            {leaveType === "OTHER" ? "Type and reason for other leave" : "Reason for leave"}
+                            <textarea required minLength={3} maxLength={500} rows={3}
+                              value={leaveDetail} onChange={(event) => setLeaveDetail(event.target.value)} />
+                          </label>
+                        )}
                         <label className="sp-field">
-                          CL / SL दस्तावेज़ / Required leave document
+                          अवकाश दस्तावेज़ / Required leave document
                           <input
                             type="file"
                             required
@@ -1516,13 +1479,15 @@ function Staff({
                   <button className="sp-button sp-primary" disabled={busy}>
                     {busy
                       ? "सहेजा जा रहा है…"
-                      : status === "present" || status === "deputation"
-                        ? "इन टाइम और ड्राफ़्ट सहेजें / Save arrival draft"
-                        : "स्थिति सहेजें / Save status"}
+                      : status === "leave" ? "अवकाश आवेदन भेजें / Submit leave application"
+                      : ["present", "deputation", "on_duty"].includes(status)
+                        ? "GPS फोटो सहित आगमन सहेजें / Save arrival draft"
+                        : "अनुपस्थिति सहेजें / Save absence"}
                   </button>
+                  <p className="sp-note">Submit once and wait for the confirmation above. Your staff login saves only your own attendance.</p>
                   <p className="sp-note">
                     समय अपने आप दर्ज होगा।
-                    {status === "present" || status === "deputation"
+                    {["present", "deputation", "on_duty"].includes(status)
                       ? " ड्राफ़्ट तुरंत प्रशासक को दिखाई देगा।"
                       : " अनुपस्थिति और अवकाश के लिए इन/आउट टाइम नहीं लगेगा।"}
                   </p>
@@ -1531,9 +1496,13 @@ function Staff({
             </>
           )}
         </section>
-        {leaveHistory.length > 0 && (
+        {(leaveHistory.length > 0 || leaveUsage.length > 0) && (
           <section className="sp-card sp-leave-history">
             <h2>मेरे अवकाश आवेदन / My leave applications</h2>
+            <p>{leaveUsage.length} leave days recorded this year. Your approved leave dates and application decisions are below.</p>
+            {leaveUsage.length > 0 && <div className="sp-leave-request-list">
+              {leaveUsage.map((entry) => <p key={`${entry.date}-${entry.leave_type}`}>{entry.date} • {entry.leave_type || "Leave"}</p>)}
+            </div>}
             <div className="sp-leave-request-list">
               {leaveHistory.map((application) => (
                 <article key={application.id} className="sp-leave-request">
@@ -1548,6 +1517,8 @@ function Staff({
                           ? "अस्वीकृत / Rejected"
                           : "लंबित / Pending"}
                     </p>
+                    {application.leave_detail && <p>Reason/type: {application.leave_detail}</p>}
+                    <p className="sp-muted">Applied: {new Date(application.created_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST</p>
                     {application.decided_at && (
                       <p className="sp-muted">
                         Decision:{" "}
@@ -1637,9 +1608,6 @@ function Admin({
   useEffect(() => {
     if (initial?.leaveBalances) setLeaveBalances(initial.leaveBalances);
   }, [initial?.leaveBalances]);
-  const [removedStaff, setRemovedStaff] = useState<Profile[]>([]);
-  const [showRemoved, setShowRemoved] = useState(false);
-  const [restoreNotice, setRestoreNotice] = useState("");
   const [date, setDate] = useState(initial?.date || dateToday()),
     [search, setSearch] = useState("");
   useEffect(() => {
@@ -1840,36 +1808,47 @@ function Admin({
   const requestId = useRef(0),
     alive = useRef(true);
   const retryAdmin = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const directoryLoaded = useRef(initial ? Date.now() : 0);
-  const directoryBlockLoaded = useRef<string | null>(null);
+  const [refreshDirectory, setRefreshDirectory] = useState(0);
+  useEffect(() => {
+    let active = true;
+    void api("/api/admin?view=directory")
+      .then((data) => {
+        if (!active) return;
+        setStaff(data.staff || []);
+      })
+      .catch(fail);
+    return () => {
+      active = false;
+    };
+  }, [refreshDirectory, revisions?.directory, revisions?.profile, fail]);
+  useEffect(() => {
+    let active = true;
+    void api("/api/admin?view=balances")
+      .then((data) => {
+        if (active) setLeaveBalances(data.leaveBalances || null);
+      })
+      .catch(fail);
+    return () => {
+      active = false;
+    };
+  }, [refreshDirectory, revisions?.attendance, revisions?.profile, fail]);
   const skipInitial = useRef(!!initial);
   const load = useCallback(
     async (forceDirectory = false, background = false) => {
       const id = ++requestId.current;
+      if (forceDirectory) setRefreshDirectory((value) => value + 1);
       if (!background) setBusy(true);
       try {
         const filterBlockId =
           role === "dpro" && filters.block
             ? blocks.find((block) => block.name_en === filters.block)?.id || ""
             : "";
-        const includeDirectory =
-          forceDirectory ||
-          !directoryLoaded.current ||
-          directoryBlockLoaded.current !== filterBlockId ||
-          (!revisions && Date.now() - directoryLoaded.current > 300000);
         const data = await api(
-          `/api/admin?date=${encodeURIComponent(date)}${filterBlockId ? `&block_id=${encodeURIComponent(filterBlockId)}` : ""}${includeDirectory ? "" : "&directory=0"}`,
+          `/api/admin?date=${encodeURIComponent(date)}${filterBlockId ? `&block_id=${encodeURIComponent(filterBlockId)}` : ""}&directory=0&balances=0`,
         );
         if (alive.current && id === requestId.current) {
           if (retryAdmin.current) clearTimeout(retryAdmin.current);
           setRecords(data.records || []);
-          if (data.leaveBalances) setLeaveBalances(data.leaveBalances);
-          if (Array.isArray(data.staff)) {
-            setStaff(data.staff);
-            setRemovedStaff(data.removedStaff || []);
-            directoryLoaded.current = Date.now();
-            directoryBlockLoaded.current = filterBlockId;
-          }
         }
       } catch (err) {
         if (alive.current && id === requestId.current) {
@@ -1891,7 +1870,7 @@ function Admin({
         }
       }
     },
-    [date, fail, !!revisions, role, filters.block, blocks],
+    [date, fail, role, filters.block, blocks],
   );
   useEffect(() => {
     alive.current = true;
@@ -1917,12 +1896,15 @@ function Admin({
   });
   useEffect(() => {
     const prior = lastAdminRevisions.current;
+    const hadRevision = prior.directory !== undefined;
     const directoryChanged =
-      prior.directory !== revisions?.directory ||
-      prior.profile !== revisions?.profile;
+      hadRevision &&
+      (prior.directory !== revisions?.directory ||
+        prior.profile !== revisions?.profile);
     const attendanceChanged =
-      prior.attendance !== revisions?.attendance ||
-      prior.profile !== revisions?.profile;
+      hadRevision &&
+      (prior.attendance !== revisions?.attendance ||
+        prior.profile !== revisions?.profile);
     lastAdminRevisions.current = {
       directory: revisions?.directory,
       attendance: revisions?.attendance,
@@ -1984,14 +1966,14 @@ function Admin({
       index.set(row.staff_id, [...(index.get(row.staff_id) || []), row]);
     return index;
   }, [normalized]);
-  const searchMatches = (person?: Profile) =>
+  const searchMatches = (person?: Profile, snapshotName?: string) =>
     !search.trim() ||
-    `${person?.name || ""} ${person?.phone || ""}`
+    `${person?.name || snapshotName || ""} ${person?.phone || ""}`
       .toLocaleLowerCase()
       .includes(search.trim().toLocaleLowerCase());
   const visibleRecords = normalized.filter(
     (row) =>
-      searchMatches(row.profiles) &&
+      searchMatches(row.profiles, row.staff_name) &&
       Object.entries(filters).every(
         ([key, value]) =>
           !value ||
@@ -1999,8 +1981,38 @@ function Admin({
             value,
       ),
   );
-  const directoryPeople = showRemoved ? removedStaff : staff;
-  const visibleStaff = filterDirectoryStaff(directoryPeople, search, filters);
+  const directoryPeople = staff;
+  const visibleStaff = useMemo(
+    () => filterDirectoryStaff(directoryPeople, search, filters),
+    [directoryPeople, search, filters],
+  );
+  const [directoryLimit, setDirectoryLimit] = useState(100);
+  const directorySentinel = useRef<HTMLDivElement>(null);
+  const balanceByStaff = useMemo(
+    () =>
+      new Map(
+        leaveBalances?.balances.map((entry) => [entry.staff_id, entry]) || [],
+      ),
+    [leaveBalances],
+  );
+  useEffect(() => {
+    setDirectoryLimit(100);
+  }, [search, filters]);
+  useEffect(() => {
+    const node = directorySentinel.current;
+    if (tab !== "staff" || !node || !("IntersectionObserver" in window)) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting)
+          setDirectoryLimit((current) =>
+            Math.min(current + 100, visibleStaff.length),
+          );
+      },
+      { rootMargin: "300px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [tab, directoryLimit, visibleStaff.length]);
   const [page, setPage] = useState(1);
   const totalRows = visibleRecords.length;
   const pages = Math.max(1, Math.ceil(totalRows / 25));
@@ -2009,7 +2021,10 @@ function Admin({
     setPage(1);
   }, [search, filters, tab, date]);
   const start = (activePage - 1) * 25;
-  const directoryOptions = directoryChoices(directoryPeople, filters);
+  const directoryOptions = useMemo(
+    () => directoryChoices(directoryPeople, filters),
+    [directoryPeople, filters],
+  );
   const attendanceOptions = normalized.filter(
     (record) => !filters.block || record.block === filters.block,
   );
@@ -2047,22 +2062,6 @@ function Admin({
   function editStaff(person: Profile | null, remove = false) {
     setDetail(null);
     setEditor({ person, remove });
-  }
-  async function restoreStaff(person: Profile) {
-    setBusy(true);
-    setRestoreNotice("");
-    try {
-      await api("/api/staff", { action: "restore", id: person.id });
-      setRestoreNotice(
-        `${person.name} का खाता बहाल हुआ। / Staff account restored.`,
-      );
-      setShowRemoved(false);
-      await load(true);
-    } catch (err) {
-      fail(err);
-    } finally {
-      if (alive.current) setBusy(false);
-    }
   }
   function filter(key: string, value: string) {
     setFilters((previous) =>
@@ -2279,6 +2278,7 @@ function Admin({
                           ? "Approved"
                           : "Rejected"}
                       </p>
+                      {application.leave_detail && <p>Reason/type: {application.leave_detail}</p>}
                       {application.decided_at && (
                         <p>
                           Decision:{" "}
@@ -2443,34 +2443,26 @@ function Admin({
             />
           ) : (
             <>
-              {tab === "staff" && canManage && (
-                <div
-                  className="sp-actions"
-                  role="group"
-                  aria-label="Staff directory status"
-                >
-                  <button
-                    type="button"
-                    className={`sp-button ${showRemoved ? "sp-secondary" : ""}`}
-                    aria-pressed={!showRemoved}
-                    onClick={() => setShowRemoved(false)}
-                  >
-                    Current staff ({staff.length})
-                  </button>
-                  <button
-                    type="button"
-                    className={`sp-button ${showRemoved ? "" : "sp-secondary"}`}
-                    aria-pressed={showRemoved}
-                    onClick={() => setShowRemoved(true)}
-                  >
-                    Removed staff ({removedStaff.length})
-                  </button>
+              {tab === "staff" && (
+                <div className="sp-actions">
+                  {(["xlsx", "pdf"] as const).map((format) => {
+                    const blockId =
+                      role === "dpro" && filters.block
+                        ? blocks.find(
+                            (block) => block.name_en === filters.block,
+                          )?.id
+                        : undefined;
+                    return (
+                      <a
+                        key={format}
+                        className="sp-button sp-secondary"
+                        href={`/api/staff/export?format=${format}${blockId ? `&block_id=${blockId}` : ""}`}
+                      >
+                        Download directory {format.toUpperCase()}
+                      </a>
+                    );
+                  })}
                 </div>
-              )}
-              {restoreNotice && (
-                <p role="status" className="sp-alert sp-success">
-                  {restoreNotice}
-                </p>
               )}
               {office.feed && officeClosure(date, office.feed.holidays) && (
                 <p className="sp-alert sp-holiday">
@@ -2558,7 +2550,7 @@ function Admin({
                 <p>
                   {tab === "attendance"
                     ? `${visibleRecords.length} उपस्थिति रिकॉर्ड`
-                    : `${visibleStaff.length} ${showRemoved ? "हटाए गए कर्मी / Removed staff" : "कर्मी"}`}
+                    : `${visibleStaff.length} कर्मी`}
                 </p>
                 <button
                   className="sp-text-button"
@@ -2606,7 +2598,7 @@ function Admin({
                               </span>
                               <div className="sp-cell-value">
                                 <strong translate="no">
-                                  {row.profiles?.name || "कर्मी"}
+                                  {row.profiles?.name || row.staff_name || "कर्मी"}
                                 </strong>
                                 <small>
                                   {row.profiles?.phone || ""} •{" "}
@@ -2710,7 +2702,7 @@ function Admin({
                       </tr>
                     </thead>
                     <tbody>
-                      {visibleStaff.map((person) => (
+                      {visibleStaff.slice(0, directoryLimit).map((person) => (
                         <tr key={person.id}>
                           <td>
                             <span className="sp-cell-label" aria-hidden="true">
@@ -2772,9 +2764,7 @@ function Admin({
                                 "Login pending / लॉगिन बाकी"
                               ) : (
                                 <LeaveBalanceDisplay
-                                  balance={leaveBalances?.balances.find(
-                                    (entry) => entry.staff_id === person.id,
-                                  )}
+                                  balance={balanceByStaff.get(person.id)}
                                   gender={person.gender}
                                 />
                               )}
@@ -2796,37 +2786,22 @@ function Admin({
                                 </button>
                                 {canManage && (
                                   <>
-                                    {person.deleted_at ? (
+                                    <>
                                       <button
                                         type="button"
                                         className="sp-button sp-secondary"
-                                        disabled={busy}
-                                        onClick={() =>
-                                          void restoreStaff(person)
-                                        }
+                                        onClick={() => editStaff(person)}
                                       >
-                                        बहाल करें / Restore
+                                        बदलें / Edit
                                       </button>
-                                    ) : (
-                                      <>
-                                        <button
-                                          type="button"
-                                          className="sp-button sp-secondary"
-                                          onClick={() => editStaff(person)}
-                                        >
-                                          बदलें / Edit
-                                        </button>
-                                        <button
-                                          type="button"
-                                          className="sp-button sp-secondary"
-                                          onClick={() =>
-                                            editStaff(person, true)
-                                          }
-                                        >
-                                          हटाएँ / Remove
-                                        </button>
-                                      </>
-                                    )}
+                                      <button
+                                        type="button"
+                                        className="sp-button sp-secondary"
+                                        onClick={() => editStaff(person, true)}
+                                      >
+                                        हटाएँ / Remove
+                                      </button>
+                                    </>
                                   </>
                                 )}
                               </div>
@@ -2836,13 +2811,28 @@ function Admin({
                       ))}
                     </tbody>
                   </table>
+                  {directoryLimit < visibleStaff.length && (
+                    <div ref={directorySentinel} className="sp-list-caption">
+                      <span>
+                        {directoryLimit} / {visibleStaff.length} staff shown
+                      </span>
+                      <button
+                        type="button"
+                        className="sp-text-button"
+                        onClick={() =>
+                          setDirectoryLimit((current) =>
+                            Math.min(current + 100, visibleStaff.length),
+                          )
+                        }
+                      >
+                        Show more
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <p className="sp-empty">
                   कोई कर्मी नहीं मिला। खोज या फ़िल्टर बदलें।
-                  {!showRemoved &&
-                    canManage &&
-                    " हटाए गए कर्मी देखने के लिए Removed staff चुनें।"}
                 </p>
               )}
               {tab !== "staff" && pages > 1 && (
@@ -3005,10 +2995,9 @@ function Admin({
             remove={editor.remove}
             staff={staff}
             onClose={() => setEditor(null)}
-            onFound={(phone, removed) => {
+            onFound={(phone) => {
               setEditor(null);
               setTab("staff");
-              setShowRemoved(removed);
               setSearch(phone);
               setFilters({
                 block: "",
@@ -3130,6 +3119,7 @@ function Admin({
                     <p key={application.id}>
                       {application.date} • {application.leave_type} •{" "}
                       {application.status}
+                      {application.leave_detail ? ` • ${application.leave_detail}` : ""}
                       {application.decided_at
                         ? ` • Decided ${new Date(application.decided_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST`
                         : ""}

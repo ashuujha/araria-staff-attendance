@@ -27,7 +27,7 @@ process.env.APP_URL = "https://capacity.example.test";
 process.env.SUPABASE_URL = "https://capacity.supabase.invalid";
 process.env.SUPABASE_SECRET_KEY = "sb_secret_fixture";
 process.env.SUPABASE_PUBLISHABLE_KEY = "sb_publishable_fixture";
-const users = Array.from({ length: 250 }, (_, i) => {
+const users = Array.from({ length: 700 }, (_, i) => {
   const id = `aaaaaaaa-aaaa-4aaa-8aaa-${String(i + 1).padStart(12, "0")}`;
   return {
     id,
@@ -76,21 +76,6 @@ globalThis.fetch = async (input, init = {}) => {
       return Response.json(true);
     if (url.pathname === "/rest/v1/rpc/clear_login_account")
       return Response.json(null);
-    if (url.pathname === "/rest/v1/rpc/portal_bootstrap") {
-      const bearer = new Headers(init.headers).get("authorization").slice(7);
-      const subject = JSON.parse(
-        Buffer.from(bearer.split(".")[1], "base64url").toString(),
-      ).sub;
-      const user = byId.get(subject);
-      assert.ok(user);
-      return Response.json({
-        profile: user,
-        date: "2026-10-15",
-        records: [],
-        staff: [],
-        office: { today: "2026-10-15", holidays: [], notices: [] },
-      });
-    }
     if (url.pathname === "/rest/v1/profiles") {
       if (url.searchParams.has("phone")) {
         const user = byPhone.get(url.searchParams.get("phone").slice(3));
@@ -107,6 +92,8 @@ globalThis.fetch = async (input, init = {}) => {
       return Response.json([user]);
     }
     if (url.pathname === "/rest/v1/attendance") return Response.json([]);
+    if (url.pathname === "/rest/v1/leave_applications")
+      return Response.json([]);
     if (url.pathname === "/rest/v1/rpc/leave_balance_snapshot")
       return Response.json({});
     throw Error("Unexpected upstream endpoint " + url.pathname);
@@ -152,30 +139,33 @@ try {
     );
   let images = 0,
     imagePeak = 0;
-  await Promise.all(
-    users.map(async () => {
-      const release = await handlers.capacity.reserveEvidenceSlot();
-      images++;
-      imagePeak = Math.max(imagePeak, images);
-      try {
-        await new Promise((r) => setTimeout(r, 1));
-      } finally {
-        images--;
-        release();
-      }
-    }),
-  );
+  // Evidence decoding has a bounded per-instance queue. Exercise all users
+  // in waves, reflecting a peak interval rather than 700 uploads in one tick.
+  for (let offset = 0; offset < users.length; offset += 100)
+    await Promise.all(
+      users.slice(offset, offset + 100).map(async () => {
+        const release = await handlers.capacity.reserveEvidenceSlot();
+        images++;
+        imagePeak = Math.max(imagePeak, images);
+        try {
+          await new Promise((r) => setTimeout(r, 1));
+        } finally {
+          images--;
+          release();
+        }
+      }),
+    );
   assert.equal(imagePeak, 4);
   const report = {
     scope:
       "Local route handlers with mocked Supabase, not a live hosting capacity guarantee",
-    virtualStaff: 250,
-    loginIncludesDashboard: true,
+    virtualStaff: users.length,
+    loginIncludesDashboard: false,
     authenticatedStartupUpstreamRequests: 1,
-    coldStaffLoginUpstreamRequests: 3,
-    successfulLogins: 250,
-    successfulSessionViews: 250,
-    successfulAttendanceViews: 250,
+    coldStaffLoginUpstreamRequests: 5,
+    successfulLogins: users.length,
+    successfulSessionViews: users.length,
+    successfulAttendanceViews: users.length,
     upstreamRequests: total,
     peakMockedUpstreamConcurrency: peak,
     maxConcurrentEvidenceBuffers: imagePeak,

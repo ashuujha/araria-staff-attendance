@@ -23,32 +23,33 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function GET(req: Request) {
+  const started = performance.now();
   try {
     const { profile, token } = await identity(req);
-    const [records, leaveBalances, applications] = await Promise.all([
+    const [records, applications] = await Promise.all([
       sb(
         `/rest/v1/attendance?staff_id=eq.${profile.id}&date=eq.${istDate()}&deleted_at=is.null&select=*`,
         {},
         token,
       ),
-      sb(
-        "/rest/v1/rpc/leave_balance_snapshot",
-        { method: "POST", body: "{}" },
-        token,
-      ),
       profile.role === "staff"
         ? sb(
-            `/rest/v1/leave_applications?staff_id=eq.${profile.id}&date=eq.${istDate()}&select=id,date,leave_type,status,created_at,decided_at,panchayat,position,rejection_reason,decision_document_path&order=created_at.desc&limit=1`,
+            `/rest/v1/leave_applications?staff_id=eq.${profile.id}&date=eq.${istDate()}&select=id,date,leave_type,leave_detail,status,created_at,decided_at,panchayat,position,rejection_reason,decision_document_path&order=created_at.desc&limit=1`,
             {},
             token,
           )
         : Promise.resolve([]),
     ]);
-    return json({
-      records,
-      leaveBalances,
-      application: applications[0] || null,
-    });
+    return json(
+      {
+        records,
+        application: applications[0] || null,
+      },
+      200,
+      {
+        "Server-Timing": `staff_dashboard;dur=${Math.round(performance.now() - started)}`,
+      },
+    );
   } catch (e) {
     return failure(e);
   }
@@ -103,14 +104,23 @@ export async function POST(req: Request) {
       )
         throw new HttpError(403, "Workspace is outside your assigned block.");
       if (
-        body.status === "deputation" &&
+        ["deputation", "on_duty"].includes(body.status) &&
         (typeof body.deputation_workplace !== "string" ||
           body.deputation_workplace.trim().length < 2 ||
           body.deputation_workplace.length > 200)
       )
         throw new HttpError(400, "प्रतिनियुक्ति कार्यस्थल का नाम आवश्यक है।");
-      if (body.status === "leave" && !["CL", "SL"].includes(body.leave_type))
+      if (body.status === "leave" && !["CL", "SL", "MATERNITY", "PATERNITY", "OTHER"].includes(body.leave_type))
         throw new HttpError(400, "CL या SL चुनें।");
+      if (body.status === "leave" && (
+        (body.leave_type === "SL" || body.leave_type === "MATERNITY") && profile.gender !== "female" ||
+        body.leave_type === "PATERNITY" && profile.gender !== "male"
+      )) throw new HttpError(403, "This leave type is not available for this staff account.");
+      if (body.status === "leave" && ["MATERNITY", "PATERNITY", "OTHER"].includes(body.leave_type) &&
+        (typeof body.leave_detail !== "string" || body.leave_detail.trim().length < 3 || body.leave_detail.length > 500))
+        throw new HttpError(400, "Enter the leave type/reason (3–500 characters).");
+      if (body.status === "on_duty" && (typeof body.absence_reason !== "string" || body.absence_reason.trim().length < 3 || body.absence_reason.length > 1000))
+        throw new HttpError(400, "Enter the on-duty reason (3–1000 characters).");
       if (body.status === "leave" && !body.leave_upload_path)
         throw new HttpError(
           400,
@@ -133,8 +143,8 @@ export async function POST(req: Request) {
           "पंचायत, विभाग और पद नियुक्ति के अनुसार चुनें।",
         );
       if (
-        !["present", "absent", "leave", "deputation"].includes(body.status) ||
-        draft !== ["present", "deputation"].includes(body.status)
+        !["present", "absent", "leave", "deputation", "on_duty"].includes(body.status) ||
+        draft !== ["present", "deputation", "on_duty"].includes(body.status)
       )
         throw new HttpError(400, "स्थिति अमान्य।");
       if (draft && !body.photo_upload_path)
@@ -153,10 +163,11 @@ export async function POST(req: Request) {
           "अनुपस्थिति का कारण लिखें (3–1000 अक्षर)। / Enter an absence reason (3–1000 characters).",
         );
     }
-    // Browser location is optional photo metadata, not verified GPS evidence.
-    // Existing gallery uploads may omit it; only arrival drafts can carry it.
+    // The camera must supply a fresh browser position for arrival drafts.
     const locationProvided =
       body.latitude != null || body.longitude != null || body.accuracy != null;
+    if (draft && !locationProvided)
+      throw new HttpError(400, "A fresh GPS camera location is required.");
     if (
       locationProvided &&
       (!draft ||
@@ -247,13 +258,14 @@ export async function POST(req: Request) {
     releaseEvidence = undefined;
     if (body.status === "leave") {
       const application = await sb(
-        "/rest/v1/rpc/submit_leave_application",
+        "/rest/v1/rpc/submit_leave_application_v2",
         {
           method: "POST",
           body: JSON.stringify({
             panchayat_name: body.panchayat,
             position_name: body.position,
             leave_kind: body.leave_type,
+            leave_detail_text: body.leave_detail || null,
             document_path: body.leave_upload_path,
           }),
         },
@@ -284,7 +296,7 @@ export async function POST(req: Request) {
         image_hash: null,
         perceptual_hash: null,
         absence_reason:
-          body.status === "absent" ? body.absence_reason?.trim() : null,
+          ["absent", "on_duty"].includes(body.status) ? body.absence_reason?.trim() : null,
         request_ip:
           req.headers.get("x-vercel-forwarded-for") ||
           req.headers.get("x-forwarded-for") ||

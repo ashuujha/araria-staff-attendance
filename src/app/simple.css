@@ -371,6 +371,16 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0 24px;
 }
+.sp-status-group { grid-column: 1 / -1; border: 0; padding: 0; margin: 0 0 18px; min-width: 0; }
+.sp-status-group legend { font-weight: 600; margin-bottom: 10px; }
+.sp-status-options { display: flex; max-width: 100%; min-width: 0; gap: 8px; overflow-x: auto; padding: 2px 2px 8px; }
+.sp-status-option { position: relative; flex: 1 0 max-content; cursor: pointer; }
+.sp-status-option input { position: absolute; width: 1px; height: 1px; opacity: 0; clip-path: inset(50%); }
+.sp-status-option span { display: block; border: 1px solid #b8c8d9; border-radius: 9px; padding: 10px 12px; white-space: nowrap; background: #fff; }
+.sp-status-option input:checked + span { background: #e8f2fb; border-color: #2d648e; color: #173b63; font-weight: 700; }
+.sp-status-option input:focus-visible + span { outline: 3px solid #72a8d3; outline-offset: 2px; }
+.sp-status-hint { display: none; color: #54677b; }
+@media (max-width: 700px) { .sp-status-hint { display: block; margin-top: 2px; } }
 .sp-workspace-picker {
   grid-column: 1 / -1;
 }

@@ -14,7 +14,7 @@
     "format": "prettier --write src scripts tests docs README.md *.mjs *.json",
     "format:check": "prettier --check src scripts tests docs README.md *.mjs *.json",
     "deploy": "node scripts/deploy-vercel.mjs",
-    "check:capacity": "node scripts/check-250-users.mjs"
+    "check:capacity": "node scripts/check-700-users.mjs"
   },
   "dependencies": {
     "@fontsource/noto-sans": "^5.3.0",

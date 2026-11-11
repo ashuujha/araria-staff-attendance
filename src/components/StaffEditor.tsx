@@ -200,7 +200,7 @@ export default function StaffEditor({
         <div className="sp-dialog-header">
           <h2 id="staff-editor-title">
             {remove
-              ? "कर्मी हटाएँ / Remove staff"
+              ? "कर्मी स्थायी रूप से हटाएँ / Permanently remove staff"
               : person
                 ? "कर्मी विवरण बदलें / Edit staff"
                 : "कर्मी जोड़ें / Add staff"}
@@ -258,8 +258,8 @@ export default function StaffEditor({
                   </span>
                   <br />
                   इस कर्मी का लॉगिन बंद होगा। पुरानी उपस्थिति सुरक्षित रहेगी। /
-                  This staff login will be disabled. Previous attendance will be
-                  retained.
+                  This staff login will be permanently removed from the current
+                  directory. Previous attendance will be retained.
                 </p>
               ) : (
                 <>
@@ -299,7 +299,7 @@ export default function StaffEditor({
                     <label className="sp-field">
                       मोबाइल नंबर / Mobile number
                       <input
-                        required={!!person && !person.roster_only}
+                        required
                         type="tel"
                         pattern="[6-9][0-9]{9}"
                         maxLength={10}
@@ -452,7 +452,7 @@ export default function StaffEditor({
                 {busy
                   ? "सहेजा जा रहा है…"
                   : remove
-                    ? "हटाने की पुष्टि / Confirm removal"
+                    ? "स्थायी हटाने की पुष्टि / Confirm permanent removal"
                     : "सहेजें / Save"}
               </button>
             </fieldset>

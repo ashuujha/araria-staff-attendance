@@ -11,6 +11,7 @@ import { istDate } from "../../../lib/security.mjs";
 import { requestedBlock } from "../../../lib/district-scope";
 import { rosterRows } from "../../../lib/roster";
 export async function GET(req: Request) {
+  const started = performance.now();
   try {
     const { profile, token } = await identity(req);
     admin(profile);
@@ -18,7 +19,42 @@ export async function GET(req: Request) {
     const date = url.searchParams.get("date") || istDate();
     const blockId = requestedBlock(profile, url.searchParams.get("block_id"));
     const blockFilter = blockId ? `&block_id=eq.${blockId}` : "";
+    const view = url.searchParams.get("view");
+    if (view === "balances") {
+      const leaveBalances = await sb(
+        "/rest/v1/rpc/leave_balance_snapshot",
+        { method: "POST", body: "{}" },
+        token,
+      );
+      return json({ leaveBalances }, 200, {
+        "Server-Timing": `balances;dur=${Math.round(performance.now() - started)}`,
+      });
+    }
+    if (view === "directory") {
+      const [staff, roster] = await Promise.all([
+        sb(
+          "/rest/v1/profiles?deleted_at=is.null&role=eq.staff" +
+            blockFilter +
+            "&select=id,name,phone,email,assignments,block,block_id,role,active,gender&order=name",
+          {},
+          token,
+        ),
+        rosterRows(token, blockId),
+      ]);
+      return json(
+        {
+          staff: [...staff, ...roster].sort((a, b) =>
+            a.name.localeCompare(b.name),
+          ),
+        },
+        200,
+        {
+          "Server-Timing": `directory;dur=${Math.round(performance.now() - started)}`,
+        },
+      );
+    }
     const includeStaff = url.searchParams.get("directory") !== "0";
+    const includeBalances = url.searchParams.get("balances") !== "0";
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
       throw new HttpError(400, "तिथि अमान्य।");
     const [records, staff, removedStaff, roster, removedRoster, leaveBalances] =
@@ -53,24 +89,32 @@ export async function GET(req: Request) {
         includeStaff
           ? rosterRows(token, blockId, true)
           : Promise.resolve(undefined),
-        sb(
-          "/rest/v1/rpc/leave_balance_snapshot",
-          { method: "POST", body: "{}" },
-          token,
-        ),
+        includeBalances
+          ? sb(
+              "/rest/v1/rpc/leave_balance_snapshot",
+              { method: "POST", body: "{}" },
+              token,
+            )
+          : Promise.resolve(undefined),
       ]);
-    return json({
-      records,
-      leaveBalances,
-      ...(includeStaff
-        ? {
-            staff: [...staff, ...(roster || [])].sort((a, b) =>
-              a.name.localeCompare(b.name),
-            ),
-            removedStaff: [...removedStaff, ...(removedRoster || [])],
-          }
-        : {}),
-    });
+    return json(
+      {
+        records,
+        leaveBalances,
+        ...(includeStaff
+          ? {
+              staff: [...staff, ...(roster || [])].sort((a, b) =>
+                a.name.localeCompare(b.name),
+              ),
+              removedStaff: [...removedStaff, ...(removedRoster || [])],
+            }
+          : {}),
+      },
+      200,
+      {
+        "Server-Timing": `attendance;dur=${Math.round(performance.now() - started)}`,
+      },
+    );
   } catch (e) {
     return failure(e);
   }

@@ -1,14 +1,14 @@
 {
   "scope": "Local route handlers with mocked Supabase, not a live hosting capacity guarantee",
-  "virtualStaff": 250,
-  "loginIncludesDashboard": true,
+  "virtualStaff": 700,
+  "loginIncludesDashboard": false,
   "authenticatedStartupUpstreamRequests": 1,
-  "coldStaffLoginUpstreamRequests": 3,
-  "successfulLogins": 250,
-  "successfulSessionViews": 250,
-  "successfulAttendanceViews": 250,
-  "upstreamRequests": 2250,
-  "peakMockedUpstreamConcurrency": 500,
+  "coldStaffLoginUpstreamRequests": 5,
+  "successfulLogins": 700,
+  "successfulSessionViews": 700,
+  "successfulAttendanceViews": 700,
+  "upstreamRequests": 7000,
+  "peakMockedUpstreamConcurrency": 2100,
   "maxConcurrentEvidenceBuffers": 4,
-  "elapsedMs": 247
+  "elapsedMs": 891
 }

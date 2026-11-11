@@ -42,7 +42,7 @@ const request = (body) =>
     headers,
     body: JSON.stringify(body),
   });
-test("admin creates directory-only staff and keeps existing account edits scoped", async () => {
+test("admin creates a staff login and keeps existing account edits scoped", async () => {
   const original = globalThis.fetch,
     calls = [];
   let role = "dpro";
@@ -95,7 +95,7 @@ test("admin creates directory-only staff and keeps existing account edits scoped
       }),
     );
     assert.equal(created.status, 200);
-    assert.equal((await created.json()).password, undefined);
+    assert.match((await created.json()).password, /^[A-Za-z0-9_-]{24}#aA1$/);
     const updated = await POST(
       request({
         action: "update",
@@ -136,7 +136,7 @@ test("admin creates directory-only staff and keeps existing account edits scoped
     }
     assert.equal(
       calls.some((c) => c.url.pathname === "/auth/v1/admin/users"),
-      false,
+      true,
     );
     const before = calls.filter((c) =>
       c.url.pathname.endsWith("/manage_staff_with_gender"),
@@ -216,7 +216,7 @@ test("admin loading validates JWT through Supabase then starts attendance and di
   }
 });
 
-test("removed existing staff can be restored in scope", async () => {
+test("removed staff cannot be restored", async () => {
   const original = globalThis.fetch;
   const calls = [];
   let role = "dpro";
@@ -265,8 +265,8 @@ test("removed existing staff can be restored in scope", async () => {
   };
   try {
     const restored = await POST(request({ action: "restore", id: staff }));
-    assert.equal(restored.status, 200);
-    assert.ok(calls.some((c) => c.init.method === "PATCH" && c.body.active));
+    assert.equal(restored.status, 400);
+    assert.ok(!calls.some((c) => c.init.method === "PATCH"));
     role = "district_viewer";
     assert.equal(
       (await POST(request({ action: "restore", id: staff }))).status,
@@ -362,6 +362,56 @@ test("attendance polling skips the directory without returning a misleading empt
     assert.deepEqual(data.records, []);
     assert.equal(Object.hasOwn(data, "staff"), false);
     assert.equal(calls.length, 3);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+test("daily attendance loads without directory or leave balance aggregation", async () => {
+  const original = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (input) => {
+    const url = new URL(input);
+    calls.push(url.pathname);
+    if (url.pathname === "/rest/v1/profiles")
+      return Response.json([{ id: admin, role: "dpro", active: true }]);
+    if (url.pathname === "/rest/v1/attendance") return Response.json([]);
+    throw Error("Unexpected heavy read: " + url.pathname);
+  };
+  try {
+    const response = await GET(
+      new Request(process.env.APP_URL + "/api/admin?directory=0&balances=0", {
+        headers,
+      }),
+    );
+    assert.equal(response.status, 200);
+    assert.deepEqual((await response.json()).records, []);
+    assert.deepEqual(calls, ["/rest/v1/profiles", "/rest/v1/attendance"]);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+test("BPRO cannot request another block's separated directory", async () => {
+  const original = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (input) => {
+    const url = new URL(input);
+    calls.push(url.pathname);
+    if (url.pathname === "/rest/v1/profiles")
+      return Response.json([
+        { id: admin, role: "bpro", active: true, block_id: blockId },
+      ]);
+    throw Error("Out-of-block directory read reached Supabase");
+  };
+  try {
+    const response = await GET(
+      new Request(
+        process.env.APP_URL +
+          "/api/admin?view=directory&block_id=44444444-4444-4444-8444-444444444444",
+        { headers },
+      ),
+    );
+    assert.equal(response.status, 403);
+    assert.deepEqual(calls, ["/rest/v1/profiles"]);
   } finally {
     globalThis.fetch = original;
   }

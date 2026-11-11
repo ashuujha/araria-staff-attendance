@@ -1,33 +1,18 @@
-# Faster startup, directory and photo saves
+# Login and dashboard performance
 
-Apply the contents of `supabase/migrations/20261015_z_fast_start.sql` in Supabase SQL Editor, after the existing photo and office-board migrations, then run `npm run deploy`. Existing accounts, holidays, notices and attendance remain intact.
+## Current request flow
 
-## Requests removed
+- Staff mobile login performs an indexed phone lookup (`profiles.phone` is unique), login limit check, Supabase password authentication, a scoped profile read, and a limit reset. Admin login also checks CAPTCHA and writes an audit record. The limit reset and audit write run together after authorization.
+- Login and session restore return only the verified profile. They no longer wait for `portal_bootstrap`, which aggregated the full admin directory, daily attendance, notices, holidays, and leave balances.
+- Staff attendance, office notices, and revision counters load separately after the session is usable. The admin daily attendance request skips directory and leave-balance aggregation; those requests load independently. Directory reads remain role/block scoped by RLS.
+- `Server-Timing` reports total login and its upstream stages, session restore, admin attendance/directory/balances, and staff dashboard time. Browser developer tools can show these timings without logging credentials or staff data.
 
-Counts below describe a successful ordinary startup, excluding optional translations and admin CAPTCHA:
+## Capacity evidence
 
-| Path                                     | Previous upstream requests | Fast-start upstream requests |
-| ---------------------------------------- | -------------------------: | ---------------------------: |
-| Staff mobile login and initial dashboard |                          8 |                            3 |
-| Admin email login and initial dashboard  |                          8 |                            2 |
-| Restore a session and initial dashboard  |                          6 |                            1 |
+`npm run check:capacity` runs 700 concurrent synthetic logins, 700 session restores, and 700 attendance reads against a **mocked** Supabase service. It also exercises bounded evidence processing in waves. The generated `docs/CAPACITY_CHECK.json` records the result. This checks handler behavior and identity separation; it does **not** measure production throughput, Supabase Auth limits, database CPU, phone networks, or photo upload speed.
 
-Login now returns the initial records and office board, plus a directory only for an authorized admin. The client uses that response immediately instead of launching separate attendance/admin and office requests that each repeat profile validation. Session restoration uses the same authenticated database RPC. The SQL function is SECURITY INVOKER and keeps all existing RLS policies; inactive users, anonymous callers and out-of-block reads remain disallowed. Password verification, admin CAPTCHA and server-side attendance validation remain mandatory. Private responses keep `Cache-Control: no-store`.
+Before claiming the 10–11 AM peak is supported, run a staging load test with representative staff and attendance data: 700 logins over five minutes, a shorter burst, attendance saves, evidence uploads, and BPRO/DPRO reads. Record p50/p95/p99 latency, 429/5xx rates, Supabase query statistics, and Vercel function timings. Target p95 usable staff login below 5 seconds, admin login below 8 seconds, and under 1% application errors. Investigate any slow stage with `EXPLAIN (ANALYZE, BUFFERS)` before adding indexes or upgrading compute.
 
-If the function has not been installed, only a missing-function response triggers the original loading path. Invalid tokens and service failures never use this fallback. The speed improvement is fully active after installing the migration.
+The app runs Vercel functions in `bom1` (Mumbai). Vercel handles function scaling; add capacity or a different hosting design only after a real staging test identifies the limiting service. Keep Supabase's trusted end-user IP forwarding configured for Auth so a shared server IP does not consume one rate-limit bucket.
 
-## Rendering and uploads
-
-- Only 25 attendance or directory rows mount at a time. Search/filter matching still checks all loaded staff, and paging controls show the matching result range.
-- Attendance snapshots and per-staff lookups are indexed/memoized rather than rescanned for every directory row.
-- Visible admin attendance polling stays at 30 seconds. It does not repeatedly fetch all personnel: directory refreshes happen after five minutes or an explicit Refresh; successful staff mutations update the visible directory immediately.
-- Workplace photos larger than 300 KB are resized in a supporting browser to a maximum 1600-pixel long edge and JPEG quality 0.82. The smaller result is uploaded only if it actually reduces bytes. Small originals, unsupported browsers and conversion failures use the existing path. Decoded image resources are closed. Leave documents are unchanged.
-- Server image decoding imports load only when processing an image; signing an upload or validating a PDF no longer eagerly loads Sharp. Server validation and private storage links remain in place.
-
-## Evidence and limits
-
-`tests/fast-start.test.mjs` checks exact request counts, response reuse, missing-RPC fallback, rejected JWTs and browser resize dimensions/resource cleanup. `tests/office-board.test.mjs` exercises the real SQL under authenticated staff/admin/block-admin roles and RLS. Admin tests check directory-free polling. Existing attendance and file tests cover save rules.
-
-`npm run check:capacity` exercises 250 logins, session restores and attendance reads against a simulated Supabase service. This tests concurrency and identity separation, not live hosting speed or uptime. `docs/CAPACITY_CHECK.json` records that scope. API responses include Server-Timing for login and session startup.
-
-The current environment cannot reach live Vercel/Supabase services or run Chromium, so actual browser paint times, cold-start latency, database-region placement and production percentiles have not been measured here. No fixed response-time or uptime guarantee is made. The reduced request counts, smaller uploads and bounded lists are concrete code changes, not a live latency measurement.
+The old `portal_bootstrap` SQL remains installed for compatibility with earlier deployments, but current login and session routes do not invoke it. No database migration is required for this change.

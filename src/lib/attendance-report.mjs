@@ -30,7 +30,7 @@ export function attendanceCode(record, date, today, holidayDates) {
     if (record.status === "leave") return "L";
     if (record.phase === "draft" || (record.time_in && !record.time_out))
       return "PP";
-    if (record.status === "deputation") return "O";
+    if (record.status === "deputation" || record.status === "on_duty") return "O";
     return "P";
   }
   if (holidayDates.has(date)) return "H";
