@@ -96,6 +96,8 @@ function fixture(
     if (url.pathname === "/storage/v1/object/attendance-private")
       return Response.json([]);
     if (url.pathname === "/rest/v1/rpc/save_attendance_with_evidence") {
+      assert.equal(new Headers(init.headers).get("authorization"), "Bearer fixture-session");
+      assert.equal(new Headers(init.headers).get("apikey"), process.env.SUPABASE_PUBLISHABLE_KEY);
       const body = JSON.parse(init.body);
       for (const field of [
         "device_hash",

@@ -303,7 +303,7 @@ export async function POST(req: Request) {
           null,
         request_agent: req.headers.get("user-agent")?.slice(0, 500) || "",
       }),
-    });
+    }, token);
     cleanup.length = 0;
     return json({ record });
   } catch (e) {
