@@ -5,6 +5,25 @@ export type CameraLocation = {
   capturedAt: string;
 };
 
+export const MAX_CAMERA_ACCURACY_METERS = 1000;
+
+/** A generous 100 km check around the district's published coordinates.
+ * This catches another-city device fixes; it is not a block boundary or GPS proof.
+ */
+export function isNearArariaDistrict(
+  location: Pick<CameraLocation, "latitude" | "longitude">,
+) {
+  // Araria district coordinates: 26°7′48″ N, 87°28′12″ E (araria.nic.in).
+  const lat = (location.latitude * Math.PI) / 180;
+  const centreLat = (26.13 * Math.PI) / 180;
+  const deltaLat = lat - centreLat;
+  const deltaLon = ((location.longitude - 87.47) * Math.PI) / 180;
+  const a =
+    Math.sin(deltaLat / 2) ** 2 +
+    Math.cos(lat) * Math.cos(centreLat) * Math.sin(deltaLon / 2) ** 2;
+  return 6371 * 2 * Math.asin(Math.sqrt(Math.min(1, a))) <= 100;
+}
+
 /** The browser reports a position; it is not independent proof of GPS location. */
 export function cameraLocation(
   position: Pick<GeolocationPosition, "coords" | "timestamp">,
@@ -18,7 +37,7 @@ export function cameraLocation(
     Math.abs(latitude) > 90 ||
     Math.abs(longitude) > 180 ||
     accuracy <= 0 ||
-    accuracy > 1_000_000 ||
+    accuracy > MAX_CAMERA_ACCURACY_METERS ||
     now - position.timestamp > 20_000 ||
     position.timestamp > now + 2_000
   )

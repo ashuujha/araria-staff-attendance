@@ -3,6 +3,7 @@ export function validateDevicePosition(
   position: GeolocationPosition,
   now = Date.now(),
   maxAgeMs = 10_000,
+  maxAccuracyMeters = 50,
 ): boolean {
   const { latitude, longitude, accuracy } = position.coords;
   return (
@@ -12,7 +13,7 @@ export function validateDevicePosition(
     Math.abs(latitude) <= 90 &&
     Math.abs(longitude) <= 180 &&
     accuracy > 0 &&
-    accuracy <= 50 &&
+    accuracy <= maxAccuracyMeters &&
     now - position.timestamp <= maxAgeMs &&
     position.timestamp <= now + 2_000
   );
@@ -34,6 +35,8 @@ type LocationOptions = {
   settleMs?: number;
   timeoutMs?: number;
   maxAgeMs?: number;
+  maxAccuracyMeters?: number;
+  acceptPosition?: (position: GeolocationPosition) => boolean;
   now?: () => number;
 };
 
@@ -47,6 +50,7 @@ export function getFreshLocation(
   const settleMs = options.settleMs ?? 5_000;
   const timeoutMs = options.timeoutMs ?? 20_000;
   const maxAgeMs = options.maxAgeMs ?? 10_000;
+  const maxAccuracyMeters = options.maxAccuracyMeters ?? 50;
   return new Promise((resolve, reject) => {
     let candidate: GeolocationPosition | undefined;
     let watchId: number | undefined;
@@ -69,11 +73,16 @@ export function getFreshLocation(
     signal?.addEventListener("abort", abort, { once: true });
     const failure = () =>
       new Error(
-        "ताज़ा और स्थिर स्थान नहीं मिला। खुले स्थान में फिर कोशिश करें। / No fresh, stable location within 50 metres accuracy. Try again outdoors.",
+        `ताज़ा और स्थिर स्थान नहीं मिला। खुले स्थान में फिर कोशिश करें। / No fresh, stable location within ${maxAccuracyMeters} metres accuracy. Enable precise device location and try again outdoors.`,
       );
     deadline = setTimeout(() => finish(failure()), timeoutMs);
     const success = (position: GeolocationPosition) => {
-      if (done || !validateDevicePosition(position, now(), maxAgeMs)) return;
+      if (
+        done ||
+        !validateDevicePosition(position, now(), maxAgeMs, maxAccuracyMeters) ||
+        (options.acceptPosition && !options.acceptPosition(position))
+      )
+        return;
       if (candidate && position.timestamp < candidate.timestamp) return;
       const changed =
         candidate &&
@@ -85,7 +94,15 @@ export function getFreshLocation(
       if (!candidate || changed) {
         clearTimeout(settleTimer);
         settleTimer = setTimeout(() => {
-          if (candidate && validateDevicePosition(candidate, now(), maxAgeMs))
+          if (
+            candidate &&
+            validateDevicePosition(
+              candidate,
+              now(),
+              maxAgeMs,
+              maxAccuracyMeters,
+            )
+          )
             finish(undefined, candidate);
           else finish(failure());
         }, settleMs);

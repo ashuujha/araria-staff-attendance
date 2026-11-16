@@ -624,6 +624,19 @@
   border: 1px solid #c6d2df;
   border-radius: 10px;
 }
+.sp-camera-confirmation {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 560px;
+  margin-top: 8px;
+  line-height: 1.6;
+  font-size: 13px;
+}
+.sp-camera-confirmation input {
+  flex: 0 0 auto;
+  margin-top: 4px;
+}
 .sp-actions {
   display: flex;
   gap: 12px;

@@ -60,6 +60,24 @@ test("poor accuracy waits for a usable fix", async () => {
   gps.emit(good);
   assert.equal(await result, good);
 });
+test("camera profile waits for a fresh, nearby fix without a 50 metre limit", async () => {
+  const gps = device();
+  const result = getFreshLocation(gps, undefined, {
+    ...quick,
+    maxAccuracyMeters: 1000,
+    acceptPosition: (reading) => reading.coords.latitude > 25,
+  });
+  gps.emit(position({ latitude: 23.35, longitude: 85.33, accuracy: 20 }));
+  gps.emit(position({ latitude: 26.3, longitude: 87.25, accuracy: 2000 }));
+  const forbesganj = position({
+    latitude: 26.3,
+    longitude: 87.25,
+    accuracy: 300,
+  });
+  gps.emit(forbesganj);
+  assert.equal(await result, forbesganj);
+  assert.deepEqual(gps.cleared, [42]);
+});
 test("a later displaced fix resets settling and replaces the initial location", async () => {
   const gps = device();
   const result = getFreshLocation(gps, undefined, { ...quick, settleMs: 30 });

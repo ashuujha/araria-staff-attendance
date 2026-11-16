@@ -15,6 +15,7 @@ await build({
 });
 const {
   cameraLocation,
+  isNearArariaDistrict,
   openStreetMapUrl,
   openStreetMapEmbedUrl,
   googleMapsUrl,
@@ -24,12 +25,12 @@ test("fresh device location is accepted without a 50 metre cutoff and maps to OS
   const now = Date.now();
   const location = cameraLocation(
     {
-      coords: { latitude: 22.5643, longitude: 88.3693, accuracy: 1200 },
+      coords: { latitude: 22.5643, longitude: 88.3693, accuracy: 800 },
       timestamp: now - 1000,
     },
     now,
   );
-  assert.equal(location.accuracy, 1200);
+  assert.equal(location.accuracy, 800);
   assert.match(openStreetMapUrl(location), /mlat=22\.564300&mlon=88\.369300/);
   const embed = new URL(openStreetMapEmbedUrl(location));
   assert.equal(embed.hostname, "www.openstreetmap.org");
@@ -50,9 +51,21 @@ test("stale or invalid device positions cannot be stamped", () => {
     },
     { coords: { latitude: 92, longitude: 87, accuracy: 20 }, timestamp: now },
     { coords: { latitude: 26, longitude: 87, accuracy: 0 }, timestamp: now },
+    { coords: { latitude: 26, longitude: 87, accuracy: 1200 }, timestamp: now },
   ])
     assert.throws(
       () => cameraLocation(position, now),
       /fresh location reading|ताज़ा स्थान/,
     );
+});
+
+test("gross other-city fixes are distinguished from Araria district readings", () => {
+  assert.equal(
+    isNearArariaDistrict({ latitude: 26.3, longitude: 87.25 }),
+    true,
+  ); // Forbesganj
+  assert.equal(
+    isNearArariaDistrict({ latitude: 23.35, longitude: 85.33 }),
+    false,
+  ); // Ranchi
 });

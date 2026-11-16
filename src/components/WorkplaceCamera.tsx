@@ -3,29 +3,45 @@
 import { useEffect, useRef, useState } from "react";
 import {
   cameraLocation,
+  isNearArariaDistrict,
+  MAX_CAMERA_ACCURACY_METERS,
   openStreetMapEmbedUrl,
   openStreetMapUrl,
   type CameraLocation,
 } from "../lib/osm-camera";
+import { getFreshLocation } from "../lib/location";
 
 type Capture = { file: File; location: CameraLocation };
 
-function currentPosition(): Promise<GeolocationPosition> {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(
-        new Error(
-          "इस ब्राउज़र में स्थान उपलब्ध नहीं है। / Location is unavailable in this browser.",
-        ),
-      );
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: 15_000,
+async function currentPosition(
+  requireDistrictLocation: boolean,
+  signal: AbortSignal,
+) {
+  if (!navigator.geolocation)
+    throw new Error(
+      "इस ब्राउज़र में स्थान उपलब्ध नहीं है। / Location is unavailable in this browser.",
+    );
+  let sawOutsideDistrict = false;
+  try {
+    return await getFreshLocation(navigator.geolocation, signal, {
+      maxAccuracyMeters: MAX_CAMERA_ACCURACY_METERS,
+      settleMs: 4_000,
+      timeoutMs: 25_000,
+      acceptPosition: requireDistrictLocation
+        ? (position) => {
+            const nearby = isNearArariaDistrict(position.coords);
+            if (!nearby) sawOutsideDistrict = true;
+            return nearby;
+          }
+        : undefined,
     });
-  });
+  } catch (cause) {
+    if (sawOutsideDistrict)
+      throw new Error(
+        "आपका फ़ोन अररिया ज़िले के बाहर का स्थान दिखा रहा है। फ़ोन की सटीक स्थान सेवा चालू करें और फिर कोशिश करें। / Your device reports a location outside Araria district. Enable Precise Location and retry outdoors.",
+      );
+    throw cause;
+  }
 }
 
 function photoFromVideo(
@@ -102,18 +118,22 @@ export default function WorkplaceCamera({
   onUse,
   onClose,
   mode = "arrival",
+  requireDistrictLocation = false,
 }: {
   onUse: (file: File, location: CameraLocation) => void;
   onClose: () => void;
   mode?: "arrival" | "departure";
+  requireDistrictLocation?: boolean;
 }) {
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
+  const locationRequest = useRef<AbortController | null>(null);
   const active = useRef(true);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [capture, setCapture] = useState<Capture | null>(null);
+  const [locationConfirmed, setLocationConfirmed] = useState(false);
   const [preview, setPreview] = useState("");
 
   useEffect(() => {
@@ -151,6 +171,7 @@ export default function WorkplaceCamera({
     return () => {
       cancelled = true;
       active.current = false;
+      locationRequest.current?.abort();
       stream.current?.getTracks().forEach((track) => track.stop());
       stream.current = null;
     };
@@ -170,8 +191,15 @@ export default function WorkplaceCamera({
     if (!ready || !video.current || busy) return;
     setBusy(true);
     setError("");
+    setCapture(null);
+    setLocationConfirmed(false);
+    const controller = new AbortController();
+    locationRequest.current = controller;
     try {
-      const position = await currentPosition();
+      const position = await currentPosition(
+        requireDistrictLocation,
+        controller.signal,
+      );
       const location = cameraLocation(position);
       if (!active.current || !video.current) return;
       const file = await photoFromVideo(video.current, location, mode);
@@ -193,6 +221,8 @@ export default function WorkplaceCamera({
               : "स्थान नहीं मिला। फिर कोशिश करें। / Location unavailable. Retry.",
         );
     } finally {
+      if (locationRequest.current === controller)
+        locationRequest.current = null;
       if (active.current) setBusy(false);
     }
   }
@@ -226,9 +256,11 @@ export default function WorkplaceCamera({
             {capture.location.longitude.toFixed(6)} • accuracy ±
             {Math.round(capture.location.accuracy)} m
           </p>
-          {capture.location.accuracy > 1000 && (
+          {!isNearArariaDistrict(capture.location) && (
             <p role="status" className="sp-alert sp-error">
-              Location accuracy is low. Check the map before using this photo.
+              Your device reports a location outside Araria district. If you are
+              in Forbesganj or another Araria block, enable Precise Location on
+              your phone and retake the photo.
             </p>
           )}
           <iframe
@@ -249,6 +281,17 @@ export default function WorkplaceCamera({
             Map © OpenStreetMap contributors. Device location can be inaccurate;
             check the marker before use.
           </small>
+          <label className="sp-camera-confirmation">
+            <input
+              type="checkbox"
+              checked={locationConfirmed}
+              onChange={(event) => setLocationConfirmed(event.target.checked)}
+            />
+            <span>
+              मानचित्र पर मेरा वास्तविक स्थान दिख रहा है / The map marker shows
+              my actual location.
+            </span>
+          </label>
         </div>
       )}
       <div className="sp-actions">
@@ -268,6 +311,7 @@ export default function WorkplaceCamera({
           <button
             type="button"
             className="sp-button sp-secondary"
+            disabled={!locationConfirmed}
             onClick={() => {
               onUse(capture.file, capture.location);
               onClose();
