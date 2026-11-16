@@ -9,6 +9,66 @@ import {
 import { getFreshLocation } from "../lib/location";
 
 type Capture = { file: File; location: CameraLocation };
+type StampDetails = {
+  place: string | null;
+  address: string | null;
+  map: string | null;
+};
+
+async function lookupStamp(
+  location: CameraLocation,
+  signal: AbortSignal,
+): Promise<StampDetails | null> {
+  const lookup = new AbortController();
+  const abort = () => lookup.abort();
+  signal.addEventListener("abort", abort, { once: true });
+  const timer = window.setTimeout(abort, 5_000);
+  try {
+    const query = new URLSearchParams({
+      lat: location.latitude.toFixed(6),
+      lon: location.longitude.toFixed(6),
+    });
+    const response = await fetch(`/api/location-stamp?${query}`, {
+      credentials: "same-origin",
+      cache: "no-store",
+      signal: lookup.signal,
+    });
+    if (!response.ok) return null;
+    const result = await response.json();
+    return {
+      place:
+        typeof result.place === "string" ? result.place.slice(0, 150) : null,
+      address:
+        typeof result.address === "string"
+          ? result.address.slice(0, 500)
+          : null,
+      map:
+        typeof result.map === "string" &&
+        result.map.startsWith("data:image/png;base64,")
+          ? result.map
+          : null,
+    };
+  } catch {
+    return null;
+  } finally {
+    window.clearTimeout(timer);
+    signal.removeEventListener("abort", abort);
+  }
+}
+
+async function mapImage(
+  dataUrl: string | null,
+): Promise<HTMLImageElement | null> {
+  if (!dataUrl) return null;
+  try {
+    const image = new Image();
+    image.src = dataUrl;
+    await image.decode();
+    return image;
+  } catch {
+    return null;
+  }
+}
 
 async function currentPosition(signal: AbortSignal) {
   if (!navigator.geolocation)
@@ -22,11 +82,7 @@ async function currentPosition(signal: AbortSignal) {
   });
 }
 
-function photoFromVideo(
-  video: HTMLVideoElement,
-  location: CameraLocation,
-  mode: "arrival" | "departure",
-): Promise<File> {
+function frameFromVideo(video: HTMLVideoElement): HTMLCanvasElement {
   if (!video.videoWidth || !video.videoHeight)
     throw new Error("कैमरा तैयार नहीं है। / Camera is not ready.");
   const canvas = document.createElement("canvas");
@@ -57,13 +113,40 @@ function photoFromVideo(
     canvas.width,
     canvas.height,
   );
-  const band = 186;
+  return canvas;
+}
+
+async function photoFromFrame(
+  canvas: HTMLCanvasElement,
+  location: CameraLocation,
+  mode: "arrival" | "departure",
+  details: StampDetails | null,
+): Promise<File> {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("फोटो नहीं बन सकी। / Could not create the photo.");
+  const band = 250;
+  const top = canvas.height - band;
   ctx.fillStyle = "rgba(9, 24, 40, 0.88)";
-  ctx.fillRect(0, canvas.height - band, canvas.width, band);
+  ctx.fillRect(0, top, canvas.width, band);
   ctx.fillStyle = "#4fc2de";
-  ctx.fillRect(0, canvas.height - band, 6, band);
-  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, top, 6, band);
   ctx.textBaseline = "top";
+  const map = await mapImage(details?.map || null);
+  if (map) {
+    ctx.drawImage(map, 20, top + 34, 205, 145);
+  } else {
+    ctx.fillStyle = "#183e56";
+    ctx.fillRect(20, top + 34, 205, 145);
+    ctx.fillStyle = "#67d2e6";
+    ctx.font = "700 52px sans-serif";
+    ctx.fillText("⌖", 101, top + 62);
+    ctx.font = "700 18px sans-serif";
+    ctx.fillText("GPS", 104, top + 128);
+  }
+  ctx.fillStyle = "#c9e1ec";
+  ctx.font = "500 12px sans-serif";
+  ctx.fillText("© OpenStreetMap contributors", 20, top + 194);
+  ctx.fillStyle = "#fff";
   const recorded = new Date(location.capturedAt).toLocaleString("en-IN", {
     timeZone: "Asia/Kolkata",
     weekday: "long",
@@ -74,28 +157,72 @@ function photoFromVideo(
     minute: "2-digit",
     second: "2-digit",
   });
-  const top = canvas.height - band + 20;
-  ctx.font = "700 22px sans-serif";
+  const textX = 245;
+  const textWidth = canvas.width - textX - 18;
+  const drawLines = (
+    value: string,
+    y: number,
+    font: string,
+    lineHeight: number,
+    limit: number,
+  ) => {
+    ctx.font = font;
+    const words = value
+      .replace(/[\u0000-\u001f]/g, " ")
+      .split(/\s+/)
+      .filter(Boolean);
+    const lines: string[] = [];
+    for (const word of words) {
+      const index = lines.length - 1;
+      if (
+        index >= 0 &&
+        ctx.measureText(`${lines[index]} ${word}`).width <= textWidth
+      )
+        lines[index] += ` ${word}`;
+      else lines.push(word);
+    }
+    lines
+      .slice(0, limit)
+      .forEach((line, index) =>
+        ctx.fillText(line, textX, y + index * lineHeight, textWidth),
+      );
+  };
+  ctx.font = "700 20px sans-serif";
   ctx.fillText(
     mode === "departure" ? "ARARIA · DEPARTURE" : "ARARIA · ARRIVAL",
-    24,
-    top,
+    textX,
+    top + 17,
+  );
+  drawLines(
+    details?.place ? `NEAR ${details.place}` : "PLACE NAME UNAVAILABLE",
+    top + 48,
+    "700 23px sans-serif",
+    25,
+    2,
   );
   ctx.fillStyle = "#c6e9f2";
-  ctx.font = "500 21px sans-serif";
-  ctx.fillText(
-    `LAT ${location.latitude.toFixed(6)}°    LON ${location.longitude.toFixed(6)}°`,
-    24,
-    top + 39,
+  drawLines(
+    details?.address || "GPS coordinates recorded",
+    top + 105,
+    "500 15px sans-serif",
+    19,
+    2,
   );
-  ctx.fillText(
-    `GPS ±${Math.round(location.accuracy)} m · ${recorded} IST`,
-    24,
-    top + 75,
-  );
-  ctx.fillStyle = "#fff";
   ctx.font = "500 18px sans-serif";
-  ctx.fillText("PANCHAYATI RAJ · GEO-TAGGED PHOTO", 24, top + 116);
+  ctx.fillText(
+    `Lat ${location.latitude.toFixed(6)}°  Long ${location.longitude.toFixed(6)}°`,
+    textX,
+    top + 159,
+    textWidth,
+  );
+  ctx.fillText(`${recorded} IST`, textX, top + 187, textWidth);
+  ctx.fillStyle = "#fff";
+  ctx.font = "500 15px sans-serif";
+  ctx.fillText(
+    `Device GPS accuracy ±${Math.round(location.accuracy)} m`,
+    textX,
+    top + 216,
+  );
   return new Promise((resolve, reject) =>
     canvas.toBlob(
       (blob) =>
@@ -129,6 +256,7 @@ export default function WorkplaceCamera({
   const active = useRef(true);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [lookingUpPlace, setLookingUpPlace] = useState(false);
   const [error, setError] = useState("");
   const [capture, setCapture] = useState<Capture | null>(null);
   const [locationConfirmed, setLocationConfirmed] = useState(false);
@@ -197,7 +325,11 @@ export default function WorkplaceCamera({
       const position = await currentPosition(controller.signal);
       const location = cameraLocation(position);
       if (!active.current || !video.current) return;
-      const file = await photoFromVideo(video.current, location, mode);
+      const frame = frameFromVideo(video.current);
+      setLookingUpPlace(true);
+      const details = await lookupStamp(location, controller.signal);
+      if (!active.current) return;
+      const file = await photoFromFrame(frame, location, mode, details);
       if (!file.size || file.size >= 5 * 1024 * 1024)
         throw new Error(
           "फोटो 5 MB से बड़ी है। फिर कोशिश करें। / Photo exceeds 5 MB. Retake it.",
@@ -218,7 +350,10 @@ export default function WorkplaceCamera({
     } finally {
       if (locationRequest.current === controller)
         locationRequest.current = null;
-      if (active.current) setBusy(false);
+      if (active.current) {
+        setBusy(false);
+        setLookingUpPlace(false);
+      }
     }
   }
 
@@ -268,7 +403,9 @@ export default function WorkplaceCamera({
           onClick={() => void takePhoto()}
         >
           {busy
-            ? "स्थान लिया जा रहा है… / Locating…"
+            ? lookingUpPlace
+              ? "फोटो में स्थान जोड़ा जा रहा है… / Adding place to photo…"
+              : "स्थान लिया जा रहा है… / Locating…"
             : capture
               ? "फिर से लें / Retake"
               : "फ़ोटो लें / Take photo"}

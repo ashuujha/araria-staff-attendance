@@ -64,15 +64,39 @@ test("Photon address uses coordinate-only query, deduplicates results and caches
       getLocationDetails(26.123456, 87.123456),
     ]);
     assert.equal(a.address, "Test locality, Main Road, Araria, Bihar, India");
+    assert.equal(a.place, "Araria");
     assert.deepEqual(a, b);
     assert.equal(calls.length, 1);
     assert.equal(calls[0].url.hostname, "photon.komoot.io");
     assert.equal(calls[0].url.searchParams.get("lat"), "26.123456");
+    assert.equal(calls[0].url.searchParams.get("radius"), "2");
     assert.equal(calls[0].url.searchParams.has("q"), false);
     assert.match(calls[0].init.headers["User-Agent"], /^ArariaStaffAttendance/);
     assert.equal(calls[0].init.headers.Referer, process.env.APP_URL);
     await getLocationDetails(26.123456, 87.123456);
     assert.equal(calls.length, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+test("reverse lookup uses a mapped village or city instead of a nearby landmark", async () => {
+  globalThis.fetch = async () =>
+    Response.json({
+      features: [
+        {
+          properties: {
+            name: "Hadimba Temple",
+            city: "Manali",
+            state: "Himachal Pradesh",
+            country: "India",
+          },
+        },
+      ],
+    });
+  try {
+    const city = await getLocationDetails(32.2396, 77.1887);
+    assert.equal(city.place, "Manali");
+    assert.match(city.address, /Hadimba Temple, Manali/);
   } finally {
     globalThis.fetch = originalFetch;
   }

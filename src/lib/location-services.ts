@@ -5,7 +5,7 @@ export const MAP_ATTRIBUTION = "© OpenStreetMap contributors";
 const DAY = 86400000;
 const addressCache = new Map<
   string,
-  { value: string | null; expires: number }
+  { value: { address: string | null; place: string | null }; expires: number }
 >();
 const tileCache = new Map<string, { value: Buffer; expires: number }>();
 const tileValidators = new Map<string, { etag?: string; modified?: string }>();
@@ -125,7 +125,7 @@ function coordKey(lat: number, lon: number) {
 }
 export async function getLocationDetails(lat: number, lon: number) {
   coordinatePair(lat, lon);
-  const address = await cached(
+  const details = await cached(
     `address:${coordKey(lat, lon)}`,
     addressCache,
     1024,
@@ -138,14 +138,17 @@ export async function getLocationDetails(lat: number, lon: number) {
         url.searchParams.set("lon", lon.toFixed(6));
         url.searchParams.set("limit", "1");
         url.searchParams.set("lang", "en");
-        url.searchParams.set("radius", "1");
+        // Rural OSM features can be sparse; a small nearby radius improves
+        // village coverage while the stamp still labels the result as "near".
+        url.searchParams.set("radius", "2");
         const response = await upstream(url);
         const data = JSON.parse(
           (await boundedBytes(response, 128 * 1024)).toString("utf8"),
         );
         const feature = data.features?.[0];
         const p = feature?.properties;
-        if (!p || typeof p !== "object") return { value: null, ttl: 60000 };
+        if (!p || typeof p !== "object")
+          return { value: { address: null, place: null }, ttl: 60000 };
         const clean = (value: unknown) =>
           typeof value === "string"
             ? value
@@ -167,17 +170,24 @@ export async function getLocationDetails(lat: number, lon: number) {
           clean(p.country),
         ].filter(Boolean);
         const address = [...new Set(parts)].join(", ").slice(0, 500) || null;
-        return { value: address, ttl: address ? DAY : 60000 };
+        const place =
+          (clean(p.osm_key) === "place" && clean(p.name)) ||
+          clean(p.city) ||
+          clean(p.district) ||
+          clean(p.county) ||
+          clean(p.name) ||
+          null;
+        return { value: { address, place }, ttl: address ? DAY : 60000 };
       } catch {
-        return { value: null, ttl: 60000 };
+        return { value: { address: null, place: null }, ttl: 60000 };
       }
     },
   );
   return {
-    address,
+    ...details,
     source: "Photon / OpenStreetMap",
     attribution: MAP_ATTRIBUTION,
-    available: Boolean(address),
+    available: Boolean(details.address),
   };
 }
 export function mapGeometry(lat: number, lon: number) {
