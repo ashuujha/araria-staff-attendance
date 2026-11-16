@@ -1519,7 +1519,6 @@ function Staff({
                   {departureCameraOpen && (
                     <WorkplaceCamera
                       mode="departure"
-                      requireDistrictLocation={record.status === "present"}
                       onClose={() => setDepartureCameraOpen(false)}
                       onUse={(file, location) => {
                         setDeparturePhoto(file);
@@ -1714,7 +1713,6 @@ function Staff({
                         </button>
                         {cameraOpen && (
                           <WorkplaceCamera
-                            requireDistrictLocation={status === "present"}
                             onClose={() => setCameraOpen(false)}
                             onUse={(file, location) => {
                               setWorkplacePhoto(file);

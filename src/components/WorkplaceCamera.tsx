@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
   cameraLocation,
-  isNearArariaDistrict,
   MAX_CAMERA_ACCURACY_METERS,
   type CameraLocation,
 } from "../lib/osm-camera";
@@ -11,35 +10,16 @@ import { getFreshLocation } from "../lib/location";
 
 type Capture = { file: File; location: CameraLocation };
 
-async function currentPosition(
-  requireDistrictLocation: boolean,
-  signal: AbortSignal,
-) {
+async function currentPosition(signal: AbortSignal) {
   if (!navigator.geolocation)
     throw new Error(
       "इस ब्राउज़र में स्थान उपलब्ध नहीं है। / Location is unavailable in this browser.",
     );
-  let sawOutsideDistrict = false;
-  try {
-    return await getFreshLocation(navigator.geolocation, signal, {
-      maxAccuracyMeters: MAX_CAMERA_ACCURACY_METERS,
-      settleMs: 4_000,
-      timeoutMs: 25_000,
-      acceptPosition: requireDistrictLocation
-        ? (position) => {
-            const nearby = isNearArariaDistrict(position.coords);
-            if (!nearby) sawOutsideDistrict = true;
-            return nearby;
-          }
-        : undefined,
-    });
-  } catch (cause) {
-    if (sawOutsideDistrict)
-      throw new Error(
-        "आपका फ़ोन अररिया ज़िले के बाहर का स्थान दिखा रहा है। फ़ोन की सटीक स्थान सेवा चालू करें और फिर कोशिश करें। / Your device reports a location outside Araria district. Enable Precise Location and retry outdoors.",
-      );
-    throw cause;
-  }
+  return getFreshLocation(navigator.geolocation, signal, {
+    maxAccuracyMeters: MAX_CAMERA_ACCURACY_METERS,
+    settleMs: 4_000,
+    timeoutMs: 25_000,
+  });
 }
 
 function photoFromVideo(
@@ -138,12 +118,10 @@ export default function WorkplaceCamera({
   onUse,
   onClose,
   mode = "arrival",
-  requireDistrictLocation = false,
 }: {
   onUse: (file: File, location: CameraLocation) => void;
   onClose: () => void;
   mode?: "arrival" | "departure";
-  requireDistrictLocation?: boolean;
 }) {
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
@@ -216,10 +194,7 @@ export default function WorkplaceCamera({
     const controller = new AbortController();
     locationRequest.current = controller;
     try {
-      const position = await currentPosition(
-        requireDistrictLocation,
-        controller.signal,
-      );
+      const position = await currentPosition(controller.signal);
       const location = cameraLocation(position);
       if (!active.current || !video.current) return;
       const file = await photoFromVideo(video.current, location, mode);
@@ -271,13 +246,6 @@ export default function WorkplaceCamera({
               src={preview}
               alt="Captured workplace photo with location and time stamp"
             />
-          )}
-          {!isNearArariaDistrict(capture.location) && (
-            <p role="status" className="sp-alert sp-error">
-              Your device reports a location outside Araria district. If you are
-              in Forbesganj or another Araria block, enable Precise Location on
-              your phone and retake the photo.
-            </p>
           )}
           <label className="sp-camera-confirmation">
             <input
