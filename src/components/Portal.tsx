@@ -222,6 +222,16 @@ function time(value: string | null) {
       })
     : "—";
 }
+function greetingInIndia(now = new Date()) {
+  const hour = Number(
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Kolkata",
+      hour: "2-digit",
+      hourCycle: "h23",
+    }).format(now),
+  );
+  return hour < 12 ? "सुप्रभात" : hour < 17 ? "नमस्कार" : "शुभ संध्या";
+}
 const statusLabels: Record<string, string> = {
   present: "उपस्थित / Present",
   absent: "अनुपस्थित / Absent",
@@ -1359,40 +1369,82 @@ function Staff({
     entry.date.startsWith(today.slice(0, 4)),
   );
   const staffBalance = staffLeaveBalance(profile, leaveUsage, today);
+  const todayStatus = loading
+    ? "लोड हो रहा है"
+    : loadError
+      ? "उपलब्ध नहीं"
+      : !office.feed
+        ? "लोड हो रहा है"
+        : closure
+          ? "अवकाश / Holiday"
+          : record
+            ? statusLabels[record.status] || record.status
+            : leaveApplication?.status === "pending"
+              ? "अवकाश आवेदन लंबित"
+              : "अभी दर्ज नहीं";
   return (
     <Localized>
       <>
-        <div className="sp-page-title">
-          <div>
-            <span className="sp-eyebrow">कर्मी / STAFF</span>
-            <h1>आज की उपस्थिति</h1>
-            <p className="sp-muted">{today}</p>
-          </div>
-          <button
-            className="sp-button sp-secondary"
-            onClick={() => {
-              void load();
-              void office.reload();
-            }}
-            disabled={busy || loading}
+        <div className="sp-staff-dashboard-top">
+          <section className="sp-staff-hero" aria-label="Staff dashboard">
+            <div className="sp-staff-hero-meta">
+              <span>पंचायती राज • कर्मी डैशबोर्ड</span>
+              <time dateTime={today}>{today}</time>
+            </div>
+            <h1>
+              <span>{greetingInIndia()}, </span>
+              <span translate="no">{profile.name}</span>
+            </h1>
+            <p>{profile.block || "प्रखंड उपलब्ध नहीं"} • अररिया जिला</p>
+          </section>
+          <section
+            className="sp-staff-overview"
+            aria-labelledby="staff-overview-title"
           >
-            रीफ़्रेश / Refresh
-          </button>
+            <div className="sp-staff-overview-head">
+              <div>
+                <span className="sp-eyebrow">आज / TODAY</span>
+                <h2 id="staff-overview-title">उपस्थिति सारांश</h2>
+              </div>
+              <button
+                type="button"
+                className="sp-button sp-secondary"
+                onClick={() => {
+                  void load();
+                  void office.reload();
+                }}
+                disabled={busy || loading}
+              >
+                रीफ़्रेश / Refresh
+              </button>
+            </div>
+            <div className="sp-staff-overview-grid">
+              <div className="sp-staff-stat">
+                <span>स्थिति / Status</span>
+                <strong>{todayStatus}</strong>
+              </div>
+              <div className="sp-staff-stat">
+                <span>आने का समय / In time</span>
+                <strong>{time(record?.time_in || null)}</strong>
+              </div>
+              <div className="sp-staff-stat">
+                <span>जाने का समय / Out time</span>
+                <strong>{time(record?.time_out || null)}</strong>
+              </div>
+              <div className="sp-staff-stat">
+                <span>कार्यस्थल / Workspace</span>
+                <strong translate="no">{record?.panchayat || "—"}</strong>
+              </div>
+            </div>
+          </section>
         </div>
         {!!office.feed?.notices.length && (
           <NoticeBoard notices={office.feed.notices} />
         )}
-        <section className="sp-card">
-          <div className="sp-identity">
-            <div>
-              <span className="sp-muted">कर्मी का नाम / Staff name</span>
-              <strong translate="no">{profile.name}</strong>
-            </div>
-            <div>
-              <span className="sp-muted">प्रखंड / Block</span>
-              <strong>{profile.block || "कार्यालय से संपर्क करें"}</strong>
-            </div>
-          </div>
+        <section className="sp-card sp-staff-attendance-card">
+          {!record && (
+            <h2 className="sp-staff-attendance-title">आज की उपस्थिति</h2>
+          )}
           {loading ? (
             <p role="status">उपस्थिति लोड हो रही है…</p>
           ) : loadError ? (

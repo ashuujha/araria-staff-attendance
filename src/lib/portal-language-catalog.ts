@@ -1,5 +1,18 @@
 // Fixed public UI copy only. Never add workbook identities or attendance values.
 export const englishCatalog: Record<string, string> = {
+  सुप्रभात: "Good morning",
+  नमस्कार: "Good afternoon",
+  "शुभ संध्या": "Good evening",
+  "पंचायती राज • कर्मी डैशबोर्ड": "Panchayati Raj • Staff dashboard",
+  "अररिया जिला": "Araria district",
+  "प्रखंड उपलब्ध नहीं": "Block unavailable",
+  "आज / TODAY": "TODAY",
+  "उपस्थिति सारांश": "Attendance overview",
+  "कार्यस्थल / Workspace": "Workspace",
+  "अभी दर्ज नहीं": "Not recorded yet",
+  "लोड हो रहा है": "Loading",
+  "उपलब्ध नहीं": "Unavailable",
+  "अवकाश आवेदन लंबित": "Leave request pending",
   "सूचना पट्ट / Notice board": "Notice board",
   "अभी कोई सूचना नहीं है। / No notices yet.": "No notices yet.",
   "अवकाश और सूचनाएँ / Holidays & Notices": "Holidays & Notices",
