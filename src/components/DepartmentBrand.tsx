@@ -38,9 +38,11 @@ export default function DepartmentBrand({
           />
         </span>
         <span className="sp-brand-copy">
-          अररिया कर्मी उपस्थिति
+          {profile ? "अररिया कर्मी उपस्थिति" : "PANCHAYATI RAJ"}
           <small translate="no" title={branding?.label || undefined}>
-            {branding?.label || "Araria Staff Attendance"}
+            {profile
+              ? branding?.label || "Araria Staff Attendance"
+              : "Araria District • Staff Attendance"}
           </small>
         </span>
       </a>

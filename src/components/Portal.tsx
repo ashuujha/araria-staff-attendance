@@ -750,7 +750,7 @@ export default function Portal({
   }, [profile?.id, loginRole]);
   return (
     <Localized>
-      <div className="simple-portal">
+      <div className={`simple-portal${profile ? "" : " sp-public-login"}`}>
         <header
           className={
             profile ? "sp-header sp-header-authenticated" : "sp-header"
@@ -780,107 +780,161 @@ export default function Portal({
           </div>
         </header>
         <main className={profile ? "sp-main" : "sp-main sp-login-main"}>
-          {error && (
-            <div role="alert" className="sp-alert sp-error">
-              {error}
-            </div>
-          )}
-          {message && (
-            <div role="status" className="sp-alert sp-success">
-              {message}
-            </div>
-          )}
           {!profile ? (
-            <section className="sp-card sp-login">
-              <span className="sp-eyebrow">सुरक्षित प्रवेश / SECURE LOGIN</span>
-              <h1>
-                {adminLogin
-                  ? loginRole === "bpro"
-                    ? "प्रखंड पंचायती राज पदाधिकारी / BPRO login"
-                    : "जिला पंचायती राज पदाधिकारी / DPRO login"
-                  : "कर्मी लॉगिन / Staff login"}
-              </h1>
-              <p className="sp-muted">अपना लॉगिन विवरण और पासवर्ड डालें।</p>
-              <form onSubmit={login}>
-                <label className="sp-field">
-                  {adminLogin ? "ईमेल / Email" : "मोबाइल नंबर / Mobile number"}
-                  <input
-                    required
-                    type={adminLogin ? "email" : "tel"}
-                    autoComplete="username"
-                    inputMode={loginRole === "staff" ? "tel" : "email"}
-                    value={identifier}
-                    onChange={(e) => setIdentifier(e.target.value)}
+            <>
+              <aside className="sp-login-visual" aria-hidden="true">
+                <div className="sp-login-visual-inner">
+                  <img
+                    src="/panchayati-raj-login.svg"
+                    alt=""
+                    width="680"
+                    height="520"
                   />
-                </label>
-                <div className="sp-field">
-                  <label htmlFor="login-password">पासवर्ड / Password</label>
-                  <div className="sp-password-row">
-                    <input
-                      id="login-password"
-                      required
-                      type={showPassword ? "text" : "password"}
-                      autoComplete="current-password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                    />
-                    <button
-                      type="button"
-                      className="sp-button sp-secondary sp-password-toggle"
-                      aria-controls="login-password"
-                      aria-pressed={showPassword}
-                      aria-label={
-                        showPassword ? "पासवर्ड छिपाएँ" : "पासवर्ड दिखाएँ"
-                      }
-                      title={showPassword ? "पासवर्ड छिपाएँ" : "पासवर्ड दिखाएँ"}
-                      onClick={() => setShowPassword((visible) => !visible)}
-                    >
-                      <EyeIcon visible={showPassword} />
-                    </button>
+                  <div className="sp-login-visual-copy">
+                    <span className="sp-visual-rule" />
+                    <p>स्थानीय प्रशासन, सरल उपस्थिति।</p>
+                    <small>अररिया जिला • बिहार</small>
                   </div>
                 </div>
-                {adminLogin && (
-                  <AdminCaptcha
-                    onToken={setCaptchaToken}
-                    resetKey={captchaReset}
-                  />
-                )}
-                <button
-                  className="sp-button sp-primary sp-full"
-                  disabled={busy || (adminLogin && !captchaToken)}
-                >
-                  {busy ? "प्रवेश हो रहा है…" : "लॉगिन / Login"}
-                </button>
-              </form>
-              <p className="sp-note">
-                केवल पंजीकृत कर्मी और प्रशासक प्रवेश कर सकते हैं। पासवर्ड के लिए
-                कार्यालय से संपर्क करें।
-              </p>
-            </section>
-          ) : profile.role === "staff" ? (
-            <Staff
-              key={profile.id}
-              profile={profile}
-              initial={bootstrap?.profile.id === profile.id ? bootstrap : null}
-              revisions={revisions}
-              onDepartmentChange={setActiveDepartment}
-              fail={fail}
-              notify={(value) => {
-                setMessage(value);
-                setError("");
-              }}
-            />
+              </aside>
+              <div className="sp-login-panel">
+                <div className="sp-login-content">
+                  {error && (
+                    <div role="alert" className="sp-alert sp-error">
+                      {error}
+                    </div>
+                  )}
+                  {message && (
+                    <div role="status" className="sp-alert sp-success">
+                      {message}
+                    </div>
+                  )}
+                  <section className="sp-login">
+                    <span className="sp-eyebrow">
+                      {adminLogin
+                        ? loginRole === "bpro"
+                          ? "प्रखंड पदाधिकारी प्रवेश / BPRO ACCESS"
+                          : "जिला पदाधिकारी प्रवेश / DPRO ACCESS"
+                        : "कर्मी प्रवेश / STAFF ACCESS"}
+                    </span>
+                    <h1>पंचायती राज में आपका स्वागत है</h1>
+                    <p className="sp-login-description">
+                      पंचायती राज गाँव और पंचायत स्तर पर स्थानीय स्वशासन को
+                      सशक्त बनाता है।
+                    </p>
+                    <form onSubmit={login}>
+                      <label className="sp-field">
+                        {adminLogin
+                          ? "ईमेल / Email"
+                          : "मोबाइल नंबर / Mobile number"}
+                        <input
+                          required
+                          type={adminLogin ? "email" : "tel"}
+                          autoComplete="username"
+                          inputMode={loginRole === "staff" ? "tel" : "email"}
+                          placeholder={
+                            adminLogin
+                              ? "name@example.com"
+                              : "10 अंकों का मोबाइल नंबर"
+                          }
+                          value={identifier}
+                          onChange={(e) => setIdentifier(e.target.value)}
+                        />
+                      </label>
+                      <div className="sp-field">
+                        <label htmlFor="login-password">
+                          पासवर्ड / Password
+                        </label>
+                        <div className="sp-password-row">
+                          <input
+                            id="login-password"
+                            required
+                            type={showPassword ? "text" : "password"}
+                            autoComplete="current-password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                          />
+                          <button
+                            type="button"
+                            className="sp-button sp-secondary sp-password-toggle"
+                            aria-controls="login-password"
+                            aria-pressed={showPassword}
+                            aria-label={
+                              showPassword ? "पासवर्ड छिपाएँ" : "पासवर्ड दिखाएँ"
+                            }
+                            title={
+                              showPassword ? "पासवर्ड छिपाएँ" : "पासवर्ड दिखाएँ"
+                            }
+                            onClick={() =>
+                              setShowPassword((visible) => !visible)
+                            }
+                          >
+                            <EyeIcon visible={showPassword} />
+                          </button>
+                        </div>
+                      </div>
+                      {adminLogin && (
+                        <AdminCaptcha
+                          onToken={setCaptchaToken}
+                          resetKey={captchaReset}
+                        />
+                      )}
+                      <button
+                        className="sp-button sp-primary sp-full"
+                        disabled={busy || (adminLogin && !captchaToken)}
+                      >
+                        {busy ? "प्रवेश हो रहा है…" : "प्रवेश करें / Sign in"}
+                      </button>
+                    </form>
+                    <p className="sp-note">
+                      पासवर्ड के लिए अपने कार्यालय से संपर्क करें।
+                    </p>
+                  </section>
+                </div>
+              </div>
+            </>
           ) : (
-            <Admin
-              key={profile.id}
-              fail={fail}
-              initial={bootstrap?.profile.id === profile.id ? bootstrap : null}
-              revisions={revisions}
-              canManage
-              adminBlock={profile.block}
-              role={profile.role as "bpro" | "dpro"}
-              adminBlockId={profile.block_id}
-            />
+            <>
+              {error && (
+                <div role="alert" className="sp-alert sp-error">
+                  {error}
+                </div>
+              )}
+              {message && (
+                <div role="status" className="sp-alert sp-success">
+                  {message}
+                </div>
+              )}
+              {profile.role === "staff" ? (
+                <Staff
+                  key={profile.id}
+                  profile={profile}
+                  initial={
+                    bootstrap?.profile.id === profile.id ? bootstrap : null
+                  }
+                  revisions={revisions}
+                  onDepartmentChange={setActiveDepartment}
+                  fail={fail}
+                  notify={(value) => {
+                    setMessage(value);
+                    setError("");
+                  }}
+                />
+              ) : (
+                <Admin
+                  key={profile.id}
+                  fail={fail}
+                  initial={
+                    bootstrap?.profile.id === profile.id ? bootstrap : null
+                  }
+                  revisions={revisions}
+                  canManage
+                  adminBlock={profile.block}
+                  role={profile.role as "bpro" | "dpro"}
+                  adminBlockId={profile.block_id}
+                />
+              )}
+            </>
           )}
         </main>
         <footer className="sp-footer">

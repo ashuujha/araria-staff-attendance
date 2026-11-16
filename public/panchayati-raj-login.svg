@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="520" viewBox="0 0 680 520" fill="none" role="img" aria-label="Panchayat office and local community illustration">
+  <defs>
+    <linearGradient id="sky" x1="340" y1="28" x2="340" y2="483" gradientUnits="userSpaceOnUse"><stop stop-color="#F6FBFD"/><stop offset="1" stop-color="#DCEFF2"/></linearGradient>
+    <linearGradient id="wall" x1="244" y1="210" x2="427" y2="460" gradientUnits="userSpaceOnUse"><stop stop-color="#FFFFFF"/><stop offset="1" stop-color="#E7F2F1"/></linearGradient>
+    <linearGradient id="path" x1="359" y1="398" x2="338" y2="522" gradientUnits="userSpaceOnUse"><stop stop-color="#F4E8D4"/><stop offset="1" stop-color="#E6D2B0"/></linearGradient>
+    <filter id="shadow" x="105" y="80" width="475" height="430" filterUnits="userSpaceOnUse"><feDropShadow dx="0" dy="14" stdDeviation="17" flood-color="#5C8C8B" flood-opacity=".13"/></filter>
+  </defs>
+  <rect x="22" y="22" width="636" height="476" rx="40" fill="url(#sky)"/>
+  <circle cx="514" cy="117" r="50" fill="#FFF2C9"/>
+  <path d="M22 375C121 332 190 345 265 381C353 423 455 357 658 376V458C551 439 480 469 390 457C277 441 207 477 22 457V375Z" fill="#C9E4D8"/>
+  <path d="M22 419C141 389 238 424 334 415C438 405 526 390 658 420V498H22V419Z" fill="#AED6C4"/>
+  <path d="M289 404H421L510 498H184L289 404Z" fill="url(#path)"/>
+  <path d="M310 421H406M276 453H439" stroke="#D9BF9A" stroke-width="3" stroke-linecap="round"/>
+  <g opacity=".8">
+    <path d="M50 348L105 300L160 348V418H50V348Z" fill="#F6FAF8"/>
+    <path d="M43 348L105 293L167 348" stroke="#92BBAE" stroke-width="13" stroke-linejoin="round"/>
+    <rect x="92" y="365" width="27" height="53" rx="3" fill="#8AB7B4"/>
+    <rect x="55" y="356" width="23" height="22" rx="3" fill="#B4D9D8"/>
+    <path d="M527 345L576 303L627 345V414H527V345Z" fill="#F6FAF8"/>
+    <path d="M520 344L576 297L634 344" stroke="#92BBAE" stroke-width="12" stroke-linejoin="round"/>
+    <rect x="567" y="360" width="24" height="54" rx="3" fill="#8AB7B4"/>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="195" y="230" width="290" height="189" rx="7" fill="url(#wall)" stroke="#9DBFBB" stroke-width="2"/>
+    <path d="M178 235L340 156L502 235H178Z" fill="#286B77"/>
+    <path d="M192 230L340 164L488 230" stroke="#135564" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M222 252H458" stroke="#CEE4DE" stroke-width="4"/>
+    <rect x="220" y="273" width="62" height="84" rx="5" fill="#C6E6E6" stroke="#96C0BE" stroke-width="3"/>
+    <path d="M251 273V357M220 315H282" stroke="#96C0BE" stroke-width="3"/>
+    <rect x="398" y="273" width="62" height="84" rx="5" fill="#C6E6E6" stroke="#96C0BE" stroke-width="3"/>
+    <path d="M429 273V357M398 315H460" stroke="#96C0BE" stroke-width="3"/>
+    <rect x="304" y="290" width="72" height="129" rx="6" fill="#278291"/>
+    <rect x="315" y="302" width="50" height="53" rx="3" fill="#B6DFE1"/>
+    <circle cx="364" cy="373" r="4" fill="#D9EBDF"/>
+    <rect x="285" y="387" width="110" height="12" rx="3" fill="#BDD7CB"/>
+    <rect x="221" y="239" width="238" height="22" rx="4" fill="#FFF8E7"/>
+    <path d="M234 250H446" stroke="#91B8B1" stroke-width="3" stroke-linecap="round"/>
+  </g>
+  <g>
+    <path d="M84 413C90 390 86 357 85 341" stroke="#5C9C79" stroke-width="9" stroke-linecap="round"/>
+    <circle cx="62" cy="347" r="24" fill="#79B596"/>
+    <circle cx="91" cy="320" r="30" fill="#65A986"/>
+    <circle cx="113" cy="351" r="23" fill="#81BC97"/>
+    <path d="M593 422C597 394 596 372 596 348" stroke="#5C9C79" stroke-width="9" stroke-linecap="round"/>
+    <circle cx="568" cy="355" r="25" fill="#79B596"/>
+    <circle cx="601" cy="329" r="30" fill="#65A986"/>
+    <circle cx="626" cy="357" r="23" fill="#81BC97"/>
+  </g>
+  <g>
+    <ellipse cx="156" cy="449" rx="47" ry="9" fill="#73A995" opacity=".25"/>
+    <circle cx="155" cy="365" r="16" fill="#B6795B"/>
+    <path d="M137 359C140 337 167 337 172 357C164 353 149 352 137 359Z" fill="#243C44"/>
+    <path d="M136 388C140 374 168 374 174 388L179 425H130L136 388Z" fill="#E49B68"/>
+    <path d="M139 425L135 449M168 425L173 449" stroke="#2A5965" stroke-width="11" stroke-linecap="round"/>
+    <path d="M138 394L122 414M170 394L187 413" stroke="#B6795B" stroke-width="9" stroke-linecap="round"/>
+    <ellipse cx="524" cy="451" rx="46" ry="9" fill="#73A995" opacity=".25"/>
+    <circle cx="524" cy="368" r="16" fill="#A56F54"/>
+    <path d="M507 364C510 340 539 342 542 364C529 355 517 357 507 364Z" fill="#283E48"/>
+    <path d="M507 392C513 378 538 378 543 392L548 427H500L507 392Z" fill="#5E9FB1"/>
+    <path d="M511 427L508 450M538 427L541 450" stroke="#264A5F" stroke-width="11" stroke-linecap="round"/>
+    <path d="M505 399L489 414M541 399L557 413" stroke="#A56F54" stroke-width="9" stroke-linecap="round"/>
+  </g>
+  <g opacity=".9">
+    <rect x="470" y="181" width="82" height="64" rx="11" fill="#fff" stroke="#C7DFDF" stroke-width="2"/>
+    <path d="M486 222L503 205L515 215L535 192" stroke="#278291" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="535" cy="192" r="5" fill="#E8B96A"/>
+    <rect x="122" y="194" width="79" height="62" rx="11" fill="#fff" stroke="#C7DFDF" stroke-width="2"/>
+    <rect x="137" y="211" width="17" height="17" rx="4" fill="#B7DAD7"/>
+    <path d="M141 219L146 224L157 212" stroke="#237789" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M164 216H187M164 226H183" stroke="#B3CECD" stroke-width="4" stroke-linecap="round"/>
+  </g>
+</svg>

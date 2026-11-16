@@ -337,6 +337,18 @@ Object.assign(englishCatalog, {
 });
 
 Object.assign(englishCatalog, {
+  "प्रखंड पदाधिकारी प्रवेश / BPRO ACCESS": "BPRO ACCESS",
+  "जिला पदाधिकारी प्रवेश / DPRO ACCESS": "DPRO ACCESS",
+  "कर्मी प्रवेश / STAFF ACCESS": "STAFF ACCESS",
+  "पंचायती राज में आपका स्वागत है": "Welcome to Panchayati Raj",
+  "पंचायती राज गाँव और पंचायत स्तर पर स्थानीय स्वशासन को सशक्त बनाता है।":
+    "Panchayati Raj strengthens local self-government in villages and panchayats.",
+  "स्थानीय प्रशासन, सरल उपस्थिति।": "Local administration, simple attendance.",
+  "अररिया जिला • बिहार": "Araria District • Bihar",
+  "10 अंकों का मोबाइल नंबर": "10-digit mobile number",
+  "प्रवेश करें / Sign in": "Sign in",
+  "पासवर्ड के लिए अपने कार्यालय से संपर्क करें।":
+    "Contact your office for your password.",
   "प्रशासक लॉगिन / Admin login": "Admin login",
   "कर्मी लॉगिन / Staff login": "Staff login",
   "अपना लॉगिन विवरण और पासवर्ड डालें।":

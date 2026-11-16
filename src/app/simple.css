@@ -1423,6 +1423,205 @@ img.sp-map {
   gap: 12px;
   margin-top: 20px;
 }
+
+/* Signed-out screens use a focused two-panel layout on all three routes. */
+.sp-public-login {
+  position: relative;
+  background: #fff;
+}
+.sp-public-login .sp-header {
+  position: absolute;
+  z-index: 2;
+  inset: 0 0 auto;
+  min-height: 100px;
+  padding: 22px clamp(24px, 4vw, 68px);
+  border: 0;
+  background: transparent;
+}
+.sp-public-login .sp-brand {
+  color: #1d6480;
+  font-size: clamp(16px, 1.5vw, 20px);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+}
+.sp-public-login .sp-brand-copy small {
+  max-width: none;
+  color: #617b8a;
+  font-size: 11px;
+  letter-spacing: 0.025em;
+  white-space: normal;
+}
+.sp-public-login .sp-mark.sp-department-mark {
+  width: 54px;
+  height: 54px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  padding: 7px;
+  box-shadow: 0 2px 10px #1d648012;
+}
+.sp-public-login .sp-header-controls {
+  align-self: start;
+}
+.sp-public-login .sp-login-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  width: 100%;
+  max-width: none;
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0;
+  padding: 0;
+}
+.sp-login-visual {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  padding: 132px clamp(22px, 4vw, 64px) 40px;
+  background: linear-gradient(145deg, #f2f9fb 0%, #e9f4f5 100%);
+}
+.sp-login-visual-inner {
+  width: min(100%, 650px);
+}
+.sp-login-visual img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.sp-login-visual-copy {
+  padding: 0 clamp(12px, 3vw, 46px);
+  color: #21495d;
+}
+.sp-login-visual-copy .sp-visual-rule {
+  display: block;
+  width: 42px;
+  height: 3px;
+  margin-bottom: 20px;
+  border-radius: 2px;
+  background: #d5ab61;
+}
+.sp-public-login .sp-login-visual-copy p {
+  margin-bottom: 4px;
+  font-size: clamp(18px, 2vw, 25px);
+  font-weight: 600;
+  line-height: 1.5;
+}
+.sp-login-visual-copy small {
+  color: #5b7785;
+  font-size: 13px;
+}
+.sp-login-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 112px clamp(24px, 5vw, 92px) 56px;
+  background: #fff;
+}
+.sp-login-content {
+  width: min(100%, 440px);
+}
+.sp-public-login .sp-login {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.sp-public-login .sp-login h1 {
+  margin-bottom: 12px;
+  font-size: clamp(25px, 2.5vw, 34px);
+  line-height: 1.35;
+}
+.sp-public-login .sp-eyebrow {
+  margin-bottom: 24px;
+  color: #267186;
+  font-size: 12px;
+}
+.sp-public-login .sp-login-description {
+  margin-bottom: 38px;
+  color: #627285;
+  line-height: 1.7;
+}
+.sp-public-login .sp-field {
+  margin-bottom: 22px;
+  color: #31455e;
+  font-size: 13px;
+}
+.sp-public-login input:not([type="radio"]):not([type="checkbox"]) {
+  min-height: 50px;
+  border-color: #c9d6df;
+  border-radius: 7px;
+}
+.sp-public-login input::placeholder {
+  color: #94a3ae;
+}
+.sp-public-login .sp-primary {
+  min-height: 50px;
+  margin-top: 8px;
+  border-radius: 7px;
+  background: #176487;
+  font-weight: 600;
+}
+.sp-public-login .sp-primary:hover {
+  background: #0d506f;
+}
+.sp-public-login .sp-note {
+  margin-top: 22px !important;
+  text-align: center;
+}
+.sp-public-login .sp-footer {
+  display: none;
+}
+@media (max-width: 950px) {
+  .sp-public-login .sp-login-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .sp-login-visual {
+    display: none;
+  }
+  .sp-public-login .sp-header {
+    min-height: 92px;
+    padding: 18px clamp(20px, 5vw, 36px);
+  }
+  .sp-login-panel {
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding: 112px 24px 44px;
+  }
+}
+@media (max-width: 480px) {
+  .sp-public-login .sp-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 16px;
+  }
+  .sp-public-login .sp-brand {
+    min-width: 0;
+    gap: 7px;
+    font-size: 13px;
+    letter-spacing: 0.08em;
+  }
+  .sp-public-login .sp-mark.sp-department-mark {
+    width: 40px;
+    height: 40px;
+    padding: 5px;
+  }
+  .sp-public-login .sp-brand-copy small {
+    font-size: 9px;
+    line-height: 1.3;
+  }
+  .sp-public-login .sp-header-controls {
+    flex: 0 0 auto;
+  }
+  .sp-login-panel {
+    padding: 114px 20px 40px;
+  }
+  .sp-public-login .sp-login h1 {
+    font-size: 27px;
+  }
+}
 .sp-pagination span {
   font-size: 13px;
   color: #54677b;

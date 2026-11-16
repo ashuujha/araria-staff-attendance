@@ -1,7 +1,6 @@
 // Government of Bihar's shared emblem, not a fabricated department-specific logo.
 // Source and verification notes: docs/DEPARTMENT_BRANDING.md.
-export const BIHAR_EMBLEM =
-  "https://upload.wikimedia.org/wikipedia/commons/e/e9/Seal_of_Bihar.svg";
+export const BIHAR_EMBLEM = "/bihar-emblem.svg";
 const departments = [
   ["पंचायती राज विभाग", "पंचायतीराज विभाग", "Panchayati Raj Department"],
 ];
