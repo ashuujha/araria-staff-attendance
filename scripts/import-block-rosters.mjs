@@ -66,7 +66,7 @@ if (oldProfiles.length >= 1000)
 let existingRoster = [];
 try {
   existingRoster = await api(
-    "/rest/v1/staff_roster?select=id,source_key,block_id,deleted_at&limit=1000",
+    "/rest/v1/staff_roster?select=id,source_key,block_id,deleted_at,linked_profile_id&limit=1000",
   );
 } catch (error) {
   if (apply) throw error;
@@ -74,6 +74,15 @@ try {
 }
 const selectedBlockIds = new Set(selectedCodes.map((code) => blockByCode.get(code).id));
 const scopedRoster = existingRoster.filter((row) => selectedBlockIds.has(row.block_id));
+if (
+  replaceAraria &&
+  existingRoster.some(
+    (row) => row.block_id === araria.id && row.linked_profile_id,
+  )
+)
+  throw Error(
+    "Araria roster already has staff logins. --replace-araria would disable them; use the admin dashboard to update staff instead.",
+  );
 const existingKeys = new Set(scopedRoster.map((row) => row.source_key));
 const incomingKeys = new Set(people.map((row) => row.source_key));
 const workplaces = new Map();
