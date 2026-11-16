@@ -10,7 +10,7 @@ import type {
 } from "../lib/types";
 import "../app/simple.css";
 import { LanguageSwitcher, Localized } from "../lib/portal-language";
-import { EyeIcon } from "./ControlIcons";
+import { EyeIcon, LockIcon, LogoutIcon } from "./ControlIcons";
 import DepartmentBrand from "./DepartmentBrand";
 import { useOfficeFeed, NoticeBoard, OfficeSettings } from "./OfficeBoard";
 import { officeClosure, type OfficeFeed } from "../lib/office-types";
@@ -24,6 +24,7 @@ import {
   type CameraLocation,
 } from "../lib/osm-camera";
 import { PANCHAYATI_RAJ_DEPARTMENT } from "../lib/district";
+import { isStaffLogoutLocked } from "../lib/staff-logout-window";
 import {
   directoryChoices,
   filterDirectoryStaff,
@@ -596,6 +597,7 @@ export default function Portal({
   const [captchaToken, setCaptchaToken] = useState("");
   const [captchaReset, setCaptchaReset] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [staffLogoutLocked, setStaffLogoutLocked] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const sessionGeneration = useRef(0);
@@ -691,6 +693,13 @@ export default function Portal({
     }
   }
   useEffect(() => {
+    if (profile?.role !== "staff") return;
+    const refresh = () => setStaffLogoutLocked(isStaffLogoutLocked());
+    refresh();
+    const timer = window.setInterval(refresh, 30_000);
+    return () => window.clearInterval(timer);
+  }, [profile?.role]);
+  useEffect(() => {
     if (!profile) return;
     let active = true;
     let pending = false;
@@ -763,7 +772,9 @@ export default function Portal({
       <div className={`simple-portal${profile ? "" : " sp-public-login"}`}>
         <header
           className={
-            profile ? "sp-header sp-header-authenticated" : "sp-header"
+            profile
+              ? `sp-header sp-header-authenticated${profile.role === "staff" ? " sp-header-staff" : ""}`
+              : "sp-header"
           }
         >
           <DepartmentBrand
@@ -779,11 +790,28 @@ export default function Portal({
                 <span translate="no">{profile.name}</span>
                 <button
                   type="button"
-                  className="sp-button sp-secondary"
-                  disabled={busy}
+                  className="sp-button sp-secondary sp-logout-button"
+                  disabled={
+                    busy || (profile.role === "staff" && staffLogoutLocked)
+                  }
                   onClick={logout}
+                  title={
+                    profile.role === "staff" && staffLogoutLocked
+                      ? "लॉग आउट 3 बजे के बाद / Logout after 3:00 PM IST"
+                      : "लॉग आउट / Logout"
+                  }
+                  aria-label={
+                    profile.role === "staff" && staffLogoutLocked
+                      ? "लॉग आउट 3 बजे के बाद / Logout after 3:00 PM IST"
+                      : "लॉग आउट / Logout"
+                  }
                 >
-                  लॉग आउट / Logout
+                  {profile.role === "staff" && staffLogoutLocked ? (
+                    <LockIcon />
+                  ) : (
+                    <LogoutIcon />
+                  )}
+                  <span>लॉग आउट / Logout</span>
                 </button>
               </div>
             )}
@@ -1443,7 +1471,9 @@ function Staff({
         )}
         <section className="sp-card sp-staff-attendance-card">
           {!record && (
-            <h2 className="sp-staff-attendance-title">आज की उपस्थिति</h2>
+            <h2 className="sp-staff-attendance-title">
+              आज की उपस्थिति दर्ज करें / Record attendance
+            </h2>
           )}
           {loading ? (
             <p role="status">उपस्थिति लोड हो रही है…</p>
@@ -1504,12 +1534,6 @@ function Staff({
                         src={departurePreview}
                         alt="Departure GPS camera photo preview"
                       />
-                      <p>
-                        Departure location:{" "}
-                        {departureLocation.latitude.toFixed(6)},{" "}
-                        {departureLocation.longitude.toFixed(6)} • ±
-                        {Math.round(departureLocation.accuracy)} m
-                      </p>
                     </div>
                   )}
                   <button
@@ -1678,7 +1702,7 @@ function Staff({
                         className="sp-field sp-attendance-camera"
                         key={status}
                       >
-                        <strong>OpenStreetMap GPS camera photo</strong>
+                        <strong>GPS कैमरा फोटो / GPS camera photo</strong>
                         <button
                           type="button"
                           className="sp-button sp-secondary"
@@ -1704,14 +1728,6 @@ function Staff({
                             src={photoPreview}
                             alt="कार्यस्थल फोटो का पूर्वावलोकन / Workplace photo preview"
                           />
-                        )}
-                        {capturedLocation && (
-                          <small>
-                            कैमरा स्थान / Camera location:{" "}
-                            {capturedLocation.latitude.toFixed(6)},{" "}
-                            {capturedLocation.longitude.toFixed(6)} • ±
-                            {Math.round(capturedLocation.accuracy)} m
-                          </small>
                         )}
                       </div>
                     )}
@@ -1792,30 +1808,32 @@ function Staff({
                       </>
                     )}
                   </div>
-                  <label className="sp-consent">
-                    <input
-                      type="checkbox"
-                      checked={consent}
-                      onChange={(e) => setConsent(e.target.checked)}
-                      required
-                    />
-                    <span>
-                      मैं अपनी उपस्थिति, फोटो और स्थान कार्यालय के साथ साझा करने
-                      की सहमति देता/देती हूँ।
-                    </span>
-                  </label>
-                  <button className="sp-button sp-primary" disabled={busy}>
-                    {busy
-                      ? "सहेजा जा रहा है…"
-                      : status === "leave"
-                        ? "अवकाश आवेदन भेजें / Submit leave application"
-                        : "GPS फोटो सहित आगमन सहेजें / Save arrival draft"}
-                  </button>
-                  {busy && saveProgress && (
-                    <p role="status" aria-live="polite" className="sp-note">
-                      {saveProgress}
-                    </p>
-                  )}
+                  <div className="sp-staff-submit">
+                    <label className="sp-consent">
+                      <input
+                        type="checkbox"
+                        checked={consent}
+                        onChange={(e) => setConsent(e.target.checked)}
+                        required
+                      />
+                      <span>
+                        मैं अपनी उपस्थिति, फोटो और स्थान कार्यालय के साथ साझा
+                        करने की सहमति देता/देती हूँ।
+                      </span>
+                    </label>
+                    <button className="sp-button sp-primary" disabled={busy}>
+                      {busy
+                        ? "सहेजा जा रहा है…"
+                        : status === "leave"
+                          ? "अवकाश आवेदन भेजें / Submit leave application"
+                          : "GPS फोटो सहित आगमन सहेजें / Save arrival draft"}
+                    </button>
+                    {busy && saveProgress && (
+                      <p role="status" aria-live="polite" className="sp-note">
+                        {saveProgress}
+                      </p>
+                    )}
+                  </div>
                 </fieldset>
               </form>
             </>

@@ -2010,6 +2010,152 @@ img.sp-map {
   flex-wrap: wrap;
   gap: 8px;
 }
+/* Staff attendance: one clear path from workplace to status, photo and save. */
+.sp-staff-hero h1,
+.sp-staff-overview-head h2,
+.sp-staff-attendance-title {
+  font-family:
+    "Manrope Variable", "Noto Sans Devanagari", "Noto Sans", sans-serif;
+  font-weight: 750;
+  letter-spacing: -0.035em;
+}
+.sp-staff-attendance-card {
+  padding: clamp(20px, 2.4vw, 32px);
+}
+.sp-staff-attendance-title {
+  margin-bottom: 22px !important;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e4ebf2;
+}
+.sp-staff-attendance-card .sp-workspace-picker {
+  margin-bottom: 10px;
+}
+.sp-staff-attendance-card .sp-workspace-option {
+  min-height: 70px;
+  background: #fbfdff;
+}
+.sp-staff-attendance-card .sp-status-group {
+  padding-top: 22px;
+  border-top: 1px solid #e4ebf2;
+}
+.sp-staff-attendance-card .sp-status-options {
+  gap: 10px;
+}
+.sp-staff-attendance-card .sp-status-option span {
+  border-radius: 12px;
+}
+.sp-staff-attendance-card .sp-attendance-camera {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 20px 0;
+  border-top: 1px solid #e4ebf2;
+  margin-bottom: 0;
+}
+.sp-staff-attendance-card .sp-attendance-camera > .sp-button {
+  width: auto;
+  min-width: 180px;
+}
+.sp-workplace-camera {
+  width: 100%;
+  max-width: 460px;
+  padding: 16px;
+  margin: 0;
+}
+.sp-camera,
+.sp-workplace-preview {
+  width: min(100%, 240px);
+  height: 320px;
+  max-width: 240px;
+  max-height: none;
+  object-fit: cover;
+  border-radius: 10px;
+  margin: 0;
+  background: #18324c;
+}
+.sp-camera-review {
+  justify-items: start;
+  gap: 12px;
+}
+.sp-camera-confirmation {
+  margin-top: 2px;
+}
+.sp-staff-submit {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  margin-top: 6px;
+  padding-top: 20px;
+  border-top: 1px solid #e4ebf2;
+}
+.sp-staff-submit .sp-consent {
+  margin: 0;
+}
+.sp-header-staff .sp-header-controls {
+  flex-wrap: nowrap;
+}
+.sp-logout-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.sp-logout-button:disabled {
+  cursor: not-allowed;
+}
+@media (max-width: 700px) {
+  .sp-header-staff {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+  .sp-header-staff .sp-brand {
+    min-width: 0;
+  }
+  .sp-header-staff .sp-header-controls {
+    justify-content: flex-end;
+  }
+  .sp-header-staff .sp-account {
+    flex: none;
+  }
+  .sp-header-staff .sp-account > span,
+  .sp-header-staff .sp-logout-button > span {
+    display: none;
+  }
+  .sp-header-staff .sp-logout-button {
+    width: 44px;
+    min-width: 44px;
+    padding: 10px;
+  }
+  .sp-header-staff .sp-language-options {
+    left: auto;
+    right: 0;
+  }
+}
+@media (max-width: 480px) {
+  .sp-header-staff {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .sp-header-staff .sp-brand {
+    font-size: 13px;
+    line-height: 1.3;
+    gap: 8px;
+  }
+  .sp-header-staff .sp-mark.sp-department-mark {
+    width: 40px;
+    height: 40px;
+  }
+  .sp-header-staff .sp-brand-copy small {
+    display: none;
+  }
+  .sp-staff-attendance-card .sp-status-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .sp-staff-submit .sp-button {
+    width: 100%;
+  }
+}
 @media (max-width: 640px) {
   .sp-leave-request .sp-actions,
   .sp-leave-request .sp-actions > * {

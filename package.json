@@ -17,6 +17,7 @@
     "check:capacity": "node scripts/check-700-users.mjs"
   },
   "dependencies": {
+    "@fontsource-variable/manrope": "^5.3.0",
     "@fontsource/noto-sans": "^5.3.0",
     "@fontsource/noto-sans-devanagari": "^5.3.0",
     "@tailwindcss/postcss": "4.2.1",

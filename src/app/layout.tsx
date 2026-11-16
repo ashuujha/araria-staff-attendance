@@ -5,6 +5,7 @@ import "@fontsource/noto-sans/600.css";
 import "@fontsource/noto-sans-devanagari/400.css";
 import "@fontsource/noto-sans-devanagari/500.css";
 import "@fontsource/noto-sans-devanagari/600.css";
+import "@fontsource-variable/manrope";
 import "./globals.css";
 import { BIHAR_EMBLEM } from "../lib/department-branding";
 export const metadata: Metadata = {

@@ -5,8 +5,6 @@ import {
   cameraLocation,
   isNearArariaDistrict,
   MAX_CAMERA_ACCURACY_METERS,
-  openStreetMapEmbedUrl,
-  openStreetMapUrl,
   type CameraLocation,
 } from "../lib/osm-camera";
 import { getFreshLocation } from "../lib/location";
@@ -51,23 +49,41 @@ function photoFromVideo(
 ): Promise<File> {
   if (!video.videoWidth || !video.videoHeight)
     throw new Error("कैमरा तैयार नहीं है। / Camera is not ready.");
-  const scale = Math.min(
-    1,
-    1600 / Math.max(video.videoWidth, video.videoHeight),
-  );
   const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
-  canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+  // A consistent portrait image keeps both the face and the GPS stamp visible
+  // in the compact preview and in the administrator's evidence viewer.
+  canvas.width = 720;
+  canvas.height = 960;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("फोटो नहीं बन सकी। / Could not create the photo.");
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  const size = Math.max(15, Math.round(canvas.width / 52));
-  const line = size * 1.4;
-  const band = line * 5 + 24;
-  ctx.fillStyle = "rgba(7, 21, 37, 0.82)";
+  const targetRatio = canvas.width / canvas.height;
+  const sourceRatio = video.videoWidth / video.videoHeight;
+  const sourceWidth =
+    sourceRatio > targetRatio
+      ? video.videoHeight * targetRatio
+      : video.videoWidth;
+  const sourceHeight =
+    sourceRatio > targetRatio
+      ? video.videoHeight
+      : video.videoWidth / targetRatio;
+  ctx.drawImage(
+    video,
+    (video.videoWidth - sourceWidth) / 2,
+    (video.videoHeight - sourceHeight) / 2,
+    sourceWidth,
+    sourceHeight,
+    0,
+    0,
+    canvas.width,
+    canvas.height,
+  );
+  const band = 186;
+  ctx.fillStyle = "rgba(9, 24, 40, 0.88)";
   ctx.fillRect(0, canvas.height - band, canvas.width, band);
+  ctx.fillStyle = "#4fc2de";
+  ctx.fillRect(0, canvas.height - band, 6, band);
   ctx.fillStyle = "#fff";
-  ctx.font = `600 ${size}px sans-serif`;
+  ctx.textBaseline = "top";
   const recorded = new Date(location.capturedAt).toLocaleString("en-IN", {
     timeZone: "Asia/Kolkata",
     weekday: "long",
@@ -78,24 +94,28 @@ function photoFromVideo(
     minute: "2-digit",
     second: "2-digit",
   });
-  const lines = [
-    mode === "departure"
-      ? "ARARIA STAFF • DEPARTURE GPS CAMERA"
-      : "ARARIA STAFF • ARRIVAL GPS CAMERA",
-    `Lat ${location.latitude.toFixed(6)}°   Lon ${location.longitude.toFixed(6)}°`,
-    `Device accuracy ±${Math.round(location.accuracy)} m`,
-    `${recorded} IST`,
-    "Map: openstreetmap.org (link in attendance details)",
-  ];
-  lines.forEach((text, index) => {
-    let fontSize = size;
-    ctx.font = `${index === 0 ? "700" : "500"} ${fontSize}px sans-serif`;
-    while (ctx.measureText(text).width > canvas.width - 24 && fontSize > 10) {
-      fontSize--;
-      ctx.font = `${index === 0 ? "700" : "500"} ${fontSize}px sans-serif`;
-    }
-    ctx.fillText(text, 12, canvas.height - band + 18 + line * (index + 1));
-  });
+  const top = canvas.height - band + 20;
+  ctx.font = "700 22px sans-serif";
+  ctx.fillText(
+    mode === "departure" ? "ARARIA · DEPARTURE" : "ARARIA · ARRIVAL",
+    24,
+    top,
+  );
+  ctx.fillStyle = "#c6e9f2";
+  ctx.font = "500 21px sans-serif";
+  ctx.fillText(
+    `LAT ${location.latitude.toFixed(6)}°    LON ${location.longitude.toFixed(6)}°`,
+    24,
+    top + 39,
+  );
+  ctx.fillText(
+    `GPS ±${Math.round(location.accuracy)} m · ${recorded} IST`,
+    24,
+    top + 75,
+  );
+  ctx.fillStyle = "#fff";
+  ctx.font = "500 18px sans-serif";
+  ctx.fillText("PANCHAYATI RAJ · GEO-TAGGED PHOTO", 24, top + 116);
   return new Promise((resolve, reject) =>
     canvas.toBlob(
       (blob) =>
@@ -232,6 +252,7 @@ export default function WorkplaceCamera({
       <video
         ref={video}
         className="sp-camera"
+        style={{ display: capture ? "none" : "block" }}
         autoPlay
         muted
         playsInline
@@ -251,11 +272,6 @@ export default function WorkplaceCamera({
               alt="Captured workplace photo with location and time stamp"
             />
           )}
-          <p>
-            Device location: {capture.location.latitude.toFixed(6)},{" "}
-            {capture.location.longitude.toFixed(6)} • accuracy ±
-            {Math.round(capture.location.accuracy)} m
-          </p>
           {!isNearArariaDistrict(capture.location) && (
             <p role="status" className="sp-alert sp-error">
               Your device reports a location outside Araria district. If you are
@@ -263,24 +279,6 @@ export default function WorkplaceCamera({
               your phone and retake the photo.
             </p>
           )}
-          <iframe
-            title="OpenStreetMap view of reported location"
-            src={openStreetMapEmbedUrl(capture.location)}
-            className="sp-camera-map"
-            loading="lazy"
-            referrerPolicy="strict-origin-when-cross-origin"
-          />
-          <a
-            href={openStreetMapUrl(capture.location)}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Open reported location in OpenStreetMap
-          </a>
-          <small>
-            Map © OpenStreetMap contributors. Device location can be inaccurate;
-            check the marker before use.
-          </small>
           <label className="sp-camera-confirmation">
             <input
               type="checkbox"
@@ -288,8 +286,8 @@ export default function WorkplaceCamera({
               onChange={(event) => setLocationConfirmed(event.target.checked)}
             />
             <span>
-              मानचित्र पर मेरा वास्तविक स्थान दिख रहा है / The map marker shows
-              my actual location.
+              फोटो पर दिखाया GPS स्थान और समय सही है / The GPS location and time
+              on this photo are correct.
             </span>
           </label>
         </div>

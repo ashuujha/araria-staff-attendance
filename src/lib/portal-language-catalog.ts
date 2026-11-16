@@ -8,6 +8,8 @@ export const englishCatalog: Record<string, string> = {
   "प्रखंड उपलब्ध नहीं": "Block unavailable",
   "आज / TODAY": "TODAY",
   "उपस्थिति सारांश": "Attendance overview",
+  "आज की उपस्थिति दर्ज करें / Record attendance": "Record today's attendance",
+  "GPS कैमरा फोटो / GPS camera photo": "GPS camera photo",
   "कार्यस्थल / Workspace": "Workspace",
   "अभी दर्ज नहीं": "Not recorded yet",
   "लोड हो रहा है": "Loading",
