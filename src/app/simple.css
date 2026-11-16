@@ -1481,12 +1481,13 @@ img.sp-map {
   background: linear-gradient(145deg, #f2f9fb 0%, #e9f4f5 100%);
 }
 .sp-login-visual-inner {
-  width: min(100%, 650px);
+  width: min(100%, 560px);
 }
 .sp-login-visual img {
   display: block;
   width: 100%;
   height: auto;
+  border-radius: 12px;
 }
 .sp-login-visual-copy {
   padding: 0 clamp(12px, 3vw, 46px);

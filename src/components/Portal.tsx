@@ -785,10 +785,10 @@ export default function Portal({
               <aside className="sp-login-visual" aria-hidden="true">
                 <div className="sp-login-visual-inner">
                   <img
-                    src="/panchayati-raj-login.svg"
+                    src="/panchayati-raj-login.webp"
                     alt=""
-                    width="680"
-                    height="520"
+                    width="1200"
+                    height="900"
                   />
                   <div className="sp-login-visual-copy">
                     <span className="sp-visual-rule" />
