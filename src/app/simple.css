@@ -1577,6 +1577,23 @@ img.sp-map {
     grid-template-columns: minmax(0, 1fr);
   }
   .sp-login-visual {
+    display: flex;
+    justify-content: center;
+    min-height: 0;
+    padding: 96px 24px 12px;
+    border-bottom: 1px solid #e6f0f2;
+  }
+  .sp-login-visual-inner {
+    display: flex;
+    justify-content: center;
+    max-width: 450px;
+  }
+  .sp-login-visual img {
+    width: min(100%, 380px);
+    max-height: 245px;
+    object-fit: contain;
+  }
+  .sp-login-visual-copy {
     display: none;
   }
   .sp-public-login .sp-header {
@@ -1584,9 +1601,8 @@ img.sp-map {
     padding: 18px clamp(20px, 5vw, 36px);
   }
   .sp-login-panel {
-    min-height: 100vh;
-    min-height: 100dvh;
-    padding: 112px 24px 44px;
+    min-height: 0;
+    padding: 30px 24px 44px;
   }
 }
 @media (max-width: 480px) {
@@ -1616,10 +1632,22 @@ img.sp-map {
     flex: 0 0 auto;
   }
   .sp-login-panel {
-    padding: 114px 20px 40px;
+    padding: 26px 20px 40px;
+  }
+  .sp-login-visual {
+    padding: 82px 16px 10px;
+  }
+  .sp-login-visual img {
+    width: min(100%, 290px);
+    max-height: 195px;
   }
   .sp-public-login .sp-login h1 {
     font-size: 27px;
+  }
+}
+@media (max-width: 480px) and (max-height: 700px) {
+  .sp-login-visual img {
+    max-height: 160px;
   }
 }
 .sp-pagination span {
