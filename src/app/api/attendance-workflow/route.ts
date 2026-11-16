@@ -19,6 +19,7 @@ import {
 import { reserveEvidenceSlot } from "../../../lib/evidence-capacity";
 import { requireWorkingDay } from "../../../lib/office-server";
 import { PANCHAYATI_RAJ_DEPARTMENT } from "../../../lib/district";
+import { normalizeLeaveDates } from "../../../lib/leave-dates";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
@@ -38,7 +39,7 @@ export async function GET(req: Request) {
       ),
       profile.role === "staff"
         ? sb(
-            `/rest/v1/leave_applications?staff_id=eq.${profile.id}&date=eq.${today}&select=id,date,leave_type,leave_detail,status,created_at,decided_at,panchayat,position,rejection_reason,decision_document_path&order=created_at.desc&limit=1`,
+            `/rest/v1/leave_applications?staff_id=eq.${profile.id}&leave_dates=cs.%7B${today}%7D&select=id,date,leave_dates,leave_type,leave_detail,status,created_at,decided_at,panchayat,position,rejection_reason,decision_document_path&order=created_at.desc&limit=1`,
             {},
             token,
           )
@@ -98,7 +99,7 @@ export async function POST(req: Request) {
     const { profile, token } = await identity(req);
     if (profile.role !== "staff")
       throw new HttpError(403, "केवल कर्मी उपस्थिति दर्ज कर सकते हैं।");
-    await requireWorkingDay(profile.block_id);
+    if (body.status !== "leave") await requireWorkingDay(profile.block_id);
     const draft = body.action === "save_draft";
     if (body.action !== "complete") {
       for (const key of ["panchayat", "department", "position"]) {
@@ -326,8 +327,17 @@ export async function POST(req: Request) {
       return json({ record });
     }
     if (body.status === "leave") {
+      let leaveDates: string[];
+      try {
+        leaveDates = normalizeLeaveDates(body.leave_dates);
+      } catch (error) {
+        throw new HttpError(
+          400,
+          error instanceof Error ? error.message : "Invalid leave dates.",
+        );
+      }
       const application = await sb(
-        "/rest/v1/rpc/submit_leave_application_v2",
+        "/rest/v1/rpc/submit_leave_application_v3",
         {
           method: "POST",
           body: JSON.stringify({
@@ -336,6 +346,7 @@ export async function POST(req: Request) {
             leave_kind: body.leave_type,
             leave_detail_text: body.leave_detail || null,
             document_path: body.leave_upload_path,
+            requested_dates: leaveDates,
           }),
         },
         token,

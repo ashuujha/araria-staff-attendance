@@ -2,6 +2,7 @@ import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import sharp from "sharp";
 import { HttpError } from "./server";
 import { MAX_UPLOAD_BYTES, validateUploadBytes } from "./file-validation";
+import { leaveDatesLabel } from "./leave-dates";
 
 export async function makeSignedLeavePdf(input: {
   original: Uint8Array;
@@ -9,6 +10,7 @@ export async function makeSignedLeavePdf(input: {
   requestId: string;
   staffId: string;
   leaveDate: string;
+  leaveDates?: string[];
   leaveType: string;
   approverRole: string;
   decidedAt: Date;
@@ -63,7 +65,13 @@ export async function makeSignedLeavePdf(input: {
     );
     line("Application ID", input.requestId, 690);
     line("Staff ID", input.staffId, 660);
-    line("Leave date", input.leaveDate, 630);
+    line(
+      "Leave dates",
+      input.leaveDates?.length && input.leaveDates.length > 1
+        ? `${input.leaveDates[0]} to ${input.leaveDates.at(-1)} (${input.leaveDates.length} dates)`
+        : input.leaveDate,
+      630,
+    );
     line("Leave type", input.leaveType, 600);
     line("Decision", "APPROVED", 570);
     line("Approved by", input.approverRole.toUpperCase(), 540);
@@ -96,6 +104,42 @@ export async function makeSignedLeavePdf(input: {
       size: 9,
       font,
     });
+    if (input.leaveDates && input.leaveDates.length > 1) {
+      const selected = leaveDatesLabel(input.leaveDates, input.leaveDate);
+      const listPage = pdf.addPage([595, 842]);
+      listPage.drawText("APPROVED LEAVE DATES", {
+        x: 48,
+        y: 780,
+        size: 16,
+        font: bold,
+      });
+      listPage.drawText(`Application ID: ${input.requestId}`, {
+        x: 48,
+        y: 750,
+        size: 10,
+        font,
+      });
+      listPage.drawText(
+        `Selection: ${selected.startsWith(input.leaveDates[0] + " to ") ? "Continuous range" : "Individual dates"}`,
+        { x: 48, y: 728, size: 10, font },
+      );
+      let y = 700;
+      for (const date of input.leaveDates) {
+        if (y < 52) {
+          const next = pdf.addPage([595, 842]);
+          y = 780;
+          next.drawText("APPROVED LEAVE DATES (CONTINUED)", {
+            x: 48,
+            y,
+            size: 14,
+            font: bold,
+          });
+          y -= 30;
+        }
+        pdf.getPages().at(-1)!.drawText(date, { x: 48, y, size: 10, font });
+        y -= 18;
+      }
+    }
     const bytes = await pdf.save();
     if (bytes.length >= MAX_UPLOAD_BYTES)
       throw new HttpError(

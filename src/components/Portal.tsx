@@ -17,6 +17,12 @@ import { officeClosure, type OfficeFeed } from "../lib/office-types";
 import { prepareWorkplacePhoto } from "../lib/photo-upload";
 import { uploadWithProgress } from "../lib/upload-progress";
 import { staffLeaveBalance } from "../lib/staff-leave-balance";
+import {
+  leaveDateRange,
+  leaveDatesLabel,
+  normalizeLeaveDates,
+  validLeaveDate,
+} from "../lib/leave-dates";
 import { dailyAttendanceSummary } from "../lib/daily-attendance-summary";
 import {
   googleMapsUrl,
@@ -77,6 +83,7 @@ type LeaveApplication = {
   block_id?: string;
   blocks?: { name_en: string };
   date: string;
+  leave_dates?: string[];
   panchayat: string;
   position: string;
   leave_type: "CL" | "SL" | "MATERNITY" | "PATERNITY" | "OTHER";
@@ -1029,6 +1036,14 @@ function Staff({
     [leaveType, setLeaveType] = useState("CL");
   const [dutyReason, setDutyReason] = useState("");
   const [leaveDetail, setLeaveDetail] = useState("");
+  const [showLeaveForm, setShowLeaveForm] = useState(false);
+  const [leaveDateMode, setLeaveDateMode] = useState<"individual" | "range">(
+    "individual",
+  );
+  const [individualDate, setIndividualDate] = useState("");
+  const [individualDates, setIndividualDates] = useState<string[]>([]);
+  const [leaveFrom, setLeaveFrom] = useState("");
+  const [leaveTo, setLeaveTo] = useState("");
   const savingRef = useRef(false);
   useEffect(() => {
     if (profile.gender !== "female" && leaveType === "SL") setLeaveType("CL");
@@ -1261,7 +1276,7 @@ function Staff({
     setSaveProgress("");
     notify("");
     try {
-      if (!office.feed || office.error || closure)
+      if (!office.feed || office.error || (closure && status !== "leave"))
         throw new Error(
           closure
             ? `Holiday (${closure}). Attendance is closed.`
@@ -1336,6 +1351,11 @@ function Staff({
             );
         }
         if (status === "leave") {
+          body.leave_dates = normalizeLeaveDates(
+            leaveDateMode === "range"
+              ? leaveDateRange(leaveFrom, leaveTo)
+              : individualDates,
+          );
           if (
             !leave ||
             !["image/jpeg", "application/pdf"].includes(leave.type) ||
@@ -1357,6 +1377,8 @@ function Staff({
         setLoading(false);
         setLoadError(false);
         setLeave(null);
+        setShowLeaveForm(false);
+        setStatus("present");
         notify(
           "अवकाश आवेदन भेजा गया है। BPRO और DPRO के निर्णय की प्रतीक्षा करें। / Leave application sent for approval.",
         );
@@ -1407,7 +1429,8 @@ function Staff({
           ? "अवकाश / Holiday"
           : record
             ? statusLabels[record.status] || record.status
-            : leaveApplication?.status === "pending"
+            : leaveApplication?.status === "pending" &&
+                leaveApplication.leave_dates?.includes(today)
               ? "अवकाश आवेदन लंबित"
               : "अभी दर्ज नहीं";
   return (
@@ -1470,9 +1493,11 @@ function Staff({
           <NoticeBoard notices={office.feed.notices} />
         )}
         <section className="sp-card sp-staff-attendance-card">
-          {!record && (
+          {(!record || showLeaveForm) && (
             <h2 className="sp-staff-attendance-title">
-              आज की उपस्थिति दर्ज करें / Record attendance
+              {showLeaveForm
+                ? "अवकाश आवेदन / Leave application"
+                : "आज की उपस्थिति दर्ज करें / Record attendance"}
             </h2>
           )}
           {loading ? (
@@ -1487,7 +1512,7 @@ function Staff({
             <p role="status">
               अवकाश कैलेंडर लोड हो रहा है… / Loading holiday calendar…
             </p>
-          ) : closure ? (
+          ) : closure && !showLeaveForm ? (
             <div role="status" className="sp-alert sp-holiday">
               <h2>अवकाश / Holiday</h2>
               <p translate="no">
@@ -1497,8 +1522,18 @@ function Staff({
                 आज उपस्थिति दर्ज नहीं की जा सकती। / Attendance cannot be
                 recorded today.
               </p>
+              <button
+                type="button"
+                className="sp-button sp-secondary"
+                onClick={() => {
+                  setStatus("leave");
+                  setShowLeaveForm(true);
+                }}
+              >
+                आगामी अवकाश के लिए आवेदन / Apply for future leave
+              </button>
             </div>
-          ) : record ? (
+          ) : record && !showLeaveForm ? (
             <>
               <div className="sp-record-title">
                 <h2>आज की सहेजी गई जानकारी</h2>
@@ -1559,13 +1594,28 @@ function Staff({
                 <summary>आज का विवरण / Today’s details</summary>
                 <RecordDetails row={{ ...record, profiles: profile }} />
               </details>
+              <button
+                type="button"
+                className="sp-button sp-secondary"
+                onClick={() => {
+                  setStatus("leave");
+                  setShowLeaveForm(true);
+                }}
+              >
+                अवकाश आवेदन करें / Apply for leave
+              </button>
             </>
-          ) : leaveApplication?.status === "pending" ? (
+          ) : leaveApplication?.status === "pending" &&
+            leaveApplication.leave_dates?.includes(today) ? (
             <div role="status" className="sp-alert sp-holiday">
               <h2>अवकाश आवेदन लंबित / Leave application pending</h2>
               <p>
-                {leaveApplication.leave_type} • {leaveApplication.date} •{" "}
-                {leaveApplication.panchayat}
+                {leaveApplication.leave_type} •{" "}
+                {leaveDatesLabel(
+                  leaveApplication.leave_dates,
+                  leaveApplication.date,
+                )}{" "}
+                • {leaveApplication.panchayat}
               </p>
             </div>
           ) : !assignments.length ? (
@@ -1575,6 +1625,18 @@ function Staff({
             </p>
           ) : (
             <>
+              {showLeaveForm && (
+                <button
+                  type="button"
+                  className="sp-button sp-secondary"
+                  onClick={() => {
+                    setShowLeaveForm(false);
+                    setStatus("present");
+                  }}
+                >
+                  वापस / Back
+                </button>
+              )}
               {leaveApplication?.status === "rejected" && (
                 <p role="status" className="sp-alert sp-error">
                   पिछला अवकाश आवेदन अस्वीकृत हुआ। आप सही जानकारी के साथ फिर
@@ -1647,29 +1709,31 @@ function Staff({
                         />
                       </>
                     )}
-                    <fieldset className="sp-status-group">
-                      <legend>कार्य स्थिति / Work status</legend>
-                      <div className="sp-status-options">
-                        {staffStatusOptions.map((value) => (
-                          <label className="sp-status-option" key={value}>
-                            <input
-                              type="radio"
-                              name="work-status"
-                              value={value}
-                              checked={status === value}
-                              onChange={() => {
-                                setStatus(value);
-                                setWorkplacePhoto(null);
-                                setCapturedLocation(null);
-                                setCameraOpen(false);
-                                setLeave(null);
-                              }}
-                            />
-                            <span>{statusLabels[value]}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </fieldset>
+                    {!showLeaveForm && (
+                      <fieldset className="sp-status-group">
+                        <legend>कार्य स्थिति / Work status</legend>
+                        <div className="sp-status-options">
+                          {staffStatusOptions.map((value) => (
+                            <label className="sp-status-option" key={value}>
+                              <input
+                                type="radio"
+                                name="work-status"
+                                value={value}
+                                checked={status === value}
+                                onChange={() => {
+                                  setStatus(value);
+                                  setWorkplacePhoto(null);
+                                  setCapturedLocation(null);
+                                  setCameraOpen(false);
+                                  setLeave(null);
+                                }}
+                              />
+                              <span>{statusLabels[value]}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </fieldset>
+                    )}
                     {(status === "deputation" || status === "on_duty") && (
                       <label className="sp-field">
                         ड्यूटी स्थान / Duty location
@@ -1754,6 +1818,108 @@ function Staff({
                             <option value="OTHER">Other leave</option>
                           </select>
                         </label>
+                        <div className="sp-field sp-leave-calendar">
+                          <label className="sp-field">
+                            अवकाश तारीख चुनें / Choose leave dates
+                            <select
+                              value={leaveDateMode}
+                              onChange={(event) =>
+                                setLeaveDateMode(
+                                  event.target.value as "individual" | "range",
+                                )
+                              }
+                            >
+                              <option value="individual">
+                                अलग-अलग तारीखें / Individual dates
+                              </option>
+                              <option value="range">
+                                लगातार दिन / From–to range
+                              </option>
+                            </select>
+                          </label>
+                          {leaveDateMode === "individual" ? (
+                            <>
+                              <div className="sp-leave-calendar-row">
+                                <label className="sp-field">
+                                  तारीख / Date
+                                  <input
+                                    type="date"
+                                    value={individualDate}
+                                    onChange={(event) =>
+                                      setIndividualDate(event.target.value)
+                                    }
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  className="sp-button sp-secondary"
+                                  disabled={
+                                    !validLeaveDate(individualDate) ||
+                                    individualDates.includes(individualDate) ||
+                                    individualDates.length >= 366
+                                  }
+                                  onClick={() => {
+                                    setIndividualDates((dates) =>
+                                      [...dates, individualDate].sort(),
+                                    );
+                                    setIndividualDate("");
+                                  }}
+                                >
+                                  तारीख जोड़ें / Add date
+                                </button>
+                              </div>
+                              <div
+                                className="sp-leave-selected-dates"
+                                aria-live="polite"
+                              >
+                                {individualDates.map((date) => (
+                                  <button
+                                    key={date}
+                                    type="button"
+                                    className="sp-button sp-secondary"
+                                    aria-label={`Remove ${date}`}
+                                    onClick={() =>
+                                      setIndividualDates((dates) =>
+                                        dates.filter((item) => item !== date),
+                                      )
+                                    }
+                                  >
+                                    {date} ×
+                                  </button>
+                                ))}
+                              </div>
+                            </>
+                          ) : (
+                            <div className="sp-leave-calendar-row">
+                              <label className="sp-field">
+                                से / From
+                                <input
+                                  type="date"
+                                  value={leaveFrom}
+                                  onChange={(event) =>
+                                    setLeaveFrom(event.target.value)
+                                  }
+                                />
+                              </label>
+                              <label className="sp-field">
+                                तक / To
+                                <input
+                                  type="date"
+                                  min={leaveFrom || undefined}
+                                  value={leaveTo}
+                                  onChange={(event) =>
+                                    setLeaveTo(event.target.value)
+                                  }
+                                />
+                              </label>
+                            </div>
+                          )}
+                          <small>
+                            रविवार और घोषित छुट्टियाँ उपस्थिति या अवकाश शेष में
+                            नहीं गिनी जाएँगी। / Sundays and declared holidays do
+                            not count against leave.
+                          </small>
+                        </div>
                         {["MATERNITY", "PATERNITY", "OTHER"].includes(
                           leaveType,
                         ) && (
@@ -1882,7 +2048,8 @@ function Staff({
               <article key={application.id} className="sp-leave-request">
                 <div>
                   <strong>
-                    {application.leave_type} • {application.date}
+                    {application.leave_type} •{" "}
+                    {leaveDatesLabel(application.leave_dates, application.date)}
                   </strong>
                   <p>
                     {application.status === "approved"
@@ -2688,7 +2855,12 @@ function Admin({
                         {application.panchayat} • {application.position}
                       </p>
                       <p>
-                        {application.leave_type} • Leave: {application.date} •{" "}
+                        {application.leave_type} • Leave:{" "}
+                        {leaveDatesLabel(
+                          application.leave_dates,
+                          application.date,
+                        )}{" "}
+                        •{" "}
                         {application.status === "approved"
                           ? "Approved"
                           : "Rejected"}
@@ -2785,7 +2957,12 @@ function Admin({
                         {application.panchayat} • {application.position}
                       </p>
                       <p>
-                        {application.leave_type} • {application.date} • Applied{" "}
+                        {application.leave_type} •{" "}
+                        {leaveDatesLabel(
+                          application.leave_dates,
+                          application.date,
+                        )}{" "}
+                        • Applied{" "}
                         {new Date(application.created_at).toLocaleString(
                           "en-IN",
                         )}
@@ -3631,8 +3808,11 @@ function Admin({
                 <div className="sp-staff-review-list">
                   {leaveStaffDetails.leaveHistory.map((application) => (
                     <p key={application.id}>
-                      {application.date} • {application.leave_type} •{" "}
-                      {application.status}
+                      {leaveDatesLabel(
+                        application.leave_dates,
+                        application.date,
+                      )}{" "}
+                      • {application.leave_type} • {application.status}
                       {application.leave_detail
                         ? ` • ${application.leave_detail}`
                         : ""}

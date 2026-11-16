@@ -14,7 +14,12 @@ await db.exec(
   ),
 );
 for (const name of (await readdir("supabase/migrations")).sort())
-  if (!name.startsWith("20261109") && !name.startsWith("20261110") && !name.startsWith("20261111"))
+  if (
+    !name.startsWith("20261109") &&
+    !name.startsWith("20261110") &&
+    !name.startsWith("20261111") &&
+    !name.startsWith("20261116")
+  )
     await db.exec(await readFile("supabase/migrations/" + name, "utf8"));
 
 const admin = "11111111-1111-4111-8111-111111111111";

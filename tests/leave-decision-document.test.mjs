@@ -55,3 +55,14 @@ test("JPEG leave application becomes a two-page signed PDF", async () => {
   const bytes = await makeSignedLeavePdf({ ...input, original });
   assert.equal((await PDFDocument.load(bytes)).getPageCount(), 2);
 });
+
+test("multi-date approval includes a separate list of selected dates", async () => {
+  const original = await PDFDocument.create();
+  original.addPage([595, 842]);
+  const bytes = await makeSignedLeavePdf({
+    ...input,
+    original: await original.save(),
+    leaveDates: ["2026-11-10", "2026-11-12"],
+  });
+  assert.equal((await PDFDocument.load(bytes)).getPageCount(), 3);
+});

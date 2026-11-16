@@ -91,6 +91,7 @@ function request(patch = {}) {
       department: "पंचायती राज विभाग",
       panchayat: "Office",
       position: "Staff",
+      leave_dates: [istDate()],
       photo_upload_path: path.replace("leave.pdf", "photo.jpg"),
       ...patch,
     }),
@@ -180,7 +181,7 @@ function fixture(
         out_photo_path: body.photo_path,
       });
     }
-    if (url.pathname === "/rest/v1/rpc/submit_leave_application_v2")
+    if (url.pathname === "/rest/v1/rpc/submit_leave_application_v3")
       return Response.json({ id: "pending-leave", status: "pending" });
     throw Error("Unexpected request " + url.pathname);
   };
@@ -411,7 +412,7 @@ test("leave PDF remains owned, bounded and scanned when configured", async () =>
     assert.equal(response.status, 200);
     assert.ok(calls.some((c) => c.url.hostname === "scanner.example.test"));
     const rpc = calls.find(
-      (c) => c.url.pathname === "/rest/v1/rpc/submit_leave_application_v2",
+      (c) => c.url.pathname === "/rest/v1/rpc/submit_leave_application_v3",
     );
     assert.equal(JSON.parse(rpc.init.body).document_path, path);
     assert.equal((await response.json()).application.status, "pending");

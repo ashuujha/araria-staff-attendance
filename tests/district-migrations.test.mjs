@@ -17,7 +17,8 @@ for (const name of (await readdir("supabase/migrations")).sort()) {
   if (
     name.startsWith("20261109") ||
     name.startsWith("20261110") ||
-    name.startsWith("20261111")
+    name.startsWith("20261111") ||
+    name.startsWith("20261116")
   )
     continue;
   await db.exec(await readFile("supabase/migrations/" + name, "utf8"));
@@ -839,4 +840,181 @@ test("departure requires a fresh owned photo and stores GPS with out time atomic
     ).rows[0].consumed,
     true,
   );
+});
+
+test("calendar leave preserves old requests and approves selected working dates", async () => {
+  const before = (
+    await db.query("select count(*)::int n from leave_applications")
+  ).rows[0].n;
+  await db.exec(
+    await readFile(
+      "supabase/migrations/20261116_14_leave_calendar_dates.sql",
+      "utf8",
+    ),
+  );
+  assert.equal(
+    (await db.query("select count(*)::int n from leave_applications")).rows[0]
+      .n,
+    before,
+  );
+  assert.equal(
+    (
+      await db.query(
+        "select count(*)::int n from leave_applications where leave_dates is null or cardinality(leave_dates)=0",
+      )
+    ).rows[0].n,
+    0,
+  );
+
+  const araria = (await db.query("select id from blocks where code='araria'"))
+    .rows[0].id;
+  const calendarStaff = "55555555-5555-4555-8555-555555555555";
+  const today = (
+    await db.query(
+      "select to_char(now() at time zone 'Asia/Kolkata','YYYY-MM-DD') as d",
+    )
+  ).rows[0].d;
+  await db.query("insert into auth.users values($1)", [calendarStaff]);
+  await db.query(
+    "insert into profiles(id,name,login_email,role,block,block_id,assignments,gender) values($1,'Calendar Staff','calendar@test.invalid','staff','Araria',$2,$3::jsonb,'female')",
+    [
+      calendarStaff,
+      araria,
+      JSON.stringify([
+        {
+          panchayat: "Office",
+          position: "Staff",
+          department: "पंचायती राज विभाग",
+          block_id: araria,
+        },
+      ]),
+    ],
+  );
+  const monday = new Date(`${today}T00:00:00.000Z`);
+  monday.setUTCDate(monday.getUTCDate() + 21);
+  while (monday.getUTCDay() !== 1) monday.setUTCDate(monday.getUTCDate() + 1);
+  const selected = [0, 2].map((offset) => {
+    const day = new Date(monday);
+    day.setUTCDate(day.getUTCDate() + offset);
+    return day.toISOString().slice(0, 10);
+  });
+  const path = `${araria}/${calendarStaff}/${today}/calendar-leave.pdf`;
+  await db.query(
+    "insert into pending_uploads(path,staff_id,block_id) values($1,$2,$3)",
+    [path, calendarStaff, araria],
+  );
+  await db.exec("set role authenticated");
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+    calendarStaff,
+  ]);
+  let requestId;
+  try {
+    const saved = (
+      await db.query(
+        "select submit_leave_application_v3('Office','Staff','CL',$1,null,$2::date[]) as row",
+        [path, selected],
+      )
+    ).rows[0].row;
+    requestId = saved.id;
+    assert.deepEqual(saved.leave_dates, selected);
+    assert.equal(
+      (
+        await db.query(
+          "select count(*)::int n from attendance where staff_id=$1",
+          [calendarStaff],
+        )
+      ).rows[0].n,
+      0,
+    );
+    await assert.rejects(
+      db.query(
+        "select submit_leave_application_v3('Office','Staff','CL',$1,null,$2::date[])",
+        [path, selected],
+      ),
+    );
+  } finally {
+    await db.exec("reset role");
+  }
+  const signed = `${araria}/${calendarStaff}/leave-decisions/${requestId}/signed.pdf`;
+  await db.query(
+    "insert into leave_decision_documents(path,request_id,actor_id,block_id,method) values($1,$2,$3,$4,'drawn')",
+    [signed, requestId, dpro, araria],
+  );
+  await db.exec("set role authenticated");
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [dpro]);
+  try {
+    const decided = (
+      await db.query(
+        "select decide_leave_application_v2($1,true,$2,null) as row",
+        [requestId, signed],
+      )
+    ).rows[0].row;
+    assert.equal(decided.status, "approved");
+    const used = (
+      await db.query(
+        "select date::text from attendance where staff_id=$1 and status='leave' order by date",
+        [calendarStaff],
+      )
+    ).rows.map((r) => r.date);
+    assert.deepEqual(used, selected);
+    await assert.rejects(
+      db.query("select decide_leave_application_v2($1,true,$2,null)", [
+        requestId,
+        signed,
+      ]),
+    );
+  } finally {
+    await db.exec("reset role");
+  }
+  const friday = new Date(monday);
+  friday.setUTCDate(friday.getUTCDate() + 4);
+  const range = [0, 1, 2, 3].map((offset) => {
+    const day = new Date(friday);
+    day.setUTCDate(day.getUTCDate() + offset);
+    return day.toISOString().slice(0, 10);
+  });
+  const rangePath = `${araria}/${calendarStaff}/${today}/range-leave.pdf`;
+  await db.query(
+    "insert into pending_uploads(path,staff_id,block_id) values($1,$2,$3)",
+    [rangePath, calendarStaff, araria],
+  );
+  await db.exec("set role authenticated");
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+    calendarStaff,
+  ]);
+  let rangeId;
+  try {
+    const saved = (
+      await db.query(
+        "select submit_leave_application_v3('Office','Staff','CL',$1,null,$2::date[]) as row",
+        [rangePath, range],
+      )
+    ).rows[0].row;
+    rangeId = saved.id;
+    assert.deepEqual(saved.leave_dates, range);
+  } finally {
+    await db.exec("reset role");
+  }
+  const rangeSigned = `${araria}/${calendarStaff}/leave-decisions/${rangeId}/signed.pdf`;
+  await db.query(
+    "insert into leave_decision_documents(path,request_id,actor_id,block_id,method) values($1,$2,$3,$4,'drawn')",
+    [rangeSigned, rangeId, dpro, araria],
+  );
+  await db.exec("set role authenticated");
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [dpro]);
+  try {
+    await db.query("select decide_leave_application_v2($1,true,$2,null)", [
+      rangeId,
+      rangeSigned,
+    ]);
+    const rows = (
+      await db.query(
+        "select date::text from attendance where staff_id=$1 and date=any($2::date[]) order by date",
+        [calendarStaff, range],
+      )
+    ).rows.map((row) => row.date);
+    assert.deepEqual(rows, [range[0], range[1], range[3]]);
+  } finally {
+    await db.exec("reset role");
+  }
 });

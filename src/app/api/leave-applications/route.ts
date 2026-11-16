@@ -16,11 +16,12 @@ import {
   sanitizeLeaveJpeg,
 } from "../../../lib/file-validation";
 import { makeSignedLeavePdf } from "../../../lib/leave-decision-document";
+import { leaveDatesLabel } from "../../../lib/leave-dates";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 const fields =
-  "id,staff_id,staff_name,block_id,date,panchayat,position,leave_type,leave_detail,status,created_at,decided_at,decided_by,rejection_reason,leave_path,decision_document_path,decision_method,blocks(name_en),decider:profiles!leave_applications_decided_by_fkey(name,role)";
+  "id,staff_id,staff_name,block_id,date,leave_dates,panchayat,position,leave_type,leave_detail,status,created_at,decided_at,decided_by,rejection_reason,leave_path,decision_document_path,decision_method,blocks(name_en),decider:profiles!leave_applications_decided_by_fkey(name,role)";
 
 export async function GET(req: Request) {
   try {
@@ -30,7 +31,7 @@ export async function GET(req: Request) {
     if (profile.role === "staff") {
       const [rows, leaveUsage] = await Promise.all([
         sb(
-          `/rest/v1/leave_applications?staff_id=eq.${profile.id}${history ? "" : `&date=eq.${istDate()}`}&select=${fields}&order=created_at.desc&limit=${history ? 500 : 1}`,
+          `/rest/v1/leave_applications?staff_id=eq.${profile.id}${history ? "" : `&leave_dates=cs.%7B${istDate()}%7D`}&select=${fields}&order=created_at.desc&limit=${history ? 500 : 1}`,
           {},
           token,
         ),
@@ -77,7 +78,7 @@ export async function GET(req: Request) {
           token,
         ),
         sb(
-          `/rest/v1/leave_applications?staff_id=eq.${selected.staff_id}&select=id,date,leave_type,leave_detail,status,created_at,decided_at,rejection_reason,decision_document_path&order=created_at.desc&limit=500`,
+          `/rest/v1/leave_applications?staff_id=eq.${selected.staff_id}&select=id,date,leave_dates,leave_type,leave_detail,status,created_at,decided_at,rejection_reason,decision_document_path&order=created_at.desc&limit=500`,
           {},
           token,
         ),
@@ -115,7 +116,7 @@ export async function GET(req: Request) {
     if (history && !/^\d{4}-\d{2}-\d{2}$/.test(date))
       throw new HttpError(400, "Invalid date.");
     const rows = await sb(
-      `/rest/v1/leave_applications?${history ? `status=in.(approved,rejected)&date=eq.${date}` : "status=eq.pending"}${blockFilter}&select=${fields}&order=${history ? "decided_at" : "created_at"}.desc&limit=500`,
+      `/rest/v1/leave_applications?${history ? `status=in.(approved,rejected)&leave_dates=cs.%7B${date}%7D` : "status=eq.pending"}${blockFilter}&select=${fields}&order=${history ? "decided_at" : "created_at"}.desc&limit=500`,
       {},
       token,
     );
@@ -145,7 +146,7 @@ export async function POST(req: Request) {
     )
       throw new HttpError(400, "Invalid leave decision.");
     const rows = await sb(
-      `/rest/v1/leave_applications?id=eq.${id}&status=eq.pending&select=id,staff_id,block_id,date,leave_type,leave_path`,
+      `/rest/v1/leave_applications?id=eq.${id}&status=eq.pending&select=id,staff_id,block_id,date,leave_dates,leave_type,leave_path`,
       {},
       token,
     );
@@ -206,7 +207,8 @@ export async function POST(req: Request) {
             signature: bytes,
             requestId: id,
             staffId: request.staff_id,
-            leaveDate: request.date,
+            leaveDate: leaveDatesLabel(request.leave_dates, request.date),
+            leaveDates: request.leave_dates,
             leaveType: request.leave_type,
             approverRole: profile.role,
             decidedAt: new Date(),

@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { leaveDatesLabel } from "../lib/leave-dates";
 
 type Request = {
   id: string;
   staff_name?: string;
   leave_type: string;
   date: string;
+  leave_dates?: string[];
 };
 
 export default function LeaveDecisionDialog({
@@ -119,7 +121,7 @@ export default function LeaveDecisionDialog({
         </div>
         <p>
           <strong>{request.staff_name}</strong> • {request.leave_type} •{" "}
-          {request.date}
+          {leaveDatesLabel(request.leave_dates, request.date)}
         </p>
         <form onSubmit={(event) => void submit(event)}>
           {approve ? (
