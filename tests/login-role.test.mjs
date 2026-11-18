@@ -23,7 +23,7 @@ process.env.SUPABASE_PUBLISHABLE_KEY = "sb_publishable_fixture";
 process.env.APP_URL = "https://portal.example.test";
 process.env.TURNSTILE_SITE_KEY = "site-fixture";
 process.env.TURNSTILE_SECRET_KEY = "secret-fixture";
-function request(role) {
+function request(role, identifier = "person@example.test") {
   return new Request("https://portal.example.test/api/auth/login", {
     method: "POST",
     headers: {
@@ -31,7 +31,7 @@ function request(role) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      identifier: "person@example.test",
+      identifier,
       password: "fixture-password",
       role,
       captcha_token: adminCaptchaFixture(process.env.TURNSTILE_SECRET_KEY),
@@ -120,6 +120,67 @@ test("staff, BPRO and DPRO logins require the matching role", async () => {
         (response.headers.get("set-cookie") || "").includes("araria_device="),
         false,
       );
+    }
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("staff phone lookup ignores archived profiles and refuses ambiguous matches", async () => {
+  const original = globalThis.fetch;
+  let authRequests = 0;
+  try {
+    for (const [matches, expected] of [
+      [[], 403],
+      [
+        [
+          { login_email: "one@staff.araria.invalid" },
+          { login_email: "two@staff.araria.invalid" },
+        ],
+        409,
+      ],
+      [[{ login_email: "one@staff.araria.invalid" }], 200],
+    ]) {
+      authRequests = 0;
+      globalThis.fetch = async (input, init = {}) => {
+        const url = new URL(String(input));
+        if (
+          url.pathname === "/rest/v1/profiles" &&
+          url.searchParams.has("phone")
+        ) {
+          assert.equal(url.searchParams.get("role"), "eq.staff");
+          assert.equal(url.searchParams.get("active"), "eq.true");
+          assert.equal(url.searchParams.get("deleted_at"), "is.null");
+          return Response.json(matches);
+        }
+        if (url.pathname === "/rest/v1/rpc/login_limit_status")
+          return Response.json(true);
+        if (url.pathname === "/rest/v1/rpc/clear_login_account")
+          return Response.json(null);
+        if (url.pathname === "/auth/v1/token") {
+          authRequests++;
+          assert.equal(JSON.parse(init.body).email, "one@staff.araria.invalid");
+          return Response.json({
+            user: { id: "11111111-1111-4111-8111-111111111111" },
+            access_token: "fixture-user-jwt",
+            expires_in: 3600,
+          });
+        }
+        if (url.pathname === "/rest/v1/profiles")
+          return Response.json([
+            {
+              id: "11111111-1111-4111-8111-111111111111",
+              role: "staff",
+              active: true,
+              block_id: "22222222-2222-4222-8222-222222222222",
+              assignments: [],
+            },
+          ]);
+        throw Error("Unexpected request " + url.pathname);
+      };
+      const response = await POST(request("staff", "9876543210"));
+      assert.equal(response.status, expected);
+      assert.equal(authRequests, expected === 200 ? 1 : 0);
     }
   } finally {
     globalThis.fetch = original;

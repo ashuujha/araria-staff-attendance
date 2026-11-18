@@ -45,9 +45,21 @@ export async function POST(req: Request) {
       if (!/^[6-9]\d{9}$/.test(phone))
         throw new HttpError(400, "मान्य 10 अंकों का मोबाइल नंबर डालें।");
       const profiles = await sb(
-        "/rest/v1/profiles?phone=eq." + phone + "&select=login_email",
+        "/rest/v1/profiles?phone=eq." +
+          phone +
+          "&role=eq.staff&active=eq.true&deleted_at=is.null&select=login_email&limit=2",
       );
-      email = profiles?.[0]?.login_email || `${phone}@staff.araria.invalid`;
+      if (!profiles?.length)
+        throw new HttpError(
+          403,
+          "इस मोबाइल नंबर का सक्रिय कर्मी लॉगिन उपलब्ध नहीं है। अपने BPRO से संपर्क करें।",
+        );
+      if (profiles.length !== 1 || !profiles[0].login_email)
+        throw new HttpError(
+          409,
+          "इस मोबाइल नंबर के लॉगिन में समस्या है। अपने BPRO से संपर्क करें।",
+        );
+      email = profiles[0].login_email;
       stage("phone_lookup", lookupStarted);
     }
     const keyFor = (value: string) =>
