@@ -107,16 +107,36 @@ export async function POST(req: Request) {
         );
       const assignments = districtAssignments(b.assignments, blockId);
       const [existingProfile, existingRoster] = await Promise.all([
-        sb(`/rest/v1/profiles?phone=eq.${b.phone}&select=id`),
         sb(
-          `/rest/v1/staff_roster?phone=eq.${b.phone}&deleted_at=is.null&select=id`,
+          `/rest/v1/profiles?phone=eq.${b.phone}&deleted_at=is.null&select=id,block_id`,
+        ),
+        sb(
+          `/rest/v1/staff_roster?phone=eq.${b.phone}&deleted_at=is.null&select=id,block_id`,
         ),
       ]);
-      if (existingProfile.length || existingRoster.length)
-        throw new HttpError(
+      if (existingProfile.length || existingRoster.length) {
+        const matches = [...existingProfile, ...existingRoster];
+        const canOpen =
+          profile.role === "dpro" ||
+          matches.some((entry) => entry.block_id === profile.block_id);
+        return json(
+          {
+            error: canOpen
+              ? "This mobile number already belongs to a staff entry. Open the existing entry below to edit it or generate its pending login."
+              : "This mobile number is registered in another block. Ask DPRO to check the existing account before adding a different person.",
+            ...(canOpen
+              ? {
+                  existing: {
+                    phone: b.phone,
+                    name: "Existing staff",
+                    removed: false,
+                  },
+                }
+              : {}),
+          },
           409,
-          "This mobile number is already in the directory or an existing account. If its login is pending, open that staff entry and choose Generate login. Correct shared numbers first.",
         );
+      }
       // A former account may still exist in Auth to preserve historical
       // attendance references. Use a fresh internal email for each login.
       const loginEmail = `${b.phone}.${randomBytes(8).toString("hex")}@staff.araria.invalid`;
