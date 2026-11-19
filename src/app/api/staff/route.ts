@@ -120,7 +120,7 @@ export async function POST(req: Request) {
       // A former account may still exist in Auth to preserve historical
       // attendance references. Use a fresh internal email for each login.
       const loginEmail = `${b.phone}.${randomBytes(8).toString("hex")}@staff.araria.invalid`;
-      const password = `${randomBytes(18).toString("base64url")}#aA1`;
+      const password = `${blockRows[0].name_en}@${b.phone.slice(-4)}#26`;
       const user = await sb("/auth/v1/admin/users", {
         method: "POST",
         body: JSON.stringify({
@@ -233,7 +233,7 @@ export async function POST(req: Request) {
         if (!blockRows.length)
           throw new HttpError(400, "Choose an active block.");
         const loginEmail = `${target.phone}.${randomBytes(8).toString("hex")}@staff.araria.invalid`;
-        const password = `${randomBytes(18).toString("base64url")}#aA1`;
+        const password = `${blockRows[0].name_en}@${target.phone.slice(-4)}#26`;
         const user = await sb("/auth/v1/admin/users", {
           method: "POST",
           body: JSON.stringify({
@@ -493,7 +493,13 @@ export async function POST(req: Request) {
           400,
           "ईमेल खाते का पासवर्ड Supabase Admin से रीसेट करें।",
         );
-      const password = `Araria@${target.phone.slice(-4)}#26`;
+      const blockRows = await sb(
+        `/rest/v1/blocks?id=eq.${target.block_id}&select=name_en`,
+        {},
+        token,
+      );
+      if (!blockRows.length) throw new HttpError(400, "Choose a valid block.");
+      const password = `${blockRows[0].name_en}@${target.phone.slice(-4)}#26`;
       await sb("/auth/v1/admin/users/" + target.id, {
         method: "PUT",
         body: JSON.stringify({

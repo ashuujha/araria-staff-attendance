@@ -95,7 +95,7 @@ test("admin creates a staff login and keeps existing account edits scoped", asyn
       }),
     );
     assert.equal(created.status, 200);
-    assert.match((await created.json()).password, /^[A-Za-z0-9_-]{24}#aA1$/);
+    assert.equal((await created.json()).password, "Araria@0002#26");
     const updated = await POST(
       request({
         action: "update",
@@ -238,7 +238,7 @@ test("BPRO can generate a login for an unlinked staff entry in their block only"
   try {
     const created = await POST(request({ action: "provision", id: staff }));
     assert.equal(created.status, 200);
-    assert.match((await created.json()).password, /^[A-Za-z0-9_-]{24}#aA1$/);
+    assert.equal((await created.json()).password, "Araria@0002#26");
     assert.equal(authCreates, 1);
     rosterBlock = "55555555-5555-4555-8555-555555555555";
     assert.equal(
