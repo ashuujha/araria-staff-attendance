@@ -1537,16 +1537,16 @@ function Staff({
               </div>
               {phase(record) === "draft" ? (
                 <div className="sp-finish">
-                  <button
-                    type="button"
-                    className="sp-button sp-secondary"
-                    disabled={busy}
-                    onClick={() => setDepartureCameraOpen((open) => !open)}
-                  >
-                    {departureCameraOpen
-                      ? "कैमरा बंद करें / Close camera"
-                      : "आउट समय की GPS फोटो लें / Take departure GPS photo"}
-                  </button>
+                  {!departureCameraOpen && (
+                    <button
+                      type="button"
+                      className="sp-button sp-secondary"
+                      disabled={busy}
+                      onClick={() => setDepartureCameraOpen(true)}
+                    >
+                      आउट समय की GPS फोटो लें / Take departure GPS photo
+                    </button>
+                  )}
                   {departureCameraOpen && (
                     <WorkplaceCamera
                       mode="departure"
@@ -1557,15 +1557,17 @@ function Staff({
                       }}
                     />
                   )}
-                  {departurePreview && departureLocation && (
-                    <div className="sp-camera-review">
-                      <img
-                        className="sp-camera"
-                        src={departurePreview}
-                        alt="Departure GPS camera photo preview"
-                      />
-                    </div>
-                  )}
+                  {departurePreview &&
+                    departureLocation &&
+                    !departureCameraOpen && (
+                      <div className="sp-camera-review">
+                        <img
+                          className="sp-camera"
+                          src={departurePreview}
+                          alt="Departure GPS camera photo preview"
+                        />
+                      </div>
+                    )}
                   <button
                     className="sp-button sp-primary"
                     disabled={busy || !departurePhoto || !departureLocation}
@@ -1762,15 +1764,15 @@ function Staff({
                         key={status}
                       >
                         <strong>GPS कैमरा फोटो / GPS camera photo</strong>
-                        <button
-                          type="button"
-                          className="sp-button sp-secondary"
-                          onClick={() => setCameraOpen((open) => !open)}
-                        >
-                          {cameraOpen
-                            ? "कैमरा बंद करें / Close camera"
-                            : "कैमरा खोलें / Open camera"}
-                        </button>
+                        {!cameraOpen && (
+                          <button
+                            type="button"
+                            className="sp-button sp-secondary"
+                            onClick={() => setCameraOpen(true)}
+                          >
+                            कैमरा खोलें / Open camera
+                          </button>
+                        )}
                         {cameraOpen && (
                           <WorkplaceCamera
                             onClose={() => setCameraOpen(false)}
@@ -1780,7 +1782,7 @@ function Staff({
                             }}
                           />
                         )}
-                        {photoPreview && (
+                        {photoPreview && !cameraOpen && (
                           <img
                             className="sp-workplace-preview"
                             src={photoPreview}

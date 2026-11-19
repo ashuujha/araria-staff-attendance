@@ -2096,9 +2096,9 @@ img.sp-map {
 }
 .sp-workplace-camera {
   width: 100%;
-  max-width: 460px;
+  max-width: 400px;
   padding: 16px;
-  margin: 0;
+  margin: 0 auto;
 }
 .sp-camera,
 .sp-workplace-preview {
@@ -2112,8 +2112,48 @@ img.sp-map {
   background: #18324c;
 }
 .sp-camera-review {
-  justify-items: start;
+  justify-items: center;
   gap: 12px;
+}
+.sp-workplace-camera .sp-camera {
+  width: min(100%, 192px);
+  height: 256px;
+  max-width: 192px;
+  max-height: none;
+  margin: 0 auto;
+  object-fit: cover;
+  background: #e8eef3;
+}
+.sp-workplace-camera .sp-camera-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+.sp-workplace-camera .sp-camera-actions.is-review {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.sp-workplace-camera .sp-camera-actions .sp-button {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 4px;
+  font-size: 13px;
+  line-height: 1.2;
+  text-align: center;
+}
+.sp-staff-attendance-card .sp-workplace-preview,
+.sp-finish .sp-camera-review .sp-camera {
+  width: min(100%, 192px);
+  height: 256px;
+  max-width: 192px;
+  margin: 0 auto;
+  align-self: center;
+  object-fit: cover;
+}
+.sp-finish .sp-camera-review {
+  width: 100%;
+  justify-items: center;
 }
 .sp-camera-confirmation {
   margin-top: 2px;
