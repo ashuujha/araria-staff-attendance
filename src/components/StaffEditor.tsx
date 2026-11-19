@@ -28,6 +28,8 @@ export default function StaffEditor({
   onFound: (phone: string, removed: boolean) => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const saveInFlight = useRef(false);
+  const createAttempt = useRef({ fingerprint: "", id: "" });
   const [name, setName] = useState(person?.name || "");
   const [phone, setPhone] = useState(person?.phone || "");
   const [email, setEmail] = useState(person?.email || "");
@@ -126,7 +128,8 @@ export default function StaffEditor({
   }
   async function save(event: React.FormEvent) {
     event.preventDefault();
-    if (busy) return;
+    if (busy || saveInFlight.current) return;
+    saveInFlight.current = true;
     const generateLogin =
       person?.roster_only &&
       (event.nativeEvent as SubmitEvent).submitter instanceof
@@ -137,6 +140,16 @@ export default function StaffEditor({
     setError("");
     setDuplicate(null);
     try {
+      const fingerprint = JSON.stringify({
+        name,
+        phone,
+        email,
+        gender,
+        selectedBlockId,
+        assignments,
+      });
+      if (!person && createAttempt.current.fingerprint !== fingerprint)
+        createAttempt.current = { fingerprint, id: crypto.randomUUID() };
       const response = await fetch("/api/staff", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -160,6 +173,7 @@ export default function StaffEditor({
                 }
               : {
                   action: "create",
+                  request_id: createAttempt.current.id,
                   name: name.trim(),
                   phone,
                   email: email.trim(),
@@ -201,6 +215,7 @@ export default function StaffEditor({
           : "अनुरोध में देर हो रही है। रीफ़्रेश करके बदलाव जाँचें। / Request timed out. Refresh to check whether the change was saved.",
       );
     } finally {
+      saveInFlight.current = false;
       setBusy(false);
     }
   }

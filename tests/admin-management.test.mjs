@@ -503,3 +503,69 @@ test("BPRO cannot request another block's separated directory", async () => {
     globalThis.fetch = original;
   }
 });
+
+test("retry of the same administrator save recovers its account without creating or resetting a login", async () => {
+  const original = globalThis.fetch;
+  const requestId = "66666666-6666-4666-8666-666666666666";
+  let authWrites = 0;
+  globalThis.fetch = async (input, init = {}) => {
+    const url = new URL(input);
+    if (url.pathname === "/rest/v1/profiles") {
+      if (url.searchParams.has("phone"))
+        return Response.json([{ id: staff, block_id: blockId }]);
+      if (url.searchParams.get("id") === `eq.${staff}`)
+        return Response.json([
+          {
+            id: staff,
+            phone: "9000000002",
+            role: "staff",
+            block_id: blockId,
+            active: true,
+          },
+        ]);
+      return Response.json([
+        { id: admin, role: "dpro", active: true, block_id: blockId },
+      ]);
+    }
+    if (url.pathname === "/rest/v1/blocks")
+      return Response.json([{ id: blockId, name_en: "Araria" }]);
+    if (url.pathname === "/rest/v1/staff_roster") return Response.json([]);
+    if (url.pathname === `/auth/v1/admin/users/${staff}` && !init.method)
+      return Response.json({
+        user_metadata: { create_request_id: requestId, created_by: admin },
+      });
+    if (url.pathname.startsWith("/auth/v1/admin/users")) {
+      authWrites++;
+      throw Error("Unexpected account mutation");
+    }
+    throw Error(`Unexpected endpoint ${url.pathname}`);
+  };
+  const body = {
+    action: "create",
+    request_id: requestId,
+    name: "New Staff",
+    phone: "9000000002",
+    block_id: blockId,
+    assignments: [
+      {
+        department: "पंचायती राज विभाग",
+        panchayat: "Pokharia",
+        position: "Staff",
+      },
+    ],
+  };
+  try {
+    const response = await POST(request(body));
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.equal(result.recovered, true);
+    assert.equal(result.password, "Araria@0002#26");
+    assert.equal(authWrites, 0);
+    const duplicate = await POST(
+      request({ ...body, request_id: "77777777-7777-4777-8777-777777777777" }),
+    );
+    assert.equal(duplicate.status, 409);
+  } finally {
+    globalThis.fetch = original;
+  }
+});

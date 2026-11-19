@@ -91,6 +91,12 @@ export async function POST(req: Request) {
         "create" | "update" | "delete" | "reset_password" | "provision"
     ];
     if (b.action === "create") {
+      if (
+        b.request_id != null &&
+        (typeof b.request_id !== "string" ||
+          !/^[0-9a-f-]{36}$/.test(b.request_id))
+      )
+        throw new HttpError(400, "Invalid save request. Reopen Add staff.");
       const blockId = ownBlock(profile, b.block_id);
       const blockRows = await sb(
         `/rest/v1/blocks?id=eq.${blockId}&active=eq.true&select=id,name_en`,
@@ -115,6 +121,29 @@ export async function POST(req: Request) {
         ),
       ]);
       if (existingProfile.length || existingRoster.length) {
+        // A retry of this administrator's successful save returns its result,
+        // rather than asking them to add or reset the same account again.
+        const candidate = existingProfile.find(
+          (entry: { id: string; block_id: string }) => entry.block_id === blockId,
+        );
+        if (candidate && b.request_id) {
+          const account = await sb(`/auth/v1/admin/users/${candidate.id}`);
+          if (
+            account.user_metadata?.create_request_id === b.request_id &&
+            account.user_metadata?.created_by === profile.id
+          ) {
+            const saved = await sb(
+              `/rest/v1/profiles?id=eq.${candidate.id}&select=id,name,phone,email,gender,assignments,block,block_id,role,active`,
+              {},
+              token,
+            );
+            return json({
+              profile: saved[0],
+              password: `${blockRows[0].name_en}@${b.phone.slice(-4)}#26`,
+              recovered: true,
+            });
+          }
+        }
         const matches = [...existingProfile, ...existingRoster];
         const canOpen =
           profile.role === "dpro" ||
@@ -150,6 +179,8 @@ export async function POST(req: Request) {
           user_metadata: {
             name: b.name.trim(),
             provisioned_by: "admin_dashboard",
+            create_request_id: b.request_id || null,
+            created_by: profile.id,
           },
         }),
       });
