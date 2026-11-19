@@ -74,7 +74,9 @@ export async function POST(req: Request) {
       !b ||
       typeof b !== "object" ||
       Array.isArray(b) ||
-      !["create", "update", "delete", "reset_password"].includes(b.action)
+      !["create", "update", "delete", "reset_password", "provision"].includes(
+        b.action,
+      )
     )
       throw new HttpError(400, "कार्रवाई अमान्य।");
     // Audit the authenticated actor and operation without asking for a reason.
@@ -83,7 +85,11 @@ export async function POST(req: Request) {
       update: "Administrator updated staff details",
       delete: "Administrator removed a staff account",
       reset_password: "Administrator reset the staff password",
-    }[b.action as "create" | "update" | "delete" | "reset_password"];
+      provision: "Administrator created a login for a directory staff member",
+    }[
+      b.action as
+        "create" | "update" | "delete" | "reset_password" | "provision"
+    ];
     if (b.action === "create") {
       const blockId = ownBlock(profile, b.block_id);
       const blockRows = await sb(
@@ -101,17 +107,15 @@ export async function POST(req: Request) {
         );
       const assignments = districtAssignments(b.assignments, blockId);
       const [existingProfile, existingRoster] = await Promise.all([
-        sb(`/rest/v1/profiles?phone=eq.${b.phone}&select=id`, {}, token),
+        sb(`/rest/v1/profiles?phone=eq.${b.phone}&select=id`),
         sb(
           `/rest/v1/staff_roster?phone=eq.${b.phone}&deleted_at=is.null&select=id`,
-          {},
-          token,
         ),
       ]);
       if (existingProfile.length || existingRoster.length)
         throw new HttpError(
           409,
-          "This mobile number is already in the staff directory.",
+          "This mobile number is already in the directory or an existing account. If its login is pending, open that staff entry and choose Generate login. Correct shared numbers first.",
         );
       const loginEmail = `${b.phone}@staff.araria.invalid`;
       const password = `${randomBytes(18).toString("base64url")}#aA1`;
@@ -178,7 +182,7 @@ export async function POST(req: Request) {
     if (typeof b.id !== "string" || !/^[0-9a-f-]{36}$/.test(b.id))
       throw new HttpError(400, "मान्य कर्मी चुनें।");
     const rosterTarget = await sb(
-      `/rest/v1/staff_roster?id=eq.${b.id}&select=id,block_id,deleted_at`,
+      `/rest/v1/staff_roster?id=eq.${b.id}&select=id,name,phone,email,gender,assignments,block_id,active,deleted_at,linked_profile_id`,
       {},
       token,
     );
@@ -188,6 +192,118 @@ export async function POST(req: Request) {
         throw new HttpError(404, "Staff is not in the directory.");
       if (profile.role === "bpro" && target.block_id !== profile.block_id)
         throw new HttpError(403, "This staff member is outside your block.");
+      if (b.action === "provision") {
+        if (!target.active || target.linked_profile_id)
+          throw new HttpError(
+            409,
+            "This directory entry cannot receive a new login.",
+          );
+        if (!/^[6-9]\d{9}$/.test(target.phone || ""))
+          throw new HttpError(
+            400,
+            "Add a valid mobile number before generating a login.",
+          );
+        const assignments = districtAssignments(
+          target.assignments,
+          target.block_id,
+        );
+        const [samePhoneProfiles, samePhoneRoster, blockRows] =
+          await Promise.all([
+            sb(`/rest/v1/profiles?phone=eq.${target.phone}&select=id`),
+            sb(
+              `/rest/v1/staff_roster?phone=eq.${target.phone}&active=eq.true&deleted_at=is.null&select=id`,
+            ),
+            sb(
+              `/rest/v1/blocks?id=eq.${target.block_id}&active=eq.true&select=name_en`,
+              {},
+              token,
+            ),
+          ]);
+        if (
+          samePhoneProfiles.length ||
+          samePhoneRoster.length !== 1 ||
+          samePhoneRoster[0].id !== target.id
+        )
+          throw new HttpError(
+            409,
+            "This mobile number belongs to another directory entry or login. Correct it first.",
+          );
+        if (!blockRows.length)
+          throw new HttpError(400, "Choose an active block.");
+        const loginEmail = `${target.phone}@staff.araria.invalid`;
+        const password = `${randomBytes(18).toString("base64url")}#aA1`;
+        const user = await sb("/auth/v1/admin/users", {
+          method: "POST",
+          body: JSON.stringify({
+            email: loginEmail,
+            password,
+            email_confirm: true,
+            user_metadata: {
+              name: target.name,
+              roster_source_key: target.id,
+              provisioned_by: "admin_dashboard",
+            },
+          }),
+        });
+        try {
+          const created = await sb(
+            "/rest/v1/profiles?select=id,name,phone,email,gender,assignments,block,block_id,role,active",
+            {
+              method: "POST",
+              headers: { Prefer: "return=representation" },
+              body: JSON.stringify({
+                id: user.id,
+                block_id: target.block_id,
+                block: blockRows[0].name_en,
+                name: target.name,
+                phone: target.phone,
+                email: target.email || null,
+                login_email: loginEmail,
+                gender: target.gender || null,
+                assignments,
+                role: "staff",
+                active: true,
+              }),
+            },
+          );
+          const linked = await sb(
+            `/rest/v1/staff_roster?id=eq.${target.id}&linked_profile_id=is.null&active=eq.true&deleted_at=is.null&select=id`,
+            {
+              method: "PATCH",
+              headers: { Prefer: "return=representation" },
+              body: JSON.stringify({ linked_profile_id: user.id }),
+            },
+          );
+          if (linked.length !== 1)
+            throw new HttpError(
+              409,
+              "Directory changed. Refresh and try again.",
+            );
+          try {
+            await audit(
+              profile.id,
+              "provision_staff_login",
+              user.id,
+              reason,
+              null,
+              target.block_id,
+            );
+          } catch {
+            console.error("Staff provisioning audit write failed");
+          }
+          return json({ profile: created[0], password });
+        } catch (error) {
+          try {
+            await sb(`/rest/v1/profiles?id=eq.${user.id}`, {
+              method: "DELETE",
+            });
+            await sb(`/auth/v1/admin/users/${user.id}`, { method: "DELETE" });
+          } catch {
+            console.error("Staff provisioning cleanup failed");
+          }
+          throw error;
+        }
+      }
       if (b.action === "reset_password")
         throw new HttpError(409, "Staff login has not been created yet.");
       const changes = b.action === "update" ? b.changes : {};

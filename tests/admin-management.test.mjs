@@ -172,6 +172,91 @@ test("admin creates a staff login and keeps existing account edits scoped", asyn
     globalThis.fetch = original;
   }
 });
+
+test("BPRO can generate a login for an unlinked staff entry in their block only", async () => {
+  const original = globalThis.fetch;
+  const authUser = "44444444-4444-4444-8444-444444444444";
+  let rosterBlock = blockId;
+  let duplicate = false;
+  let authCreates = 0;
+  const assignment = {
+    department: "पंचायती राज विभाग",
+    panchayat: "Pokharia",
+    position: "Staff",
+    block_id: blockId,
+  };
+  globalThis.fetch = async (input, init = {}) => {
+    const url = new URL(input);
+    if (url.pathname === "/rest/v1/profiles") {
+      if (url.searchParams.get("id") === `eq.${admin}`)
+        return Response.json([
+          { id: admin, role: "bpro", active: true, block_id: blockId },
+        ]);
+      if (url.searchParams.has("phone")) return Response.json([]);
+      if (init.method === "POST")
+        return Response.json([
+          {
+            id: authUser,
+            name: "Roster Staff",
+            phone: "9000000002",
+            block_id: blockId,
+          },
+        ]);
+      return Response.json([]);
+    }
+    if (url.pathname === "/rest/v1/staff_roster") {
+      if (url.searchParams.has("phone"))
+        return Response.json(
+          duplicate ? [{ id: staff }, { id: authUser }] : [{ id: staff }],
+        );
+      if (init.method === "PATCH") return Response.json([{ id: staff }]);
+      return Response.json([
+        {
+          id: staff,
+          name: "Roster Staff",
+          phone: "9000000002",
+          email: null,
+          gender: "female",
+          assignments: [assignment],
+          block_id: rosterBlock,
+          active: true,
+          deleted_at: null,
+          linked_profile_id: null,
+        },
+      ]);
+    }
+    if (url.pathname === "/rest/v1/blocks")
+      return Response.json([{ name_en: "Araria" }]);
+    if (url.pathname === "/auth/v1/admin/users") {
+      authCreates++;
+      return Response.json({ id: authUser });
+    }
+    if (url.pathname === "/rest/v1/audit_logs")
+      return new Response(null, { status: 204 });
+    throw Error(`Unexpected endpoint ${url.pathname}`);
+  };
+  try {
+    const created = await POST(request({ action: "provision", id: staff }));
+    assert.equal(created.status, 200);
+    assert.match((await created.json()).password, /^[A-Za-z0-9_-]{24}#aA1$/);
+    assert.equal(authCreates, 1);
+    rosterBlock = "55555555-5555-4555-8555-555555555555";
+    assert.equal(
+      (await POST(request({ action: "provision", id: staff }))).status,
+      403,
+    );
+    assert.equal(authCreates, 1);
+    rosterBlock = blockId;
+    duplicate = true;
+    assert.equal(
+      (await POST(request({ action: "provision", id: staff }))).status,
+      409,
+    );
+    assert.equal(authCreates, 1);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
 test("admin loading validates JWT through Supabase then starts attendance and directory reads together", async () => {
   const original = globalThis.fetch,
     calls = [];

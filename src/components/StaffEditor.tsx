@@ -127,6 +127,12 @@ export default function StaffEditor({
   async function save(event: React.FormEvent) {
     event.preventDefault();
     if (busy) return;
+    const generateLogin =
+      person?.roster_only &&
+      (event.nativeEvent as SubmitEvent).submitter instanceof
+        HTMLButtonElement &&
+      ((event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement)
+        .value === "generate-login";
     setBusy(true);
     setError("");
     setDuplicate(null);
@@ -163,7 +169,7 @@ export default function StaffEditor({
                 },
         ),
       });
-      const data = await response.json();
+      let data = await response.json();
       if (!response.ok) {
         if (response.status === 409 && data.existing)
           setDuplicate(data.existing);
@@ -172,6 +178,18 @@ export default function StaffEditor({
         );
       }
       onSaved(data.profile, remove ? person!.id : undefined);
+      if (generateLogin) {
+        const provision = await fetch("/api/staff", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: AbortSignal.timeout(25000),
+          body: JSON.stringify({ action: "provision", id: person!.id }),
+        });
+        data = await provision.json();
+        if (!provision.ok)
+          throw Error(data.error || "Could not generate staff login.");
+        onSaved(data.profile);
+      }
       if (data.password) {
         setCredentials({ login: phone, password: data.password });
         setDone(true);
@@ -448,13 +466,25 @@ export default function StaffEditor({
                 </>
               )}
 
-              <button className="sp-button sp-primary" disabled={busy}>
-                {busy
-                  ? "सहेजा जा रहा है…"
-                  : remove
-                    ? "स्थायी हटाने की पुष्टि / Confirm permanent removal"
-                    : "सहेजें / Save"}
-              </button>
+              <div className="sp-actions">
+                <button className="sp-button sp-primary" disabled={busy}>
+                  {busy
+                    ? "सहेजा जा रहा है…"
+                    : remove
+                      ? "स्थायी हटाने की पुष्टि / Confirm permanent removal"
+                      : "सहेजें / Save"}
+                </button>
+                {person?.roster_only && !remove && (
+                  <button
+                    className="sp-button sp-secondary"
+                    type="submit"
+                    value="generate-login"
+                    disabled={busy || !active || !/^[6-9]\d{9}$/.test(phone)}
+                  >
+                    लॉगिन बनाएँ / Generate login
+                  </button>
+                )}
+              </div>
             </fieldset>
           </form>
         )}
