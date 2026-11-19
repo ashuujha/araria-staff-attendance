@@ -1,4 +1,4 @@
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { mkdir } from "node:fs/promises";
@@ -77,7 +77,26 @@ const jpeg = await sharp({
 })
   .jpeg()
   .toBuffer();
+// Keep evidence tests in the permitted IST window for the requested action.
+const NativeDate = globalThis.Date;
+let fixtureAction = "save_draft";
+globalThis.Date = class extends NativeDate {
+  static now() {
+    return new this().getTime();
+  }
+  constructor(...args) {
+    if (args.length) super(...args);
+    else {
+      super();
+      this.setUTCHours(fixtureAction === "complete" ? 10 : 4, 30, 0, 0);
+    }
+  }
+};
+after(() => {
+  globalThis.Date = NativeDate;
+});
 function request(patch = {}) {
+  fixtureAction = patch.action || "save_draft";
   return new Request(process.env.APP_URL + "/api/attendance-workflow", {
     method: "POST",
     headers: {

@@ -20,6 +20,7 @@ import { reserveEvidenceSlot } from "../../../lib/evidence-capacity";
 import { requireWorkingDay } from "../../../lib/office-server";
 import { PANCHAYATI_RAJ_DEPARTMENT } from "../../../lib/district";
 import { normalizeLeaveDates } from "../../../lib/leave-dates";
+import { attendanceHoursError } from "../../../lib/attendance-hours";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
@@ -101,6 +102,8 @@ export async function POST(req: Request) {
       throw new HttpError(403, "केवल कर्मी उपस्थिति दर्ज कर सकते हैं।");
     if (body.status !== "leave") await requireWorkingDay(profile.block_id);
     const draft = body.action === "save_draft";
+    const hoursError = attendanceHoursError(body.action);
+    if (hoursError) throw new HttpError(403, hoursError);
     if (body.action !== "complete") {
       for (const key of ["panchayat", "department", "position"]) {
         if (
@@ -308,6 +311,9 @@ export async function POST(req: Request) {
     }
     releaseEvidence?.();
     releaseEvidence = undefined;
+    // Recheck after uploads in case processing crossed the 3 PM boundary.
+    const finalHoursError = attendanceHoursError(body.action);
+    if (finalHoursError) throw new HttpError(403, finalHoursError);
     if (body.action === "complete") {
       const record = await sb(
         "/rest/v1/rpc/complete_attendance_with_out_photo",

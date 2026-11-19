@@ -35,6 +35,7 @@ import {
 } from "../lib/osm-camera";
 import { PANCHAYATI_RAJ_DEPARTMENT } from "../lib/district";
 import { isStaffLogoutLocked } from "../lib/staff-logout-window";
+import { arrivalClosed } from "../lib/attendance-hours";
 import {
   directoryChoices,
   filterDirectoryStaff,
@@ -1056,6 +1057,11 @@ function Staff({
   const [capturedLocation, setCapturedLocation] =
     useState<CameraLocation | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [arrivalIsClosed, setArrivalIsClosed] = useState(() => arrivalClosed());
+  useEffect(() => {
+    const timer = setInterval(() => setArrivalIsClosed(arrivalClosed()), 15000);
+    return () => clearInterval(timer);
+  }, []);
   const cameraSection = useRef<HTMLDivElement>(null);
   const [departurePhoto, setDeparturePhoto] = useState<File | null>(null);
   const [departureLocation, setDepartureLocation] =
@@ -1590,7 +1596,12 @@ function Staff({
                     )}
                   <button
                     className="sp-button sp-primary"
-                    disabled={busy || !departurePhoto || !departureLocation}
+                    disabled={
+                      busy ||
+                      !arrivalIsClosed ||
+                      !departurePhoto ||
+                      !departureLocation
+                    }
                     onClick={() => save(undefined, true)}
                   >
                     {busy
@@ -2010,12 +2021,17 @@ function Staff({
                         करने की सहमति देता/देती हूँ।
                       </span>
                     </label>
-                    <button className="sp-button sp-primary" disabled={busy}>
+                    <button
+                      className="sp-button sp-primary"
+                      disabled={busy || (status !== "leave" && arrivalIsClosed)}
+                    >
                       {busy
                         ? "सहेजा जा रहा है…"
                         : status === "leave"
                           ? "अवकाश आवेदन भेजें / Submit leave application"
-                          : "GPS फोटो सहित आगमन सहेजें / Save arrival draft"}
+                          : arrivalIsClosed
+                            ? "आगमन बंद • दोपहर 3 बजे / Arrival closed • 3 PM"
+                            : "GPS फोटो सहित आगमन सहेजें / Save arrival draft"}
                     </button>
                     {busy && saveProgress && (
                       <p role="status" aria-live="polite" className="sp-note">
