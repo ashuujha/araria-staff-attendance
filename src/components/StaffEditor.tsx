@@ -140,6 +140,28 @@ export default function StaffEditor({
     setError("");
     setDuplicate(null);
     try {
+      if (!remove) {
+        const blockName =
+          blocks.find((item) => item.id === selectedBlockId)?.name_en || block;
+        const known = new Set(
+          places
+            .filter((place) => place.block === blockName)
+            .map((place) => place.name),
+        );
+        const names = [
+          ...new Set(assignments.map((item) => item.panchayat.trim())),
+        ];
+        for (const name of names.filter((value) => !known.has(value))) {
+          const response = await fetch("/api/panchayats", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, block_id: selectedBlockId }),
+          });
+          const result = await response.json();
+          if (!response.ok)
+            throw Error(result.error || "Could not save panchayat.");
+        }
+      }
       const fingerprint = JSON.stringify({
         name,
         phone,
@@ -168,7 +190,10 @@ export default function StaffEditor({
                     email: email.trim(),
                     gender,
                     active,
-                    assignments,
+                    assignments: assignments.map((item) => ({
+                      ...item,
+                      panchayat: item.panchayat.trim(),
+                    })),
                   },
                 }
               : {
@@ -179,7 +204,10 @@ export default function StaffEditor({
                   email: email.trim(),
                   gender,
                   block_id: selectedBlockId,
-                  assignments,
+                  assignments: assignments.map((item) => ({
+                    ...item,
+                    panchayat: item.panchayat.trim(),
+                  })),
                 },
         ),
       });
@@ -392,7 +420,7 @@ export default function StaffEditor({
                   <h3>आवंटन / Assignments</h3>
                   <div className="sp-actions">
                     <label className="sp-field">
-                      New workspace / नया कार्यस्थल
+                      नई पंचायत / New panchayat
                       <input
                         value={newPlace}
                         maxLength={200}
@@ -407,7 +435,7 @@ export default function StaffEditor({
                       }
                       onClick={() => void addWorkspace()}
                     >
-                      Add workspace
+                      पंचायत जोड़ें / Add panchayat
                     </button>
                   </div>
                   {placesError && (
@@ -420,20 +448,22 @@ export default function StaffEditor({
                     <div className="sp-editor-assignment" key={index}>
                       <label className="sp-field">
                         पंचायत / Panchayat
-                        <select
+                        <input
                           required
+                          minLength={2}
+                          maxLength={200}
+                          list={`staff-panchayats-${index}`}
+                          placeholder="चुनें या लिखें / Choose or type"
                           value={a.panchayat}
                           onChange={(e) =>
                             assignment(index, "panchayat", e.target.value)
                           }
-                        >
-                          <option value="">चुनें / Choose</option>
-                          {panchayats.map((p) => (
-                            <option key={p} translate="no">
-                              {p}
-                            </option>
+                        />
+                        <datalist id={`staff-panchayats-${index}`}>
+                          {panchayats.map((name) => (
+                            <option key={name} value={name} />
                           ))}
-                        </select>
+                        </datalist>
                       </label>
                       <label className="sp-field">
                         पद / Position
