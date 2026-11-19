@@ -56,7 +56,70 @@ function frameFromVideo(video: HTMLVideoElement): HTMLCanvasElement {
   return canvas;
 }
 
-async function photoFromFrame(canvas: HTMLCanvasElement): Promise<File> {
+async function photoFromFrame(
+  canvas: HTMLCanvasElement,
+  location: CameraLocation,
+  mode: "arrival" | "departure",
+): Promise<File> {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("फोटो नहीं बन सकी। / Could not create the photo.");
+  const captured = new Date(location.capturedAt);
+  const date = new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    weekday: "long",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(captured);
+  const time = new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).format(captured);
+  // One translucent text footer keeps the photo readable. No map tiles or
+  // reverse-geocoding request are needed to record exact GPS coordinates.
+  const fade = ctx.createLinearGradient(
+    0,
+    canvas.height - 245,
+    0,
+    canvas.height,
+  );
+  fade.addColorStop(0, "rgba(12, 27, 43, 0)");
+  fade.addColorStop(0.28, "rgba(12, 27, 43, 0.82)");
+  fade.addColorStop(1, "rgba(12, 27, 43, 0.96)");
+  ctx.fillStyle = fade;
+  ctx.fillRect(0, canvas.height - 245, canvas.width, 245);
+  ctx.textBaseline = "top";
+  ctx.fillStyle = "#fff";
+  ctx.font = "700 27px sans-serif";
+  ctx.fillText(
+    mode === "departure" ? "DEPARTURE · GPS" : "ARRIVAL · GPS",
+    28,
+    canvas.height - 184,
+  );
+  ctx.font = "600 25px sans-serif";
+  ctx.fillText(
+    `Lat ${location.latitude.toFixed(6)}°  ·  Long ${location.longitude.toFixed(6)}°`,
+    28,
+    canvas.height - 139,
+    canvas.width - 56,
+  );
+  ctx.font = "500 24px sans-serif";
+  ctx.fillText(
+    `${date} · ${time} IST`,
+    28,
+    canvas.height - 94,
+    canvas.width - 56,
+  );
+  ctx.fillStyle = "#d2e3ee";
+  ctx.font = "500 21px sans-serif";
+  ctx.fillText(
+    `Device GPS accuracy ±${Math.round(location.accuracy)} m`,
+    28,
+    canvas.height - 51,
+  );
   return new Promise((resolve, reject) =>
     canvas.toBlob(
       (blob) =>
@@ -78,6 +141,7 @@ async function photoFromFrame(canvas: HTMLCanvasElement): Promise<File> {
 export default function WorkplaceCamera({
   onUse,
   onClose,
+  mode = "arrival",
 }: {
   onUse: (file: File, location: CameraLocation) => void;
   onClose: () => void;
@@ -156,7 +220,7 @@ export default function WorkplaceCamera({
       const location = cameraLocation(position);
       if (!active.current || !video.current) return;
       const frame = frameFromVideo(video.current);
-      const original = await photoFromFrame(frame);
+      const original = await photoFromFrame(frame, location, mode);
       const compressed =
         original.size >= 5 * 1024 * 1024
           ? await prepareWorkplacePhoto(original)
@@ -207,7 +271,7 @@ export default function WorkplaceCamera({
             <img
               className="sp-camera sp-camera-photo"
               src={preview}
-              alt="Captured staff photo"
+              alt="Captured staff photo with date, time and GPS coordinates"
             />
           )}
           <p className="sp-camera-hint" role="status">
