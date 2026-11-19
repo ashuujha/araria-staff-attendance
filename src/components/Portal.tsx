@@ -1238,22 +1238,20 @@ function Staff({
     if (positions.length === 1) setPosition(positions[0]);
   }, [positions.join("|")]);
   async function upload(file: Blob, purpose = "leave_document") {
+    setSaveProgress("फ़ोटो तैयार हो रही है… / Preparing file…");
+    // Compress image uploads before enforcing the network limit. A camera
+    // capture normally fits already; oversized phone photos are resized here.
+    if (
+      ["image/jpeg", "image/png"].includes(file.type) &&
+      (file.size >= 5 * 1024 * 1024 ||
+        (purpose === "workplace_photo" &&
+          !(file instanceof File && file.name.startsWith("araria-workplace-"))))
+    )
+      file = await prepareWorkplacePhoto(file);
     if (!file.size || file.size >= 5 * 1024 * 1024)
       throw new Error(
         "फ़ाइल 5 MB से कम होनी चाहिए। / File must be smaller than 5 MB.",
       );
-    setSaveProgress("फ़ोटो तैयार हो रही है… / Preparing file…");
-    // The built-in camera already creates a bounded JPEG. Avoid decoding and
-    // encoding the geotagged photo for a second time on a mobile device.
-    if (
-      (purpose === "workplace_photo" || purpose === "departure_photo") &&
-      !(
-        file instanceof File &&
-        file.name.startsWith("araria-workplace-") &&
-        file.type === "image/jpeg"
-      )
-    )
-      file = await prepareWorkplacePhoto(file);
     setSaveProgress(
       "सुरक्षित अपलोड तैयार हो रहा है… / Preparing secure upload…",
     );
@@ -1311,8 +1309,7 @@ function Staff({
           !departurePhoto ||
           !departureLocation ||
           departurePhoto.type !== "image/jpeg" ||
-          !departurePhoto.size ||
-          departurePhoto.size >= 5 * 1024 * 1024
+          !departurePhoto.size
         )
           throw new Error(
             "आउट समय के लिए नई GPS फोटो लें (5 MB से कम)। / Take a fresh departure GPS photo under 5 MB.",
@@ -1331,8 +1328,7 @@ function Staff({
           if (
             !workplacePhoto ||
             !["image/jpeg", "image/png"].includes(workplacePhoto.type) ||
-            !workplacePhoto.size ||
-            workplacePhoto.size >= 5 * 1024 * 1024
+            !workplacePhoto.size
           )
             throw new Error(
               "GPS कैमरे से फोटो लें, 5 MB से कम। / Take a GPS camera photo smaller than 5 MB.",
@@ -1360,7 +1356,7 @@ function Staff({
             !leave ||
             !["image/jpeg", "application/pdf"].includes(leave.type) ||
             !leave.size ||
-            leave.size >= 5 * 1024 * 1024
+            (leave.type === "application/pdf" && leave.size >= 5 * 1024 * 1024)
           )
             throw new Error(
               "अवकाश के लिए JPG या PDF दस्तावेज़ दें, 5 MB से कम। / Upload a leave document in JPG or PDF, smaller than 5 MB.",
@@ -1953,7 +1949,8 @@ function Staff({
                                   file.type,
                                 ) ||
                                   !file.size ||
-                                  file.size >= 5 * 1024 * 1024)
+                                  (file.type === "application/pdf" &&
+                                    file.size >= 5 * 1024 * 1024))
                               ) {
                                 e.target.value = "";
                                 setLeave(null);

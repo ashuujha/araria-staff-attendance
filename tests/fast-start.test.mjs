@@ -192,3 +192,41 @@ test("photo resizing bounds dimensions, shrinks uploaded bytes and closes decode
     globalThis.document = oldDocument;
   }
 });
+
+test("oversized camera images are retried at lower quality before upload", async () => {
+  const oldBitmap = globalThis.createImageBitmap;
+  const oldDocument = globalThis.document;
+  const qualities = [];
+  globalThis.createImageBitmap = async () => ({
+    width: 4000,
+    height: 3000,
+    close() {},
+  });
+  globalThis.document = {
+    createElement() {
+      return {
+        getContext() {
+          return { fillRect() {}, drawImage() {} };
+        },
+        toBlob(callback, type, quality) {
+          qualities.push(quality);
+          callback(
+            new Blob([new Uint8Array(quality === 0.82 ? 6_000_000 : 900_000)], {
+              type,
+            }),
+          );
+        },
+      };
+    },
+  };
+  try {
+    const result = await prepareWorkplacePhoto(
+      new Blob([new Uint8Array(8_000_000)], { type: "image/jpeg" }),
+    );
+    assert.ok(result.size < 5 * 1024 * 1024);
+    assert.deepEqual(qualities, [0.82, 0.68]);
+  } finally {
+    globalThis.createImageBitmap = oldBitmap;
+    globalThis.document = oldDocument;
+  }
+});

@@ -364,6 +364,13 @@ export default function StaffEditor({
                           <option value="active">सक्रिय / Active</option>
                           <option value="inactive">निष्क्रिय / Inactive</option>
                         </select>
+                        {!active && (
+                          <small>
+                            This account cannot sign in. Set it to Active, check
+                            its mobile number and assignments, then save. For a
+                            directory entry without a login, use Generate login.
+                          </small>
+                        )}
                       </label>
                     )}
                   </div>

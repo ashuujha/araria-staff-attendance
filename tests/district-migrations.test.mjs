@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { PGlite } from "@electric-sql/pglite";
 import { readFile, readdir } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 
 const db = new PGlite();
 await db.exec(
@@ -18,7 +19,8 @@ for (const name of (await readdir("supabase/migrations")).sort()) {
     name.startsWith("20261109") ||
     name.startsWith("20261110") ||
     name.startsWith("20261111") ||
-    name.startsWith("20261116")
+    name.startsWith("20261116") ||
+    name.startsWith("20261119")
   )
     continue;
   await db.exec(await readFile("supabase/migrations/" + name, "utf8"));
@@ -1017,4 +1019,56 @@ test("calendar leave preserves old requests and approves selected working dates"
   } finally {
     await db.exec("reset role");
   }
+});
+
+test("removed staff identifiers are released without deleting their historical identity", async () => {
+  const araria = (await db.query("select id from blocks where code='araria'"))
+    .rows[0].id;
+  const retired = randomUUID();
+  await db.query("insert into auth.users(id) values($1)", [retired]);
+  await db.query(
+    "insert into profiles(id,name,phone,login_email,role,block,block_id,active) values($1,'Former Staff','9876543210','9876543210@staff.araria.invalid','staff','Araria',$2,true)",
+    [retired, araria],
+  );
+  await db.query(
+    "insert into staff_roster(block_id,name,phone,linked_profile_id) values($1,'Former Staff','9876543210',$2)",
+    [araria, retired],
+  );
+  await db.exec(
+    await readFile(
+      "supabase/migrations/20261119_15_retired_staff_identity.sql",
+      "utf8",
+    ),
+  );
+  await db.query("select delete_master_staff($1,$2,$3)", [
+    dpro,
+    retired,
+    "Administrator removed a staff account",
+  ]);
+  const person = (
+    await db.query(
+      "select phone,email,login_email,active,deleted_at from profiles where id=$1",
+      [retired],
+    )
+  ).rows[0];
+  assert.equal(person.phone, null);
+  assert.equal(person.email, null);
+  assert.equal(person.active, false);
+  assert.ok(person.deleted_at);
+  assert.match(person.login_email, /^retired-/);
+  assert.equal(
+    (
+      await db.query(
+        "select count(*)::int as n from staff_roster where linked_profile_id=$1",
+        [retired],
+      )
+    ).rows[0].n,
+    0,
+  );
+  const replacement = randomUUID();
+  await db.query("insert into auth.users(id) values($1)", [replacement]);
+  await db.query(
+    "insert into profiles(id,name,phone,login_email,role,block,block_id) values($1,'New Staff','9876543210','new-9876543210@staff.araria.invalid','staff','Araria',$2)",
+    [replacement, araria],
+  );
 });

@@ -7,6 +7,7 @@ import {
   type CameraLocation,
 } from "../lib/osm-camera";
 import { getFreshLocation } from "../lib/location";
+import { prepareWorkplacePhoto } from "../lib/photo-upload";
 
 type Capture = { file: File; location: CameraLocation };
 type StampDetails = {
@@ -329,11 +330,15 @@ export default function WorkplaceCamera({
       setLookingUpPlace(true);
       const details = await lookupStamp(location, controller.signal);
       if (!active.current) return;
-      const file = await photoFromFrame(frame, location, mode, details);
-      if (!file.size || file.size >= 5 * 1024 * 1024)
-        throw new Error(
-          "फोटो 5 MB से बड़ी है। फिर कोशिश करें। / Photo exceeds 5 MB. Retake it.",
-        );
+      const original = await photoFromFrame(frame, location, mode, details);
+      const compressed =
+        original.size >= 5 * 1024 * 1024
+          ? await prepareWorkplacePhoto(original)
+          : original;
+      const file =
+        compressed === original
+          ? original
+          : new File([compressed], original.name, { type: "image/jpeg" });
       if (active.current) setCapture({ file, location });
     } catch (cause) {
       if (active.current)

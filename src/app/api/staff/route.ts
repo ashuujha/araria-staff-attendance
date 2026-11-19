@@ -117,7 +117,9 @@ export async function POST(req: Request) {
           409,
           "This mobile number is already in the directory or an existing account. If its login is pending, open that staff entry and choose Generate login. Correct shared numbers first.",
         );
-      const loginEmail = `${b.phone}@staff.araria.invalid`;
+      // A former account may still exist in Auth to preserve historical
+      // attendance references. Use a fresh internal email for each login.
+      const loginEmail = `${b.phone}.${randomBytes(8).toString("hex")}@staff.araria.invalid`;
       const password = `${randomBytes(18).toString("base64url")}#aA1`;
       const user = await sb("/auth/v1/admin/users", {
         method: "POST",
@@ -230,7 +232,7 @@ export async function POST(req: Request) {
           );
         if (!blockRows.length)
           throw new HttpError(400, "Choose an active block.");
-        const loginEmail = `${target.phone}@staff.araria.invalid`;
+        const loginEmail = `${target.phone}.${randomBytes(8).toString("hex")}@staff.araria.invalid`;
         const password = `${randomBytes(18).toString("base64url")}#aA1`;
         const user = await sb("/auth/v1/admin/users", {
           method: "POST",

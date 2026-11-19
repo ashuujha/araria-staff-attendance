@@ -18,7 +18,8 @@ for (const file of (await readdir("supabase/migrations")).sort())
     !file.startsWith("20261109") &&
     !file.startsWith("20261110") &&
     !file.startsWith("20261111") &&
-    !file.startsWith("20261116")
+    !file.startsWith("20261116") &&
+    !file.startsWith("20261119")
   )
     await db.exec(await readFile("supabase/migrations/" + file, "utf8"));
 const users = [
