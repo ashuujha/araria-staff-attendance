@@ -23,7 +23,11 @@ import {
   normalizeLeaveDates,
   validLeaveDate,
 } from "../lib/leave-dates";
-import { dailyAttendanceSummary } from "../lib/daily-attendance-summary";
+import {
+  dailyAttendanceBreakdown,
+  dailyAttendanceSummary,
+} from "../lib/daily-attendance-summary";
+import AttendancePieChart from "./AttendancePieChart";
 import {
   googleMapsUrl,
   openStreetMapEmbedUrl,
@@ -2553,6 +2557,16 @@ function Admin({
       ),
     [staff, records, date, selectedSummaryBlockId],
   );
+  const attendanceBreakdown = useMemo(
+    () =>
+      dailyAttendanceBreakdown(
+        staff,
+        records,
+        date,
+        selectedSummaryBlockId || undefined,
+      ),
+    [staff, records, date, selectedSummaryBlockId],
+  );
   const summaryReady =
     directoryLoaded &&
     !loading &&
@@ -3161,6 +3175,7 @@ function Admin({
                           <strong>{dailySummary.unmarked.length}</strong>
                         </div>
                       </div>
+                      <AttendancePieChart counts={attendanceBreakdown} />
                       <details className="sp-unmarked-details">
                         <summary>
                           किसने उपस्थिति दर्ज नहीं की / View staff not marked (

@@ -13,8 +13,58 @@ export type DailyRecord = {
   staff_id: string;
   date: string;
   block_id: string;
+  status?: string;
   deleted_at?: string | null;
 };
+
+export const attendanceCategories = [
+  "present",
+  "on_duty",
+  "deputation",
+  "leave",
+  "absent",
+  "not_marked",
+  "other",
+] as const;
+export type AttendanceCategory = (typeof attendanceCategories)[number];
+
+export function dailyAttendanceBreakdown(
+  staff: DailyStaff[],
+  records: DailyRecord[],
+  date: string,
+  blockId?: string,
+): Record<AttendanceCategory, number> {
+  const people = staff.filter(
+    (person) =>
+      person.active &&
+      !person.deleted_at &&
+      (!blockId || person.block_id === blockId),
+  );
+  const current = new Map(
+    records
+      .filter(
+        (record) =>
+          record.date === date &&
+          !record.deleted_at &&
+          (!blockId || record.block_id === blockId),
+      )
+      .map((record) => [record.staff_id, record.status]),
+  );
+  const counts = Object.fromEntries(
+    attendanceCategories.map((category) => [category, 0]),
+  ) as Record<AttendanceCategory, number>;
+  for (const person of people) {
+    const status = current.get(person.id);
+    const category = !status
+      ? "not_marked"
+      : attendanceCategories.includes(status as AttendanceCategory) &&
+          status !== "not_marked"
+        ? (status as AttendanceCategory)
+        : "other";
+    counts[category]++;
+  }
+  return counts;
+}
 
 export function dailyAttendanceSummary<T extends DailyStaff>(
   staff: T[],
