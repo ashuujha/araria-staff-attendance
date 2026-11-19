@@ -1056,6 +1056,7 @@ function Staff({
   const [capturedLocation, setCapturedLocation] =
     useState<CameraLocation | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const cameraSection = useRef<HTMLDivElement>(null);
   const [departurePhoto, setDeparturePhoto] = useState<File | null>(null);
   const [departureLocation, setDepartureLocation] =
     useState<CameraLocation | null>(null);
@@ -1273,6 +1274,21 @@ function Staff({
   async function save(event?: React.FormEvent, complete = false) {
     event?.preventDefault();
     if (savingRef.current) return;
+    if (
+      !complete &&
+      ["present", "deputation", "on_duty"].includes(status) &&
+      (!workplacePhoto || !capturedLocation)
+    ) {
+      notify("");
+      setCameraOpen(true);
+      window.requestAnimationFrame(() =>
+        cameraSection.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        }),
+      );
+      return;
+    }
     savingRef.current = true;
     setBusy(true);
     setSaveProgress("");
@@ -1335,7 +1351,7 @@ function Staff({
             !workplacePhoto.size
           )
             throw new Error(
-              "GPS कैमरे से फोटो लें, 5 MB से कम। / Take a GPS camera photo smaller than 5 MB.",
+              "फोटो जोड़ी नहीं जा सकी। कैमरे से दोबारा लें और Use photo चुनें। / Could not attach the photo. Retake it and tap Use photo.",
             );
           body.photo_upload_path = await upload(
             workplacePhoto,
@@ -1766,6 +1782,7 @@ function Staff({
                       <div
                         className="sp-field sp-attendance-camera"
                         key={status}
+                        ref={cameraSection}
                       >
                         <strong>GPS कैमरा फोटो / GPS camera photo</strong>
                         {!cameraOpen && (
@@ -1787,11 +1804,16 @@ function Staff({
                           />
                         )}
                         {photoPreview && !cameraOpen && (
-                          <img
-                            className="sp-workplace-preview"
-                            src={photoPreview}
-                            alt="कार्यस्थल फोटो का पूर्वावलोकन / Workplace photo preview"
-                          />
+                          <div className="sp-photo-attached">
+                            <img
+                              className="sp-workplace-preview"
+                              src={photoPreview}
+                              alt="कार्यस्थल फोटो का पूर्वावलोकन / Workplace photo preview"
+                            />
+                            <span role="status">
+                              ✓ फ़ोटो जुड़ गई / Photo attached
+                            </span>
+                          </div>
                         )}
                       </div>
                     )}

@@ -2218,6 +2218,23 @@ img.sp-map {
   line-height: 1.2;
   text-align: center;
 }
+.sp-workplace-camera .sp-camera-hint {
+  margin: 0;
+  color: #425b71;
+  font-size: 12px;
+  text-align: center;
+}
+.sp-photo-attached {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.sp-photo-attached span {
+  color: #167052;
+  font-size: 13px;
+  font-weight: 700;
+}
 .sp-staff-attendance-card .sp-workplace-preview,
 .sp-finish .sp-camera-review .sp-camera {
   width: min(100%, 192px);

@@ -210,6 +210,9 @@ export default function WorkplaceCamera({
               alt="Captured staff photo"
             />
           )}
+          <p className="sp-camera-hint" role="status">
+            फ़ोटो सहेजने के लिए Use photo चुनें / Tap Use photo to attach it.
+          </p>
         </div>
       )}
       <div
