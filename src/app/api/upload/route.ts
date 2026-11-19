@@ -14,6 +14,7 @@ import {
 } from "../../../lib/file-validation";
 import { istDate } from "../../../lib/security.mjs";
 import { requireWorkingDay } from "../../../lib/office-server";
+import { assignedWorkspaceBlock } from "../../../lib/district-scope";
 export async function POST(req: Request) {
   try {
     csrf(req);
@@ -55,7 +56,11 @@ export async function POST(req: Request) {
     const { profile } = await identity(req);
     if (profile.role !== "staff")
       throw new HttpError(403, "केवल कर्मी फोटो अपलोड कर सकते हैं।");
-    await requireWorkingDay(profile.block_id);
+    const workspaceBlock = assignedWorkspaceBlock(
+      profile,
+      b.workspace_block_id,
+    );
+    if (b.purpose !== "leave_document") await requireWorkingDay(workspaceBlock);
     // Workplace inputs (including PNG) are normalized to a JPEG before saving.
     const path = `${profile.block_id}/${profile.id}/${istDate()}/${randomUUID()}.${!workplace && b.type === "application/pdf" ? "pdf" : "jpg"}`;
     const [, signed] = await Promise.all([

@@ -8,7 +8,10 @@ import {
   HttpError,
 } from "../../../lib/server";
 import { istDate } from "../../../lib/security.mjs";
-import { requestedBlock } from "../../../lib/district-scope";
+import {
+  requestedBlock,
+  profileBlockFilter,
+} from "../../../lib/district-scope";
 import { rosterRows } from "../../../lib/roster";
 export async function GET(req: Request) {
   const started = performance.now();
@@ -34,8 +37,8 @@ export async function GET(req: Request) {
       const [staff, roster] = await Promise.all([
         sb(
           "/rest/v1/profiles?deleted_at=is.null&role=eq.staff" +
-            blockFilter +
-            "&select=id,name,phone,email,assignments,block,block_id,role,active,gender&order=name",
+            profileBlockFilter(blockId) +
+            "&select=id,name,phone,email,assignments,block,block_id,role,active,gender,staff_scope,district_name&order=name",
           {},
           token,
         ),
@@ -63,15 +66,15 @@ export async function GET(req: Request) {
           "/rest/v1/attendance?date=eq." +
             date +
             blockFilter +
-            "&deleted_at=is.null&select=id,staff_id,date,panchayat,department,position,block,block_id,staff_name,status,phase,deputation_workplace,leave_type,absence_reason,time_in,time_out,latitude,longitude,accuracy,photo_path,out_photo_path,out_location,leave_path,working_places,profiles(id,name,phone,email,block,block_id,role,active)&order=created_at.desc",
+            "&deleted_at=is.null&select=id,staff_id,date,panchayat,department,position,block,block_id,staff_name,status,phase,deputation_workplace,leave_type,absence_reason,time_in,time_out,latitude,longitude,accuracy,photo_path,out_photo_path,out_location,leave_path,working_places,profiles(id,name,phone,email,block,block_id,role,active,staff_scope)&order=created_at.desc",
           {},
           token,
         ),
         includeStaff
           ? sb(
               "/rest/v1/profiles?deleted_at=is.null&role=eq.staff" +
-                blockFilter +
-                "&select=id,name,phone,email,assignments,block,block_id,role,active,gender&order=name",
+                profileBlockFilter(blockId) +
+                "&select=id,name,phone,email,assignments,block,block_id,role,active,gender,staff_scope,district_name&order=name",
               {},
               token,
             )
@@ -79,8 +82,8 @@ export async function GET(req: Request) {
         includeStaff
           ? sb(
               "/rest/v1/profiles?deleted_at=not.is.null&role=eq.staff" +
-                blockFilter +
-                "&select=id,name,phone,email,assignments,block,block_id,role,active,gender,deleted_at&order=name",
+                profileBlockFilter(blockId) +
+                "&select=id,name,phone,email,assignments,block,block_id,role,active,gender,staff_scope,district_name,deleted_at&order=name",
               {},
               token,
             )
@@ -148,13 +151,15 @@ export async function POST(req: Request) {
       if (body.status === "leave" && !["CL", "SL"].includes(body.leave_type))
         throw new HttpError(400, "CL या SL चुनें।");
       const target = await sb(
-        `/rest/v1/profiles?id=eq.${body.staff_id}&role=eq.staff&select=id,block_id`,
+        `/rest/v1/profiles?id=eq.${body.staff_id}&role=eq.staff&select=id,block_id,staff_scope`,
         {},
         token,
       );
       if (
         !target.length ||
-        (profile.role === "bpro" && target[0].block_id !== profile.block_id)
+        (profile.role === "bpro" &&
+          (target[0].block_id !== profile.block_id ||
+            target[0].staff_scope === "district"))
       )
         throw new HttpError(403, "This staff member is outside your block.");
       const result = await sb(
@@ -180,13 +185,15 @@ export async function POST(req: Request) {
       if (!/^[0-9a-f-]{36}$/.test(String(body.id)))
         throw new HttpError(400, "रिकॉर्ड नहीं मिला।");
       const target = await sb(
-        `/rest/v1/attendance?id=eq.${body.id}&select=id,block_id`,
+        `/rest/v1/attendance?id=eq.${body.id}&select=id,block_id,profiles(staff_scope)`,
         {},
         token,
       );
       if (
         !target.length ||
-        (profile.role === "bpro" && target[0].block_id !== profile.block_id)
+        (profile.role === "bpro" &&
+          (target[0].block_id !== profile.block_id ||
+            target[0].profiles?.staff_scope === "district"))
       )
         throw new HttpError(
           403,
@@ -206,13 +213,15 @@ export async function POST(req: Request) {
       if (!/^[0-9a-f-]{36}$/.test(String(body.id)))
         throw new HttpError(400, "Invalid record.");
       const target = await sb(
-        `/rest/v1/attendance?id=eq.${body.id}&select=id,block_id`,
+        `/rest/v1/attendance?id=eq.${body.id}&select=id,block_id,profiles(staff_scope)`,
         {},
         token,
       );
       if (
         !target.length ||
-        (profile.role === "bpro" && target[0].block_id !== profile.block_id)
+        (profile.role === "bpro" &&
+          (target[0].block_id !== profile.block_id ||
+            target[0].profiles?.staff_scope === "district"))
       )
         throw new HttpError(
           403,

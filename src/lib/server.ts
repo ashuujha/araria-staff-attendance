@@ -150,7 +150,7 @@ export async function identity(
   const profiles = await sb(
     "/rest/v1/profiles?id=eq." +
       encodeURIComponent(subject!) +
-      "&deleted_at=is.null&select=id,name,phone,email,assignments,role,block,block_id,active,gender",
+      "&deleted_at=is.null&select=id,name,phone,email,assignments,role,block,block_id,active,gender,staff_scope,district_name",
     {},
     c.araria_session,
   );

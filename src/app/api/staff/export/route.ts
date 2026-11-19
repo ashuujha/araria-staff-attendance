@@ -7,7 +7,10 @@ import {
   identity,
   sb,
 } from "../../../../lib/server";
-import { requestedBlock } from "../../../../lib/district-scope";
+import {
+  requestedBlock,
+  profileBlockFilter,
+} from "../../../../lib/district-scope";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -18,7 +21,7 @@ type Row = {
   email: string | null;
   gender: string | null;
   block: string;
-  assignments: { panchayat: string; position: string }[];
+  assignments: { panchayat: string; position: string; block?: string }[];
 };
 const safe = (value: unknown) => {
   const text = String(value ?? "");
@@ -45,7 +48,7 @@ export async function GET(req: Request) {
     const filter = blockId ? `&block_id=eq.${blockId}` : "";
     const [profiles, roster] = await Promise.all([
       pages(
-        `/rest/v1/profiles?role=eq.staff&deleted_at=is.null${filter}&select=name,phone,email,gender,block,assignments&order=name`,
+        `/rest/v1/profiles?role=eq.staff&deleted_at=is.null${profileBlockFilter(blockId)}&select=name,phone,email,gender,block,assignments&order=name`,
         token,
       ),
       pages(
@@ -85,7 +88,10 @@ export async function GET(req: Request) {
           email: safe(row.email),
           assignments: safe(
             (row.assignments || [])
-              .map((a) => `${a.panchayat} • ${a.position}`)
+              .map(
+                (a) =>
+                  `${a.block ? a.block + " • " : ""}${a.panchayat} • ${a.position}`,
+              )
               .join("; "),
           ),
         });
@@ -130,7 +136,10 @@ export async function GET(req: Request) {
       doc.moveDown();
       rows.forEach((row, index) => {
         const workspace = (row.assignments || [])
-          .map((a) => `${a.panchayat} • ${a.position}`)
+          .map(
+            (a) =>
+              `${a.block ? a.block + " • " : ""}${a.panchayat} • ${a.position}`,
+          )
           .join("; ");
         const line = `${index + 1}. ${row.name}  |  ${row.phone || "No number"}  |  ${row.block}\n${row.gender || "Gender not set"}  |  ${row.email || "No email"}\n${workspace || "No assignment"}`;
         const height = doc.heightOfString(line, { width: 520 }) + 14;

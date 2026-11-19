@@ -30,7 +30,8 @@ export function attendanceCode(record, date, today, holidayDates) {
     if (record.status === "leave") return "L";
     if (record.phase === "draft" || (record.time_in && !record.time_out))
       return "PP";
-    if (record.status === "deputation" || record.status === "on_duty") return "O";
+    if (record.status === "deputation" || record.status === "on_duty")
+      return "O";
     return "P";
   }
   if (holidayDates.has(date)) return "H";
@@ -100,11 +101,13 @@ function matchesStaff(profile, records, filters, dates, today, holidayDates) {
   if (
     filters.block &&
     profile?.block !== filters.block &&
+    !assignments(profile).some((a) => a.block === filters.block) &&
     !records.some((row) => row.block === filters.block)
   )
     return false;
   const fields = ["panchayat", "position"];
   const sameWorkplace = (row) =>
+    (!filters.block || (row.block || profile?.block) === filters.block) &&
     fields.every((field) => !filters[field] || row[field] === filters[field]);
   if (
     fields.some((field) => filters[field]) &&

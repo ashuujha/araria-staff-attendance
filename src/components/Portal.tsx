@@ -1011,9 +1011,6 @@ function Staff({
   notify: (message: string) => void;
 }) {
   const office = useOfficeFeed(initial?.office, revisions, false);
-  const closure = office.feed
-    ? officeClosure(office.feed.today, office.feed.holidays)
-    : null;
   const [record, setRecord] = useState<RecordRow | null>(
     initial?.records[0] || null,
   );
@@ -1097,18 +1094,30 @@ function Staff({
     (a) => a.panchayat?.trim() && a.position?.trim(),
   );
   const workspaceKey = (a: Assignment) =>
-    JSON.stringify([a.panchayat, a.position]);
+    JSON.stringify([a.block_id, a.panchayat, a.position]);
   const workspaceOptions = assignments.filter(
     (a, index) =>
       assignments.findIndex(
         (other) => workspaceKey(other) === workspaceKey(a),
       ) === index,
   );
-  const hasMultipleWorkspaces =
-    new Set(workspaceOptions.map((a) => a.panchayat)).size > 1;
+  const hasMultipleWorkspaces = workspaceOptions.length > 1;
   const selectedWorkspace = hasMultipleWorkspaces
     ? workspaceOptions.find((a) => workspaceKey(a) === selectedWorkspaceKey)
     : undefined;
+  const currentWorkspaceBlock =
+    record?.block_id ||
+    selectedWorkspace?.block_id ||
+    assignments[0]?.block_id ||
+    profile.block_id;
+  const closure = office.feed
+    ? officeClosure(
+        office.feed.today,
+        office.feed.holidays.filter(
+          (day) => !day.block_id || day.block_id === currentWorkspaceBlock,
+        ),
+      )
+    : null;
   useEffect(
     () => onDepartmentChange(department),
     [onDepartmentChange, department],
@@ -1270,6 +1279,14 @@ function Staff({
       type: file.type,
       size: file.size,
       purpose,
+      ...(profile.staff_scope === "district"
+        ? {
+            workspace_block_id:
+              purpose === "departure_photo"
+                ? record?.block_id
+                : selectedWorkspace?.block_id || assignments[0]?.block_id,
+          }
+        : {}),
     });
     await uploadWithProgress(signed.url, file, (percent) => {
       if (alive.current)
@@ -1321,6 +1338,13 @@ function Staff({
         department: selectedWorkspace?.department || department,
         position: selectedWorkspace?.position || position,
         status,
+        ...(profile.staff_scope === "district"
+          ? {
+              workspace_block_id: complete
+                ? record?.block_id
+                : selectedWorkspace?.block_id || assignments[0]?.block_id,
+            }
+          : {}),
         deputation_workplace:
           status === "deputation" || status === "on_duty"
             ? deputation.trim()
@@ -1468,7 +1492,11 @@ function Staff({
               <span>{greetingInIndia()}, </span>
               <span translate="no">{profile.name}</span>
             </h1>
-            <p>{profile.block || "प्रखंड उपलब्ध नहीं"} • अररिया जिला</p>
+            <p>
+              {profile.staff_scope === "district"
+                ? `District staff • ${profile.district_name || "Araria"}`
+                : `${profile.block || "प्रखंड उपलब्ध नहीं"} • ${profile.district_name || "Araria"}`}
+            </p>
           </section>
           <section
             className="sp-staff-overview"
@@ -1708,6 +1736,9 @@ function Staff({
                                   <strong translate="no">
                                     {assignment.panchayat}
                                   </strong>
+                                  {profile.staff_scope === "district" && (
+                                    <small>{assignment.block || ""}</small>
+                                  )}
                                   <small translate="no">
                                     {assignment.position}
                                   </small>
@@ -2177,6 +2208,7 @@ function Admin({
       absent: number;
       leave: number;
       deputation: number;
+      on_duty: number;
       not_marked: number;
     }[]
   >([]);
@@ -2779,6 +2811,7 @@ function Admin({
                     <th>Absent</th>
                     <th>Leave</th>
                     <th>Deputation</th>
+                    <th>On Duty</th>
                     <th>Not marked</th>
                   </tr>
                 </thead>
@@ -2791,6 +2824,7 @@ function Admin({
                       <td>{row.absent}</td>
                       <td>{row.leave}</td>
                       <td>{row.deputation}</td>
+                      <td>{row.on_duty || 0}</td>
                       <td>{row.not_marked}</td>
                     </tr>
                   ))}
@@ -3463,7 +3497,11 @@ function Admin({
                             <span className="sp-cell-label" aria-hidden="true">
                               प्रखंड / Block
                             </span>
-                            <div className="sp-cell-value">{person.block}</div>
+                            <div className="sp-cell-value">
+                              {person.staff_scope === "district"
+                                ? `District • ${person.district_name || "Araria"}`
+                                : person.block}
+                            </div>
                           </td>
                           <td>
                             <span className="sp-cell-label" aria-hidden="true">
@@ -3473,6 +3511,7 @@ function Admin({
                               {matchingAssignments(person, filters).map(
                                 (a, i) => (
                                   <small key={i}>
+                                    {a.block ? `${a.block} • ` : ""}
                                     {a.panchayat} • {a.position}
                                   </small>
                                 ),
@@ -3523,26 +3562,30 @@ function Admin({
                                 >
                                   देखें / View
                                 </button>
-                                {canManage && (
-                                  <>
+                                {canManage &&
+                                  (role === "dpro" ||
+                                    person.staff_scope !== "district") && (
                                     <>
-                                      <button
-                                        type="button"
-                                        className="sp-button sp-secondary"
-                                        onClick={() => editStaff(person)}
-                                      >
-                                        बदलें / Edit
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="sp-button sp-secondary"
-                                        onClick={() => editStaff(person, true)}
-                                      >
-                                        हटाएँ / Remove
-                                      </button>
+                                      <>
+                                        <button
+                                          type="button"
+                                          className="sp-button sp-secondary"
+                                          onClick={() => editStaff(person)}
+                                        >
+                                          बदलें / Edit
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="sp-button sp-secondary"
+                                          onClick={() =>
+                                            editStaff(person, true)
+                                          }
+                                        >
+                                          हटाएँ / Remove
+                                        </button>
+                                      </>
                                     </>
-                                  </>
-                                )}
+                                  )}
                               </div>
                             </div>
                           </td>
@@ -3624,22 +3667,25 @@ function Admin({
               बंद करें / Close
             </button>
           </div>
-          {detail && !("staff_id" in detail) && canManage && (
-            <div className="sp-actions">
-              <button
-                className="sp-button sp-secondary"
-                onClick={() => editStaff(detail)}
-              >
-                कर्मी विवरण बदलें / Edit staff
-              </button>
-              <button
-                className="sp-button sp-secondary"
-                onClick={() => editStaff(detail, true)}
-              >
-                कर्मी हटाएँ / Remove staff
-              </button>
-            </div>
-          )}
+          {detail &&
+            !("staff_id" in detail) &&
+            canManage &&
+            (role === "dpro" || detail.staff_scope !== "district") && (
+              <div className="sp-actions">
+                <button
+                  className="sp-button sp-secondary"
+                  onClick={() => editStaff(detail)}
+                >
+                  कर्मी विवरण बदलें / Edit staff
+                </button>
+                <button
+                  className="sp-button sp-secondary"
+                  onClick={() => editStaff(detail, true)}
+                >
+                  कर्मी हटाएँ / Remove staff
+                </button>
+              </div>
+            )}
           {detail &&
             ("staff_id" in detail ? (
               <>
@@ -3722,6 +3768,7 @@ function Admin({
                 <h3>आवंटन / Assignments</h3>
                 {detail.assignments.map((a, i) => (
                   <p key={i}>
+                    {a.block ? `${a.block} • ` : ""}
                     {a.panchayat} • {a.position}
                   </p>
                 ))}
@@ -3763,6 +3810,9 @@ function Admin({
                     saved,
                   ].sort((a, b) => a.name.localeCompare(b.name)),
                 );
+              void api("/api/blocks")
+                .then((data) => setBlocks(data.blocks || []))
+                .catch(fail);
               void load(true);
             }}
           />

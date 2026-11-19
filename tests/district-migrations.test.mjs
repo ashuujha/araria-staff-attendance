@@ -1072,3 +1072,225 @@ test("removed staff identifiers are released without deleting their historical i
     [replacement, araria],
   );
 });
+
+test("district staff migration is repeatable and separates district management from assigned block reads", async () => {
+  const migration = await readFile(
+    "supabase/migrations/20261119_16_district_staff.sql",
+    "utf8",
+  );
+  await db.exec(migration);
+  await db.exec(migration);
+  const araria = (await db.query("select id from blocks where code='araria'"))
+    .rows[0].id;
+  const sikti = (await db.query("select id from blocks where code='sikti'"))
+    .rows[0].id;
+  const multi = randomUUID();
+  await db.query("insert into auth.users(id) values($1)", [multi]);
+  for (const id of [araria, sikti])
+    await db.query(
+      "insert into panchayats(block_id,block,name) select id,name_en,'District Office' from blocks where id=$1 on conflict do nothing",
+      [id],
+    );
+  const assignments = [araria, sikti].map((id) => ({
+    block_id: id,
+    panchayat: "District Office",
+    position: "Auditor",
+    department: "पंचायती राज विभाग",
+  }));
+  await db.query(
+    "insert into profiles(id,name,phone,login_email,role,block,block_id,staff_scope,assignments) values($1,'District Auditor','9876501234','district-auditor@test.invalid','staff','Araria',$2,'district',$3)",
+    [multi, araria, JSON.stringify(assignments)],
+  );
+  await assert.rejects(
+    db.query(
+      "select delete_master_staff($1,$2,'Administrator removed staff')",
+      [bpro, multi],
+    ),
+    /DPRO/,
+  );
+  await db.exec("set role authenticated");
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [bpro]);
+  assert.equal(
+    (await db.query("select id from profiles where id=$1", [multi])).rows
+      .length,
+    1,
+  );
+  await db.exec("reset role");
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [dpro]);
+  await db.query("select manage_district_staff($1,$2,$3)", [
+    dpro,
+    multi,
+    JSON.stringify({ name: "District Auditor Updated", assignments }),
+  ]);
+  assert.equal(
+    (await db.query("select name from profiles where id=$1", [multi])).rows[0]
+      .name,
+    "District Auditor Updated",
+  );
+  await assert.rejects(
+    db.query("select manage_district_staff($1,$2,$3)", [
+      bpro,
+      multi,
+      JSON.stringify({ name: "Forbidden" }),
+    ]),
+    /DPRO/,
+  );
+  const secondaryBpro = randomUUID();
+  await db.query("insert into auth.users(id) values($1)", [secondaryBpro]);
+  await db.query(
+    "insert into profiles(id,name,login_email,role,block,block_id) values($1,'Secondary BPRO',$2,'bpro','Sikti',$3)",
+    [secondaryBpro, secondaryBpro + "@test.invalid", sikti],
+  );
+  const today = (
+    await db.query(
+      "select (now() at time zone 'Asia/Kolkata')::date::text as day",
+    )
+  ).rows[0].day;
+  const leaveDay = (
+    await db.query(
+      "select d::date::text as day from generate_series((now() at time zone 'Asia/Kolkata')::date+10,(now() at time zone 'Asia/Kolkata')::date+17,interval '1 day') d where extract(isodow from d)<>7 limit 1",
+    )
+  ).rows[0].day;
+  const document = `${araria}/${multi}/${today}/district-leave.pdf`;
+  await db.query(
+    "insert into pending_uploads(path,staff_id,block_id) values($1,$2,$3)",
+    [document, multi, araria],
+  );
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+    multi,
+  ]);
+  const application = (
+    await db.query(
+      "select submit_district_leave_application('District Office','Auditor','CL',$1,null,$2::date[],$3) as item",
+      [document, [leaveDay], sikti],
+    )
+  ).rows[0].item;
+  assert.equal(application.block_id, sikti);
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+    secondaryBpro,
+  ]);
+  await db.exec("set role authenticated");
+  assert.equal(
+    (
+      await db.query("select id from leave_applications where id=$1", [
+        application.id,
+      ])
+    ).rows.length,
+    0,
+  );
+  await assert.rejects(
+    db.query(
+      "select decide_leave_application_v2($1,false,null,'Not allowed')",
+      [application.id],
+    ),
+    /PORTAL/,
+  );
+  await db.exec("reset role");
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [dpro]);
+  const signed = `${sikti}/${multi}/leave-decisions/${application.id}/signed.pdf`;
+  await db.query(
+    "insert into leave_decision_documents(path,request_id,actor_id,block_id,method) values($1,$2,$3,$4,'drawn')",
+    [signed, application.id, dpro, sikti],
+  );
+  await db.query("select decide_leave_application_v2($1,true,$2,null)", [
+    application.id,
+    signed,
+  ]);
+  const attendance = (
+    await db.query(
+      "select block_id,staff_id from attendance where staff_id=$1 and date=$2",
+      [multi, leaveDay],
+    )
+  ).rows[0];
+  assert.equal(attendance.block_id, sikti);
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+    secondaryBpro,
+  ]);
+  await db.exec("set role authenticated");
+  assert.equal(
+    (
+      await db.query(
+        "select id from attendance where staff_id=$1 and date=$2",
+        [multi, leaveDay],
+      )
+    ).rows.length,
+    1,
+  );
+  await db.exec("reset role");
+});
+
+test("leave applications reserve approved and pending CL and female monthly SL allowances", async () => {
+  await db.exec(
+    await readFile(
+      "supabase/migrations/20261119_17_leave_request_allowances.sql",
+      "utf8",
+    ),
+  );
+  const araria = (await db.query("select id from blocks where code='araria'"))
+    .rows[0].id;
+  const person = randomUUID();
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [dpro]);
+  await db.query("insert into auth.users(id) values($1)", [person]);
+  await db.query(
+    "insert into panchayats(block_id,block,name) values($1,'Araria','Quota Office') on conflict do nothing",
+    [araria],
+  );
+  const assignments = [
+    {
+      block_id: araria,
+      panchayat: "Quota Office",
+      position: "Staff",
+      department: "पंचायती राज विभाग",
+    },
+  ];
+  await db.query(
+    "insert into profiles(id,name,login_email,role,block,block_id,gender,assignments) values($1,'Quota Staff',$2,'staff','Araria',$3,'female',$4)",
+    [person, person + "@test.invalid", araria, JSON.stringify(assignments)],
+  );
+  const today = (
+    await db.query(
+      "select (now() at time zone 'Asia/Kolkata')::date::text as day",
+    )
+  ).rows[0].day;
+  const working = (
+    await db.query(
+      "select d::date::text as day from generate_series('2027-01-01'::date,'2027-01-31'::date,interval '1 day') d where extract(isodow from d)<>7 order by d",
+    )
+  ).rows.map((row) => row.day);
+  const submit = async (kind, dates) => {
+    const path = `${araria}/${person}/${today}/${randomUUID()}.pdf`;
+    await db.query(
+      "insert into pending_uploads(path,staff_id,block_id) values($1,$2,$3)",
+      [path, person, araria],
+    );
+    await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+      person,
+    ]);
+    return (
+      await db.query(
+        "select submit_leave_application_v3('Quota Office','Staff',$1,$2,null,$3::date[]) as item",
+        [kind, path, dates],
+      )
+    ).rows[0].item;
+  };
+  const pending = await submit("CL", working.slice(0, 16));
+  await assert.rejects(submit("CL", [working[16]]), /CL allowance exceeded/);
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [dpro]);
+  await db.query(
+    "select decide_leave_application_v2($1,false,null,'Application rejected for test')",
+    [pending.id],
+  );
+  const restored = await submit("CL", [working[16]]);
+  assert.equal(restored.status, "pending");
+  const feb = (
+    await db.query(
+      "select d::date::text as day from generate_series('2027-02-01'::date,'2027-02-28'::date,interval '1 day') d where extract(isodow from d)<>7 order by d",
+    )
+  ).rows.map((row) => row.day);
+  await submit("SL", feb.slice(0, 2));
+  await assert.rejects(submit("SL", [feb[2]]), /SL monthly allowance exceeded/);
+  await assert.rejects(
+    submit("CL", working.slice(0, 16)),
+    /CL allowance exceeded/,
+  );
+});

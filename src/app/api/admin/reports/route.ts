@@ -6,7 +6,10 @@ import {
   sb,
   audit,
 } from "../../../../lib/server";
-import { requestedBlock } from "../../../../lib/district-scope";
+import {
+  requestedBlock,
+  profileBlockFilter,
+} from "../../../../lib/district-scope";
 import { istDate } from "../../../../lib/security.mjs";
 import {
   dateSections,
@@ -140,7 +143,7 @@ export async function GET(req: Request) {
         ),
         allPages(
           "/rest/v1/profiles?role=eq.staff" +
-            blockFilter +
+            profileBlockFilter(blockId) +
             "&select=id,name,phone,block,block_id,assignments,gender,role,active,deleted_at&order=id.asc",
           token,
         ),
@@ -197,7 +200,7 @@ export async function GET(req: Request) {
     const recordsPath = `/rest/v1/attendance?date=gte.${start}&date=lte.${end}&deleted_at=is.null${blockFilter}&select=id,staff_id,date,staff_name,block,block_id,department,panchayat,position,working_places,status,phase,leave_type,deputation_workplace,absence_reason,time_in,time_out,created_at,version&order=date.asc,staff_id.asc,id.asc`;
     const profilesPath =
       "/rest/v1/profiles?role=eq.staff" +
-      blockFilter +
+      profileBlockFilter(blockId) +
       "&select=id,name,phone,secondary_phones,email,block,block_id,assignments,role,active,created_at,deleted_at&order=id.asc";
     const [records, profiles, roster, holidays] = await Promise.all([
       allPages(recordsPath, token),

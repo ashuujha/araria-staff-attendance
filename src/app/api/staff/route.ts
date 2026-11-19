@@ -12,6 +12,7 @@ import {
   districtAssignments,
   ownBlock,
   requestedBlock,
+  profileBlockFilter,
 } from "../../../lib/district-scope";
 import { rosterRows } from "../../../lib/roster";
 import { randomBytes } from "node:crypto";
@@ -50,8 +51,8 @@ export async function GET(req: Request) {
     const [staff, roster] = await Promise.all([
       sb(
         "/rest/v1/profiles?role=eq.staff&deleted_at=is.null" +
-          (blockId ? `&block_id=eq.${blockId}` : "") +
-          "&select=id,name,phone,email,secondary_phones,assignments,role,block,block_id,active,gender&order=name",
+          profileBlockFilter(blockId) +
+          "&select=id,name,phone,email,secondary_phones,assignments,role,block,block_id,active,gender,staff_scope,district_name&order=name",
         {},
         token,
       ),
@@ -91,6 +92,14 @@ export async function POST(req: Request) {
         "create" | "update" | "delete" | "reset_password" | "provision"
     ];
     if (b.action === "create") {
+      const districtStaff = b.staff_scope === "district";
+      if (districtStaff && profile.role !== "dpro")
+        throw new HttpError(403, "DPRO access required.");
+      if (
+        b.staff_scope != null &&
+        !["block", "district"].includes(b.staff_scope)
+      )
+        throw new HttpError(400, "Invalid staff scope.");
       if (
         b.request_id != null &&
         (typeof b.request_id !== "string" ||
@@ -99,7 +108,7 @@ export async function POST(req: Request) {
         throw new HttpError(400, "Invalid save request. Reopen Add staff.");
       const blockId = ownBlock(profile, b.block_id);
       const blockRows = await sb(
-        `/rest/v1/blocks?id=eq.${blockId}&active=eq.true&select=id,name_en`,
+        `/rest/v1/blocks?id=eq.${blockId}&active=eq.true&select=id,name_en,district_name`,
         {},
         token,
       );
@@ -111,7 +120,17 @@ export async function POST(req: Request) {
           400,
           "A mobile number is required to create a staff login.",
         );
-      const assignments = districtAssignments(b.assignments, blockId);
+      const assignments = districtAssignments(
+        b.assignments,
+        blockId,
+        districtStaff,
+      );
+      const districtName = blockRows[0].district_name || "Araria";
+      if (b.district_name && b.district_name !== districtName)
+        throw new HttpError(
+          400,
+          "Choose a primary block in the selected district.",
+        );
       const [existingProfile, existingRoster] = await Promise.all([
         sb(
           `/rest/v1/profiles?phone=eq.${b.phone}&deleted_at=is.null&select=id,block_id`,
@@ -124,7 +143,8 @@ export async function POST(req: Request) {
         // A retry of this administrator's successful save returns its result,
         // rather than asking them to add or reset the same account again.
         const candidate = existingProfile.find(
-          (entry: { id: string; block_id: string }) => entry.block_id === blockId,
+          (entry: { id: string; block_id: string }) =>
+            entry.block_id === blockId,
         );
         if (candidate && b.request_id) {
           const account = await sb(`/auth/v1/admin/users/${candidate.id}`);
@@ -133,13 +153,13 @@ export async function POST(req: Request) {
             account.user_metadata?.created_by === profile.id
           ) {
             const saved = await sb(
-              `/rest/v1/profiles?id=eq.${candidate.id}&select=id,name,phone,email,gender,assignments,block,block_id,role,active`,
+              `/rest/v1/profiles?id=eq.${candidate.id}&select=id,name,phone,email,gender,staff_scope,district_name,assignments,block,block_id,role,active`,
               {},
               token,
             );
             return json({
               profile: saved[0],
-              password: `${blockRows[0].name_en}@${b.phone.slice(-4)}#26`,
+              password: `${districtStaff ? "DistAraria" : blockRows[0].name_en}@${b.phone.slice(-4)}#26`,
               recovered: true,
             });
           }
@@ -169,7 +189,7 @@ export async function POST(req: Request) {
       // A former account may still exist in Auth to preserve historical
       // attendance references. Use a fresh internal email for each login.
       const loginEmail = `${b.phone}.${randomBytes(8).toString("hex")}@staff.araria.invalid`;
-      const password = `${blockRows[0].name_en}@${b.phone.slice(-4)}#26`;
+      const password = `${districtStaff ? "DistAraria" : blockRows[0].name_en}@${b.phone.slice(-4)}#26`;
       const user = await sb("/auth/v1/admin/users", {
         method: "POST",
         body: JSON.stringify({
@@ -186,13 +206,15 @@ export async function POST(req: Request) {
       });
       try {
         const created = await sb(
-          "/rest/v1/profiles?select=id,name,phone,email,gender,assignments,block,block_id,role,active",
+          "/rest/v1/profiles?select=id,name,phone,email,gender,staff_scope,district_name,assignments,block,block_id,role,active",
           {
             method: "POST",
             headers: { Prefer: "return=representation" },
             body: JSON.stringify({
               id: user.id,
               block_id: blockId,
+              staff_scope: districtStaff ? "district" : "block",
+              district_name: districtName,
               block: blockRows[0].name_en,
               name: b.name.trim(),
               phone: b.phone,
@@ -300,7 +322,7 @@ export async function POST(req: Request) {
         });
         try {
           const created = await sb(
-            "/rest/v1/profiles?select=id,name,phone,email,gender,assignments,block,block_id,role,active",
+            "/rest/v1/profiles?select=id,name,phone,email,gender,staff_scope,district_name,assignments,block,block_id,role,active",
             {
               method: "POST",
               headers: { Prefer: "return=representation" },
@@ -437,6 +459,13 @@ export async function POST(req: Request) {
       });
     }
     if (b.action === "delete") {
+      const target = await sb(
+        `/rest/v1/profiles?id=eq.${b.id}&select=id,staff_scope`,
+        {},
+        token,
+      );
+      if (profile.role === "bpro" && target[0]?.staff_scope === "district")
+        throw new HttpError(403, "District staff are managed by DPRO only.");
       // The RPC validates the actor, target role and block in one transaction.
       await sb("/rest/v1/rpc/delete_master_staff", {
         method: "POST",
@@ -472,12 +501,37 @@ export async function POST(req: Request) {
       )
         throw new HttpError(400, "कर्मी विवरण अमान्य है।");
       const target = await sb(
-        `/rest/v1/profiles?id=eq.${b.id}&role=eq.staff&select=id,block_id`,
+        `/rest/v1/profiles?id=eq.${b.id}&role=eq.staff&select=id,block_id,staff_scope`,
         {},
         token,
       );
       if (!target.length)
         throw new HttpError(403, "This staff member is outside your block.");
+      if (
+        target[0].staff_scope === "district" ||
+        changes.staff_scope === "district" ||
+        (profile.role === "dpro" && changes.staff_scope === "block")
+      ) {
+        if (profile.role !== "dpro")
+          throw new HttpError(403, "District staff are managed by DPRO only.");
+        const home = changes.block_id || target[0].block_id;
+        changes.assignments = districtAssignments(
+          changes.assignments,
+          home,
+          changes.staff_scope !== "block",
+        );
+        const record = await sb("/rest/v1/rpc/manage_district_staff", {
+          method: "POST",
+          body: JSON.stringify({
+            actor_id: profile.id,
+            target_id: b.id,
+            changes,
+          }),
+        });
+        return json({ profile: record });
+      }
+      delete changes.staff_scope;
+      delete changes.district_name;
       const moving =
         "block_id" in changes && changes.block_id !== target[0].block_id;
       if (
@@ -527,7 +581,7 @@ export async function POST(req: Request) {
     const targets = await sb(
       "/rest/v1/profiles?id=eq." +
         b.id +
-        "&select=id,role,phone,block,block_id,deleted_at",
+        "&select=id,role,phone,block,block_id,deleted_at,staff_scope",
       {},
       token,
     );
@@ -550,7 +604,7 @@ export async function POST(req: Request) {
         token,
       );
       if (!blockRows.length) throw new HttpError(400, "Choose a valid block.");
-      const password = `${blockRows[0].name_en}@${target.phone.slice(-4)}#26`;
+      const password = `${target.staff_scope === "district" ? "DistAraria" : blockRows[0].name_en}@${target.phone.slice(-4)}#26`;
       await sb("/auth/v1/admin/users/" + target.id, {
         method: "PUT",
         body: JSON.stringify({

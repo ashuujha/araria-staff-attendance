@@ -55,6 +55,8 @@ export function makeLeaveReport({
             }));
       const assignments = workplaces.length ? workplaces : [{}];
       const sameAssignment = (assignment) =>
+        (!filters.block ||
+          (assignment.block || person?.block) === filters.block) &&
         ["panchayat", "position"].every(
           (field) => !filters[field] || assignment[field] === filters[field],
         );
@@ -69,6 +71,7 @@ export function makeLeaveReport({
           )) ||
         (filters.block &&
           block !== filters.block &&
+          !assignments.some((a) => a.block === filters.block) &&
           !leaves.some((record) => record.block === filters.block)) ||
         (!assignments.some(sameAssignment) && !leaves.some(sameAssignment)) ||
         (onlyWithLeave && !leaves.length)

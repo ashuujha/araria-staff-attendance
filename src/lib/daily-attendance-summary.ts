@@ -7,6 +7,8 @@ export type DailyStaff = {
   active: boolean;
   deleted_at?: string | null;
   roster_only?: boolean;
+  staff_scope?: string;
+  assignments?: { block_id?: string }[];
 };
 
 export type DailyRecord = {
@@ -38,7 +40,10 @@ export function dailyAttendanceBreakdown(
     (person) =>
       person.active &&
       !person.deleted_at &&
-      (!blockId || person.block_id === blockId),
+      (!blockId ||
+        person.block_id === blockId ||
+        (person.staff_scope === "district" &&
+          person.assignments?.some((a) => a.block_id === blockId))),
   );
   const current = new Map(
     records
@@ -76,7 +81,10 @@ export function dailyAttendanceSummary<T extends DailyStaff>(
     (person) =>
       person.active &&
       !person.deleted_at &&
-      (!blockId || person.block_id === blockId),
+      (!blockId ||
+        person.block_id === blockId ||
+        (person.staff_scope === "district" &&
+          person.assignments?.some((a) => a.block_id === blockId))),
   );
   const markedIds = new Set(
     records

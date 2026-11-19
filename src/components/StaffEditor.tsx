@@ -20,13 +20,36 @@ export default function StaffEditor({
   block: string;
   blockId: string;
   role: "bpro" | "dpro";
-  blocks: { id: string; name_en: string }[];
+  blocks: { id: string; name_en: string; district_name?: string }[];
   remove?: boolean;
   staff: Profile[];
   onClose: () => void;
   onSaved: (profile?: Profile, removedId?: string) => void;
   onFound: (phone: string, removed: boolean) => void;
 }) {
+  const [availableBlocks, setAvailableBlocks] = useState(blocks);
+  const [districtNames, setDistrictNames] = useState<string[]>(["Araria"]);
+  const [staffScope, setStaffScope] = useState<"block" | "district">(
+    person?.staff_scope || "block",
+  );
+  const [districtName, setDistrictName] = useState(
+    person?.district_name || "Araria",
+  );
+  const [blockText, setBlockText] = useState(person?.block || block || "");
+  useEffect(() => {
+    if (role !== "dpro") return;
+    void fetch("/api/districts")
+      .then((r) => {
+        if (!r.ok) throw Error();
+        return r.json();
+      })
+      .then((data) =>
+        setDistrictNames(
+          data.districts.map((item: { name: string }) => item.name),
+        ),
+      )
+      .catch(() => {});
+  }, [role]);
   const dialog = useRef<HTMLDialogElement>(null);
   const saveInFlight = useRef(false);
   const createAttempt = useRef({ fingerprint: "", id: "" });
@@ -92,7 +115,8 @@ export default function StaffEditor({
         .filter(
           (p) =>
             p.block ===
-            (blocks.find((b) => b.id === selectedBlockId)?.name_en || block),
+            (availableBlocks.find((b) => b.id === selectedBlockId)?.name_en ||
+              block),
         )
         .map((p) => p.name),
       ...assignments.map((a) => a.panchayat).filter(Boolean),
@@ -140,35 +164,84 @@ export default function StaffEditor({
     setError("");
     setDuplicate(null);
     try {
-      if (!remove) {
-        const blockName =
-          blocks.find((item) => item.id === selectedBlockId)?.name_en || block;
-        const known = new Set(
-          places
-            .filter((place) => place.block === blockName)
-            .map((place) => place.name),
+      let homeId = selectedBlockId;
+      let resolvedAssignments = assignments;
+      const resolveBlock = async (text: string, id?: string) => {
+        const existing = availableBlocks.find(
+          (item) => item.id === id || item.name_en === text.trim(),
         );
-        const names = [
-          ...new Set(assignments.map((item) => item.panchayat.trim())),
-        ];
-        for (const name of names.filter((value) => !known.has(value))) {
-          const response = await fetch("/api/panchayats", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name, block_id: selectedBlockId }),
-          });
-          const result = await response.json();
-          if (!response.ok)
-            throw Error(result.error || "Could not save panchayat.");
+        if (existing) {
+          if ((existing.district_name || "Araria") !== districtName.trim())
+            throw Error("Choose a block in the selected district.");
+          return existing;
         }
+        if (role !== "dpro") throw Error("Choose your assigned block.");
+        const response = await fetch("/api/blocks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: text.trim(),
+            district_name: districtName.trim(),
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw Error(data.error || "Could not add block.");
+        setAvailableBlocks((old) => [
+          ...old.filter((item) => item.id !== data.block.id),
+          data.block,
+        ]);
+        return data.block as {
+          id: string;
+          name_en: string;
+          district_name?: string;
+        };
+      };
+      if (!remove) {
+        const home = await resolveBlock(blockText || block, selectedBlockId);
+        homeId = home.id;
+        const resolved = [];
+        for (const item of assignments) {
+          const workplaceBlock =
+            staffScope === "district"
+              ? await resolveBlock(
+                  item.block || home.name_en,
+                  item.block_id || (item.block ? undefined : home.id),
+                )
+              : home;
+          const name = item.panchayat.trim();
+          if (
+            !places.some(
+              (place) =>
+                place.name === name && place.block === workplaceBlock.name_en,
+            )
+          ) {
+            const response = await fetch("/api/panchayats", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name, block_id: workplaceBlock.id }),
+            });
+            const data = await response.json();
+            if (!response.ok)
+              throw Error(data.error || "Could not save panchayat.");
+          }
+          resolved.push({
+            ...item,
+            panchayat: name,
+            block_id: workplaceBlock.id,
+            block: workplaceBlock.name_en,
+          });
+        }
+        resolvedAssignments = resolved;
       }
       const fingerprint = JSON.stringify({
         name,
         phone,
         email,
         gender,
-        selectedBlockId,
-        assignments,
+        homeId,
+        staffScope,
+        districtName,
+        resolvedAssignments,
       });
       if (!person && createAttempt.current.fingerprint !== fingerprint)
         createAttempt.current = { fingerprint, id: crypto.randomUUID() };
@@ -184,16 +257,15 @@ export default function StaffEditor({
                   action: "update",
                   id: person.id,
                   changes: {
-                    block_id: selectedBlockId,
+                    block_id: homeId,
                     name: name.trim(),
                     phone,
                     email: email.trim(),
                     gender,
                     active,
-                    assignments: assignments.map((item) => ({
-                      ...item,
-                      panchayat: item.panchayat.trim(),
-                    })),
+                    assignments: resolvedAssignments,
+                    staff_scope: staffScope,
+                    district_name: districtName.trim(),
                   },
                 }
               : {
@@ -203,11 +275,10 @@ export default function StaffEditor({
                   phone,
                   email: email.trim(),
                   gender,
-                  block_id: selectedBlockId,
-                  assignments: assignments.map((item) => ({
-                    ...item,
-                    panchayat: item.panchayat.trim(),
-                  })),
+                  block_id: homeId,
+                  assignments: resolvedAssignments,
+                  staff_scope: staffScope,
+                  district_name: districtName.trim(),
                 },
         ),
       });
@@ -326,26 +397,78 @@ export default function StaffEditor({
                 <>
                   <div className="sp-grid">
                     {role === "dpro" && (
-                      <label className="sp-field">
-                        प्रखंड / Block
-                        <select
-                          required
-                          value={selectedBlockId}
-                          onChange={(e) => {
-                            setSelectedBlockId(e.target.value);
-                            setAssignments((old) =>
-                              old.map((a) => ({ ...a, panchayat: "" })),
-                            );
-                          }}
-                        >
-                          <option value="">Choose block</option>
-                          {blocks.map((b) => (
-                            <option key={b.id} value={b.id}>
-                              {b.name_en}
+                      <>
+                        <label className="sp-field">
+                          कर्मी प्रकार / Staff level
+                          <select
+                            value={staffScope}
+                            onChange={(e) =>
+                              setStaffScope(
+                                e.target.value as "block" | "district",
+                              )
+                            }
+                          >
+                            <option value="block">Block staff</option>
+                            <option
+                              value="district"
+                              disabled={!!person?.roster_only}
+                            >
+                              District staff
                             </option>
-                          ))}
-                        </select>
-                      </label>
+                          </select>
+                        </label>
+                        <label className="sp-field">
+                          जिला / District
+                          <input
+                            required
+                            minLength={2}
+                            maxLength={100}
+                            list="staff-districts"
+                            value={districtName}
+                            onChange={(e) => {
+                              setDistrictName(e.target.value);
+                              setSelectedBlockId("");
+                              setBlockText("");
+                            }}
+                          />
+                          <datalist id="staff-districts">
+                            {districtNames.map((name) => (
+                              <option key={name} value={name} />
+                            ))}
+                          </datalist>
+                        </label>
+                        <label className="sp-field">
+                          {staffScope === "district"
+                            ? "मुख्य कार्यालय का प्रखंड / Primary office block"
+                            : "प्रखंड / Block"}
+                          <input
+                            required
+                            minLength={2}
+                            maxLength={100}
+                            list="staff-blocks"
+                            value={blockText}
+                            onChange={(e) => {
+                              setBlockText(e.target.value);
+                              setSelectedBlockId(
+                                availableBlocks.find(
+                                  (item) => item.name_en === e.target.value,
+                                )?.id || "",
+                              );
+                            }}
+                          />
+                        </label>
+                        <datalist id="staff-blocks">
+                          {availableBlocks
+                            .filter(
+                              (item) =>
+                                (item.district_name || "Araria") ===
+                                districtName.trim(),
+                            )
+                            .map((item) => (
+                              <option key={item.id} value={item.name_en} />
+                            ))}
+                        </datalist>
+                      </>
                     )}
                     <label className="sp-field">
                       नाम / Name
@@ -446,6 +569,35 @@ export default function StaffEditor({
                   )}
                   {assignments.map((a, index) => (
                     <div className="sp-editor-assignment" key={index}>
+                      {staffScope === "district" && role === "dpro" && (
+                        <label className="sp-field">
+                          कार्यस्थल का प्रखंड / Workspace block
+                          <input
+                            required
+                            list="staff-blocks"
+                            minLength={2}
+                            maxLength={100}
+                            value={
+                              a.block ||
+                              availableBlocks.find(
+                                (item) => item.id === a.block_id,
+                              )?.name_en ||
+                              blockText
+                            }
+                            onChange={(e) => {
+                              assignment(index, "block", e.target.value);
+                              assignment(
+                                index,
+                                "block_id",
+                                availableBlocks.find(
+                                  (item) => item.name_en === e.target.value,
+                                )?.id || "",
+                              );
+                            }}
+                          />
+                        </label>
+                      )}
+
                       <label className="sp-field">
                         पंचायत / Panchayat
                         <input
@@ -460,7 +612,24 @@ export default function StaffEditor({
                           }
                         />
                         <datalist id={`staff-panchayats-${index}`}>
-                          {panchayats.map((name) => (
+                          {(staffScope === "district"
+                            ? [
+                                ...new Set(
+                                  places
+                                    .filter(
+                                      (place) =>
+                                        place.block ===
+                                        (a.block ||
+                                          availableBlocks.find(
+                                            (item) => item.id === a.block_id,
+                                          )?.name_en ||
+                                          blockText),
+                                    )
+                                    .map((place) => place.name),
+                                ),
+                              ]
+                            : panchayats
+                          ).map((name) => (
                             <option key={name} value={name} />
                           ))}
                         </datalist>

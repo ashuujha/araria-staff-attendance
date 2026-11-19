@@ -10,9 +10,16 @@ export function matchingAssignments(
   person: Profile,
   filters: DirectoryFilters,
 ): Assignment[] {
-  if (filters.block && person.block !== filters.block) return [];
+  if (
+    filters.block &&
+    person.block !== filters.block &&
+    !person.assignments.some((a) => a.block === filters.block)
+  )
+    return [];
   return (person.assignments || []).filter(
     (assignment) =>
+      (!filters.block ||
+        (assignment.block || person.block) === filters.block) &&
       (!filters.panchayat || assignment.panchayat === filters.panchayat) &&
       (!filters.position || assignment.position === filters.position),
   );
@@ -32,7 +39,12 @@ export function filterDirectoryStaff(
         .includes(query)
     )
       return false;
-    if (filters.block && person.block !== filters.block) return false;
+    if (
+      filters.block &&
+      person.block !== filters.block &&
+      !person.assignments.some((a) => a.block === filters.block)
+    )
+      return false;
     return !filters.panchayat && !filters.position
       ? true
       : matchingAssignments(person, filters).length > 0;
@@ -40,9 +52,9 @@ export function filterDirectoryStaff(
 }
 
 export function directoryChoices(people: Profile[], filters: DirectoryFilters) {
-  const assignments = people
-    .filter((person) => !filters.block || person.block === filters.block)
-    .flatMap((person) => person.assignments || []);
+  const assignments = people.flatMap((person) =>
+    matchingAssignments(person, { ...filters, panchayat: "", position: "" }),
+  );
   const sorted = (values: string[]) =>
     [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b));
   return {

@@ -3,6 +3,7 @@ export type Assignment = {
   position: string;
   department: string;
   block_id?: string;
+  block?: string;
 };
 export type Profile = {
   id: string;
@@ -17,6 +18,8 @@ export type Profile = {
   gender?: "female" | "male" | null;
   deleted_at?: string | null;
   roster_only?: boolean;
+  staff_scope?: "block" | "district";
+  district_name?: string;
 };
 export type LeaveBalance = {
   staff_id: string;

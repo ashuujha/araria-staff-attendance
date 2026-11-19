@@ -21,6 +21,7 @@ import { requireWorkingDay } from "../../../lib/office-server";
 import { PANCHAYATI_RAJ_DEPARTMENT } from "../../../lib/district";
 import { normalizeLeaveDates } from "../../../lib/leave-dates";
 import { attendanceHoursError } from "../../../lib/attendance-hours";
+import { assignedWorkspaceBlock } from "../../../lib/district-scope";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
@@ -29,9 +30,12 @@ export async function GET(req: Request) {
   try {
     const { profile, token } = await identity(req);
     const today = istDate();
-    const officeScope = profile.block_id
-      ? `&or=(block_id.is.null,block_id.eq.${profile.block_id})`
-      : "";
+    const officeScope =
+      profile.staff_scope === "district"
+        ? ""
+        : profile.block_id
+          ? `&or=(block_id.is.null,block_id.eq.${profile.block_id})`
+          : "";
     const [records, applications, holidays, notices] = await Promise.all([
       sb(
         `/rest/v1/attendance?staff_id=eq.${profile.id}&date=eq.${today}&deleted_at=is.null&select=*`,
@@ -100,7 +104,23 @@ export async function POST(req: Request) {
     const { profile, token } = await identity(req);
     if (profile.role !== "staff")
       throw new HttpError(403, "केवल कर्मी उपस्थिति दर्ज कर सकते हैं।");
-    if (body.status !== "leave") await requireWorkingDay(profile.block_id);
+    const workspaceBlock = assignedWorkspaceBlock(
+      profile,
+      body.workspace_block_id,
+    );
+    if (body.action === "complete" && profile.staff_scope === "district") {
+      const arrival = await sb(
+        `/rest/v1/attendance?staff_id=eq.${profile.id}&date=eq.${istDate()}&deleted_at=is.null&select=block_id`,
+        {},
+        token,
+      );
+      if (arrival[0]?.block_id !== workspaceBlock)
+        throw new HttpError(
+          403,
+          "Checkout must use the arrival workspace block.",
+        );
+    }
+    if (body.status !== "leave") await requireWorkingDay(workspaceBlock);
     const draft = body.action === "save_draft";
     const hoursError = attendanceHoursError(body.action);
     if (hoursError) throw new HttpError(403, hoursError);
@@ -121,8 +141,7 @@ export async function POST(req: Request) {
             a.panchayat === body.panchayat &&
             a.position === body.position &&
             a.department === PANCHAYATI_RAJ_DEPARTMENT &&
-            (a as typeof a & { block_id?: string }).block_id ===
-              profile.block_id,
+            (a as typeof a & { block_id?: string }).block_id === workspaceBlock,
         )
       )
         throw new HttpError(403, "Workspace is outside your assigned block.");
@@ -343,7 +362,9 @@ export async function POST(req: Request) {
         );
       }
       const application = await sb(
-        "/rest/v1/rpc/submit_leave_application_v3",
+        profile.staff_scope === "district"
+          ? "/rest/v1/rpc/submit_district_leave_application"
+          : "/rest/v1/rpc/submit_leave_application_v3",
         {
           method: "POST",
           body: JSON.stringify({
@@ -353,6 +374,9 @@ export async function POST(req: Request) {
             leave_detail_text: body.leave_detail || null,
             document_path: body.leave_upload_path,
             requested_dates: leaveDates,
+            ...(profile.staff_scope === "district"
+              ? { workspace_block_id: workspaceBlock }
+              : {}),
           }),
         },
         token,
@@ -361,11 +385,16 @@ export async function POST(req: Request) {
       return json({ application });
     }
     const record = await sb(
-      "/rest/v1/rpc/save_attendance_with_evidence",
+      profile.staff_scope === "district"
+        ? "/rest/v1/rpc/save_staff_attendance_in_block"
+        : "/rest/v1/rpc/save_attendance_with_evidence",
       {
         method: "POST",
         body: JSON.stringify({
           user_id: profile.id,
+          ...(profile.staff_scope === "district"
+            ? { workspace_block_id: workspaceBlock }
+            : {}),
           action_name: body.action,
           panchayat_name: body.panchayat ?? null,
           department_name: body.department ?? null,

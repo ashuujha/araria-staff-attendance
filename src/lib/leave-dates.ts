@@ -38,7 +38,7 @@ export function normalizeLeaveDates(value: unknown): string[] {
 
 export function leaveDatesLabel(dates: string[] | undefined, fallback: string) {
   const selected = dates?.length ? dates : [fallback];
-  if (selected.length === 1) return selected[0];
+  if (selected.length === 1) return formatLeaveDate(selected[0]);
   const continuous = selected.every(
     (date, index) =>
       index === 0 ||
@@ -46,6 +46,12 @@ export function leaveDatesLabel(dates: string[] | undefined, fallback: string) {
         new Date(`${date}T00:00:00.000Z`).getTime(),
   );
   return continuous
-    ? `${selected[0]} to ${selected.at(-1)} (${selected.length} calendar days)`
-    : `${selected.join(", ")} (${selected.length} selected dates)`;
+    ? `${formatLeaveDate(selected[0])} to ${formatLeaveDate(selected.at(-1)!)} (${selected.length} calendar days)`
+    : `${selected.map(formatLeaveDate).join(", ")} (${selected.length} selected dates)`;
+}
+
+export function formatLeaveDate(value: string) {
+  if (!validLeaveDate(value)) return value;
+  const [year, month, day] = value.split("-");
+  return `${day}/${month}/${year.slice(-2)}`;
 }

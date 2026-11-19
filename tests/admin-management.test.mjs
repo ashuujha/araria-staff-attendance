@@ -118,8 +118,8 @@ test("admin creates a staff login and keeps existing account edits scoped", asyn
           c.url.pathname === "/rest/v1/profiles" &&
           c.url.searchParams.get("id") === "eq." + staff,
       ).length,
-      1,
-      "Update checks the staff block before the privileged RPC",
+      2,
+      "Update and delete check the staff scope before the privileged RPC",
     );
     for (const name of ["manage_staff_with_gender", "delete_master_staff"])
       assert.ok(
@@ -565,6 +565,62 @@ test("retry of the same administrator save recovers its account without creating
       request({ ...body, request_id: "77777777-7777-4777-8777-777777777777" }),
     );
     assert.equal(duplicate.status, 409);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("only DPRO creates district staff with multiple assigned blocks and the district password", async () => {
+  const original = globalThis.fetch;
+  const secondary = "55555555-5555-4555-8555-555555555555";
+  let role = "dpro",
+    saved = null;
+  globalThis.fetch = async (input, init = {}) => {
+    const url = new URL(input);
+    if (url.pathname === "/rest/v1/profiles") {
+      if (url.searchParams.has("phone")) return Response.json([]);
+      if (init.method === "POST") {
+        saved = JSON.parse(init.body);
+        return Response.json([saved]);
+      }
+      return Response.json([
+        { id: admin, role, active: true, block_id: blockId },
+      ]);
+    }
+    if (url.pathname === "/rest/v1/blocks")
+      return Response.json([
+        { id: blockId, name_en: "Araria", district_name: "Araria" },
+      ]);
+    if (url.pathname === "/rest/v1/staff_roster") return Response.json([]);
+    if (url.pathname === "/auth/v1/admin/users")
+      return Response.json({ id: staff });
+    if (url.pathname === "/rest/v1/audit_logs")
+      return new Response(null, { status: 204 });
+    throw Error(`Unexpected ${url.pathname}`);
+  };
+  const body = {
+    action: "create",
+    name: "District Auditor",
+    phone: "9000000002",
+    block_id: blockId,
+    staff_scope: "district",
+    district_name: "Araria",
+    assignments: [
+      { block_id: blockId, panchayat: "Office A", position: "Auditor" },
+      { block_id: secondary, panchayat: "Office B", position: "Auditor" },
+    ],
+  };
+  try {
+    const response = await POST(request(body));
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).password, "DistAraria@0002#26");
+    assert.equal(saved.staff_scope, "district");
+    assert.deepEqual(
+      saved.assignments.map((item) => item.block_id),
+      [blockId, secondary],
+    );
+    role = "bpro";
+    assert.equal((await POST(request(body))).status, 403);
   } finally {
     globalThis.fetch = original;
   }

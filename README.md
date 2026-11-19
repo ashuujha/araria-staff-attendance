@@ -19,6 +19,14 @@ Approving a leave application requires a signed copy. An administrator can draw 
 
 The pending request card has a staff details view with contact information, block, assignments, leave balance, prior leave decisions and recent attendance. BPRO access is limited to applications from their own block; DPRO can review any block.
 
+## District staff and editable office names
+
+After migrations 16 and 17, DPRO can select **District staff** in Add/Edit Staff, type or choose a saved district and primary office block, and assign workspaces in several blocks. New block and district names are saved as suggestions. Each staff account still submits one attendance record per day, against its chosen assigned workspace. The primary office block anchors private file ownership and historical identity.
+
+Only DPRO may edit/remove district staff or approve/reject their leave. Assigned BPROs can view their staff profile and attendance recorded in that BPRO's block. District passwords follow `DistAraria@<last four mobile digits>#26`; block passwords follow `<BlockName>@<last four mobile digits>#26`. Existing passwords remain unchanged on edit; DPRO reset uses the current staff scope.
+
+Pending CL/SL requests reserve allowance: CL is 16 days per calendar year, female SL is 2 days per month and 24 per year. Approved attendance and pending requests are counted together; rejected requests release their reservation. Staff and administrator leave labels show DD/MM/YY. Existing block staff, historical attendance, and the nine official blocks are retained.
+
 ## District conversion
 
 The migration sequence and checks are in [docs/MIGRATIONS.md](docs/MIGRATIONS.md). **A Vercel deployment does not apply SQL.** First run the read-only dry-run SQL and take a database backup. The data-changing migrations are intentionally not run by `npm run deploy`. Non-Panchayati-Raj staff are archived, not physically deleted; historical attendance remains stored. Only one DPRO and one BPRO per block may be active.

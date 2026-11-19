@@ -16,7 +16,7 @@ export async function GET(req: Request) {
         token,
       ),
       sb(
-        "/rest/v1/profiles?role=eq.staff&active=eq.true&deleted_at=is.null&select=id,block_id&limit=1000",
+        "/rest/v1/profiles?role=eq.staff&active=eq.true&deleted_at=is.null&select=id,block_id,staff_scope,assignments&limit=1000",
         {},
         token,
       ),
@@ -33,7 +33,14 @@ export async function GET(req: Request) {
     ]);
     const summary = blocks.map((block: { id: string; name_en: string }) => {
       const people = [...staff, ...roster].filter(
-        (person: { block_id: string }) => person.block_id === block.id,
+        (person: {
+          block_id: string;
+          staff_scope?: string;
+          assignments?: { block_id?: string }[];
+        }) =>
+          person.block_id === block.id ||
+          (person.staff_scope === "district" &&
+            person.assignments?.some((a) => a.block_id === block.id)),
       );
       const ids = new Set(people.map((person: { id: string }) => person.id));
       const marked = records.filter(
@@ -45,6 +52,7 @@ export async function GET(req: Request) {
         absent: 0,
         leave: 0,
         deputation: 0,
+        on_duty: 0,
       };
       for (const row of marked) if (row.status in counts) counts[row.status]++;
       return {

@@ -36,3 +36,15 @@ test("calendar dates reject reversed, duplicate and oversized selections", () =>
   assert.throws(() => normalizeLeaveDates(["2026-12-01", "2026-12-01"]));
   assert.throws(() => normalizeLeaveDates(["2026-12-01", "2028-01-01"]));
 });
+
+test("leave dates display day/month/two-digit-year for single, range and random selections", () => {
+  assert.equal(leaveDatesLabel(undefined, "2026-11-19"), "19/11/26");
+  assert.equal(
+    leaveDatesLabel(["2026-11-19", "2026-11-20"], ""),
+    "19/11/26 to 20/11/26 (2 calendar days)",
+  );
+  assert.equal(
+    leaveDatesLabel(["2026-11-19", "2026-11-23"], ""),
+    "19/11/26, 23/11/26 (2 selected dates)",
+  );
+});

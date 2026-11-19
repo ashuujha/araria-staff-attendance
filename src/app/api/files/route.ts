@@ -25,7 +25,7 @@ export async function GET(req: Request) {
             `&select=staff_id,block_id,${kind === "application_leave_path" ? "leave_path" : "decision_document_path"}`
         : "/rest/v1/attendance?id=eq." +
             id +
-            "&select=staff_id,block_id," +
+            "&select=staff_id,block_id,evidence_block_id," +
             kind,
       {},
       token,
@@ -53,8 +53,25 @@ export async function GET(req: Request) {
       throw new HttpError(400, "फ़ाइल अनुरोध अमान्य।");
     const modernPrefix = `${record.block_id}/${record.staff_id}/`;
     const legacyPrefix = `${record.staff_id}/`;
-    if (!path.startsWith(modernPrefix) && !path.startsWith(legacyPrefix))
-      throw new HttpError(403, "This file is outside your block.");
+    const evidencePrefix = record.evidence_block_id
+      ? `${record.evidence_block_id}/${record.staff_id}/`
+      : null;
+    if (
+      !path.startsWith(modernPrefix) &&
+      !path.startsWith(legacyPrefix) &&
+      !(evidencePrefix && path.startsWith(evidencePrefix))
+    ) {
+      const owners = await sb(
+        `/rest/v1/profiles?id=eq.${record.staff_id}&select=id,block_id,staff_scope`,
+        {},
+        token,
+      );
+      if (
+        owners[0]?.staff_scope !== "district" ||
+        !path.startsWith(`${owners[0].block_id}/${record.staff_id}/`)
+      )
+        throw new HttpError(403, "This file is outside your block.");
+    }
     const signed = await sb(
       "/storage/v1/object/sign/attendance-private/" + path,
       { method: "POST", body: JSON.stringify({ expiresIn: 60 }) },
